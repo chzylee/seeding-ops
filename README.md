@@ -1,5 +1,38 @@
 # seeding-script
 
+## Quick start (seeding a bracket)
+
+**One-time setup**
+
+1. Install **Node 24+** from <https://nodejs.org>.
+2. Open `.env` in this folder and paste your start.gg token after `STARTGG_TOKEN=`, then save.
+   Get a token at <https://start.gg/admin/profile/developer>. If you skip this, the launcher
+   opens `.env` in Notepad for you.
+
+**Every time**
+
+1. **Double-click `seed.cmd`.** From a terminal, `npm run seed` does the same thing.
+2. **Paste the event links,** one per line. Paste all of this week's brackets at once if you
+   like. Press **Enter on an empty line** to start. Links must contain `/event/`.
+3. **Walk away.** Each event takes a few minutes and they run one after another. When they're
+   done, the results folder opens by itself.
+4. **Hand the files to Claude.** In each event's folder, attach `players.csv`, `results.csv` and
+   `meta.json`, then paste `claude-prompt.txt` with the last line filled in: what you want
+   (tiers, big-event columns, regions...).
+
+**If it stops partway** (laptop sleeps, Wi-Fi drops, you close the window), double-click
+`seed.cmd` again and paste the same link. It picks up where it left off, as long as that's
+within 24 hours. Players already fetched aren't fetched again.
+
+**What the summary means:** `done` = all good · `stopped or some players failed` = run it
+again to resume · `could not start` = read the message (usually the token or a bad link).
+
+Log how each seeding session goes in [`docs/usage-log.md`](docs/usage-log.md).
+
+---
+
+## Reference
+
 Give it a start.gg **event** URL. It writes every registrant's tournament results from the
 **two years before the moment it runs**, in **all games**, to three files. It doesn't rank
 or seed anything. That happens afterward: you hand the files to Claude (see the end of this
@@ -114,6 +147,10 @@ tool can reuse them:
 - `lib/output.js`: CSV/JSON, the run folder, the checkpoint and request log, and the final
   write.
 - `lib/run.js`: the orchestrator (fresh run and resume). `pull.js` is the command line on top.
+- `seed.js` / `seed.cmd`: the everyday launcher. It runs `pull.js` once per pasted link,
+  auto-resumes an unfinished run of the same event touched in the last 24 h, writes
+  `claude-prompt.txt` into each finished run folder, and opens the output folder. It adds no
+  fetch logic. Set `SEED_NO_OPEN=1` to stop it opening Explorer or Notepad.
 
 ## Hand this to Claude
 

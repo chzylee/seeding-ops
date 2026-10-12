@@ -281,3 +281,33 @@ REPORT
   spreadsheet, does he want a ' prefix instead? (3) A1: if the live data shows
   userEntrant:null events are ones the player never entered, drop and count them.
 ```
+
+---
+
+## Out-of-band addition — launcher (orchestrating session, 2026-10-12, between passes 1 and 2)
+
+**Ask (Noah, chat):** "make an easy handle to run the script. and create readme for this. smooth ux
+for me still so i can reuse for 3 brackets this week."
+
+**Not a pass seat.** Written by the session that issued the contract, outside the pass table, so
+**pass 2 must audit it like pass-1 code**. Scope kept to UX. No fetch logic was added and `pull.js`
+is unchanged.
+
+| Added | What |
+|---|---|
+| `seed.js` | Launcher. Takes event links as arguments, or prompts for several, one per line. Runs `pull.js` once per link in sequence. **Auto-resumes** the newest unfinished run (has `_work/run.json`, no `meta.json`) of the same event if any `_work/` file changed in the last 24 h. Writes `claude-prompt.txt` from `meta.json` into each finished run folder. Opens the run folder in Explorer, or `out/` if there were several. On a blank token, opens `.env` in Notepad and exits 2. `SEED_NO_OPEN=1` turns off the opening. |
+| `seed.cmd` | The double-click wrapper (`cd` to the repo, `node seed.js`, `pause`). `.gitattributes` gains `*.cmd text eol=crlf`. |
+| `package.json` | `npm run seed`. |
+| `test/seed.test.js` | 5 tests: the folder prefix matches `runFolderName`; the resume pick (newest unfinished; never a finished, stale, non-resumable or other-event run); the prompt file is written only for finished runs; no token → exit 2 with no `out/`. |
+| `README.md` | A "Quick start (seeding a bracket)" section at the top. The pass-1 content is kept under "Reference", plus a `seed.js` line in "Code layout". |
+
+**Evidence:** `NODE_OPTIONS="--require ./testlib/no-network.js" node --test` → 71 tests, 68 pass,
+0 fail, 3 skipped (the same 3 parked fixture tests). Offline smoke test: piping two non-event links
+into the prompt → both skipped with a reason, "Nothing to pull.", exit 2, no `out/`.
+
+**Assumptions supplied (amendable):** a 24 h auto-resume window, after which a fresh run starts.
+An unfinished run is resumed silently, with the folder named in the header line, rather than asking
+first.
+
+**Not verified:** the launcher end to end against live start.gg. That's parked with the other live
+checks until the token is pasted. Double-click behavior was not exercised; only `node seed.js` was.

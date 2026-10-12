@@ -7,4 +7,4 @@
 | `user-events-page.json` | **Synthetic**: hand-built in the shape of `Q_USER_EVENTS`, matching the Q-1 probe's `user.events` response (see docs/build-record.md). |
 | `recent-standings.json` | **Synthetic**: hand-built in the shape of `Q_RECENT_STANDINGS`, including a non-Event container. |
 
-`scripts/record-fixtures.js` replaces the synthetic files with real responses once a token is in `.env`. It writes no token and no headers.
+`scripts/record-fixtures.js` writes real responses (bodies only: no token, no headers) to `recorded/`. `test/recorded-shape.test.js` runs the parsers over them and is skipped, with the reason printed, until they exist. The synthetic files stay: their exact values are what the unit tests assert.

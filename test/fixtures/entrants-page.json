@@ -1,0 +1,13 @@
+{
+  "_source": "synthetic, shaped like Q_ENTRANTS",
+  "data": { "event": { "entrants": {
+    "pageInfo": { "total": 3, "totalPages": 1 },
+    "nodes": [
+      { "id": 1, "participants": [ { "id": 11, "player": { "id": 501, "gamerTag": "Solo", "prefix": "SP", "user": { "id": 801, "slug": "user/abc", "location": { "state": "IL", "country": "United States" } } } } ] },
+      { "id": 2, "participants": [
+        { "id": 21, "player": { "id": 502, "gamerTag": "Duo1", "prefix": "", "user": { "id": 802, "slug": "user/def", "location": null } } },
+        { "id": 22, "player": { "id": 503, "gamerTag": "Duo2", "prefix": null, "user": null } } ] },
+      { "id": 3, "participants": [ { "id": 31, "player": { "id": 504, "gamerTag": "Abroad", "prefix": "", "user": { "id": 804, "slug": "user/ghi", "location": { "state": "", "country": "Japan" } } } } ] }
+    ] } } },
+  "extensions": { "queryComplexity": 15 }
+}

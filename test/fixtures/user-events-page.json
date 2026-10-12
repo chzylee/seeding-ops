@@ -1,0 +1,12 @@
+{
+  "_source": "synthetic, shaped like Q_USER_EVENTS and the Q-1 probe's user.events nodes",
+  "data": { "user": { "events": {
+    "pageInfo": { "total": 4, "totalPages": 1 },
+    "nodes": [
+      { "id": 1001, "slug": "tournament/a/event/b", "name": "MBAACC Singles", "startAt": 1767225600, "numEntrants": 64, "isOnline": false, "videogame": { "id": 22, "name": "Melty Blood: Actress Again Current Code" }, "tournament": { "name": "Tournament A" }, "userEntrant": { "standing": { "placement": 5 } } },
+      { "id": 1002, "slug": "tournament/c/event/d", "name": "Melee Singles", "startAt": 1735689600, "numEntrants": 300, "isOnline": true, "videogame": { "id": 1, "name": "Super Smash Bros. Melee" }, "tournament": { "name": "Tournament C" }, "userEntrant": { "standing": null } },
+      { "id": 1003, "slug": "tournament/e/event/f", "name": "Old Event", "startAt": 1577836800, "numEntrants": 32, "isOnline": false, "videogame": { "id": 22, "name": "Melty Blood: Actress Again Current Code" }, "tournament": { "name": "Tournament E" }, "userEntrant": { "standing": { "placement": 2 } } },
+      { "id": 1001, "slug": "tournament/a/event/b", "name": "MBAACC Singles", "startAt": 1767225600, "numEntrants": 64, "isOnline": false, "videogame": { "id": 22, "name": "Melty Blood: Actress Again Current Code" }, "tournament": { "name": "Tournament A" }, "userEntrant": { "standing": { "placement": 5 } } }
+    ] } } },
+  "extensions": { "queryComplexity": 843 }
+}

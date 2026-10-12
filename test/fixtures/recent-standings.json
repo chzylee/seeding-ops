@@ -1,0 +1,10 @@
+{
+  "_source": "synthetic, shaped like Q_RECENT_STANDINGS",
+  "data": { "player": { "recentStandings": [
+    { "placement": 4, "container": { "__typename": "Event", "id": 2001, "slug": "tournament/g/event/h", "name": "Locals", "startAt": 1767225600, "numEntrants": 12, "isOnline": false, "videogame": { "id": 22, "name": "Melty Blood: Actress Again Current Code" }, "tournament": { "name": "Weekly" } } },
+    { "placement": 1, "container": { "__typename": "Phase", "id": 3001 } },
+    { "placement": 7, "container": null },
+    { "placement": 2, "container": { "__typename": "Event", "id": 2002, "slug": "tournament/i/event/j", "name": "Ancient", "startAt": 1514764800, "numEntrants": 20, "isOnline": false, "videogame": { "id": 22, "name": "Melty Blood: Actress Again Current Code" }, "tournament": { "name": "Old" } } }
+  ] } },
+  "extensions": { "queryComplexity": 196 }
+}

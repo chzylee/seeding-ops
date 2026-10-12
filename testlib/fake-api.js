@@ -1,0 +1,210 @@
+'use strict';
+// testlib/fake-api.js — an offline stand-in for https://api.start.gg/gql/alpha.
+// It answers by GraphQL operation name with responses shaped like the real ones (see
+// test/fixtures/*.json, which hold one sample page of each). Kept outside test/ so
+// `node --test` does not try to run it as a test file.
+
+const fs = require('node:fs');
+const path = require('node:path');
+
+const FIX = path.join(__dirname, '..', 'test', 'fixtures');
+const readFixture = (f) => JSON.parse(fs.readFileSync(path.join(FIX, f), 'utf8'));
+
+const DAY = 86_400;
+const GAME = { id: 22, name: 'Melty Blood: Actress Again Current Code' };
+const OTHER_GAME = { id: 1, name: 'Super Smash Bros. Melee' };
+const EVENT_SLUG = 'tournament/combo-breaker-2026/event/melty-blood-actress-again-current-code';
+
+// A deterministic little world. `runAtSec` anchors event dates relative to the run so the
+// window cases (in, out, future, boundary) hold no matter when the tests run.
+function buildWorld(runAtSec) {
+  let evId = 5000;
+  const mkEvent = (daysAgo, game = GAME, extra = {}) => ({
+    id: ++evId,
+    slug: `tournament/t-${evId}/event/e-${evId}`,
+    name: `Event ${evId}`,
+    startAt: daysAgo == null ? null : runAtSec - daysAgo * DAY,
+    numEntrants: 8 + (evId % 50),
+    isOnline: evId % 3 === 0,
+    videogame: game,
+    tournament: { name: `Tournament ${evId}` },
+    ...extra,
+  });
+
+  const players = [];
+  const addPlayer = (p) => { players.push(p); return p; };
+
+  // P1: a big history over two pages, unsorted, with every window edge case.
+  const big = [];
+  for (let i = 0; i < 125; i++) big.push(mkEvent(i * 9, i % 4 === 0 ? OTHER_GAME : GAME));
+  // 125 events at 0..1116 days ago: 82 in window (0..729), 43 out.
+  big.push(mkEvent(-30));                 // future: out of window
+  big.push(mkEvent(null));                // no date: out of window
+  big.push(mkEvent(730));                 // exactly 730 days ago: in (inclusive)
+  big.push(mkEvent(731));                 // out
+  const p1Events = big.sort((a, b) => (a.id * 7919) % 131 - (b.id * 7919) % 131); // shuffled
+  addPlayer({ id: 101, gamerTag: 'GeneralMidwest', prefix: 'CB', user: { id: 9001, slug: 'user/14364d39', location: { state: 'IL', country: 'United States' } }, events: p1Events });
+
+  // P2: tag that needs CSV care, country only.
+  addPlayer({ id: 102, gamerTag: '=SUM(1,2) "the" @Kid, -x', prefix: '+P', user: { id: 9002, slug: 'user/aaaa0002', location: { state: null, country: 'Japan' } }, events: [mkEvent(10), mkEvent(800)] });
+
+  // P3: location hidden (null), zero events.
+  addPlayer({ id: 103, gamerTag: 'Quiet', prefix: '', user: { id: 9003, slug: 'user/aaaa0003', location: null }, events: [] });
+
+  // P4: no linked user -> recentStandings fallback.
+  addPlayer({
+    id: 104, gamerTag: 'GuestPlayer', prefix: null, user: null,
+    standings: [
+      { placement: 3, container: { __typename: 'Event', ...mkEvent(20) } },
+      { placement: 9, container: { __typename: 'Event', ...mkEvent(900) } },
+      { placement: 1, container: { __typename: 'Phase', id: 777 } },
+    ],
+  });
+
+  // P5/P6: a two-person team entrant.
+  addPlayer({ id: 105, gamerTag: 'TeamA', prefix: '', user: { id: 9005, slug: 'user/aaaa0005', location: { state: 'Ontario', country: 'Canada' } }, events: [mkEvent(5)], team: 'T1' });
+  addPlayer({ id: 106, gamerTag: 'TeamB', prefix: '', user: { id: 9006, slug: 'user/aaaa0006', location: { state: 'CA', country: 'United States' } }, events: [mkEvent(5, GAME, { id: 99999, slug: 'tournament/x/event/y' })], team: 'T1' });
+
+  // P7: an event with no standing yet, and one where userEntrant is null.
+  addPlayer({ id: 107, gamerTag: 'Pending', prefix: '', user: { id: 9007, slug: 'user/aaaa0007', location: { state: 'TX', country: 'United States' } },
+    events: [mkEvent(1, GAME, { _noStanding: true }), mkEvent(2, GAME, { _noEntrant: true })] });
+
+  // P8..P15: ordinary players.
+  for (let k = 8; k <= 15; k++) {
+    addPlayer({ id: 100 + k, gamerTag: `Player${k}`, prefix: '', user: { id: 9000 + k, slug: `user/aaaa00${k}`, location: { state: 'NY', country: 'United States' } },
+      events: [mkEvent(k), mkEvent(k + 400), mkEvent(k + 1000)] });
+  }
+
+  // Entrants: team T1 is one entrant with two participants.
+  const entrants = [];
+  let entId = 70000;
+  const teams = new Map();
+  for (const p of players) {
+    if (p.team) {
+      if (!teams.has(p.team)) { const e = { id: ++entId, participants: [] }; teams.set(p.team, e); entrants.push(e); }
+      teams.get(p.team).participants.push(p);
+    } else entrants.push({ id: ++entId, participants: [p] });
+  }
+
+  const event = {
+    id: 1000, slug: EVENT_SLUG, name: 'Melty Blood: Actress Again Current Code',
+    startAt: runAtSec - 140 * DAY, numEntrants: entrants.length, videogame: GAME,
+    tournament: { name: 'Combo Breaker 2026' },
+  };
+  return { event, players, entrants };
+}
+
+function jsonResponse(status, body, headers = {}) {
+  const text = JSON.stringify(body);
+  return {
+    status, ok: status >= 200 && status < 300,
+    headers: { get: (k) => headers[k.toLowerCase()] ?? null },
+    text: async () => text,
+  };
+}
+
+function participantNode(p, i) {
+  return {
+    id: 80000 + i,
+    player: {
+      id: p.id, gamerTag: p.gamerTag, prefix: p.prefix,
+      user: p.user ? { id: p.user.id, slug: p.user.slug, location: p.user.location } : null,
+    },
+  };
+}
+
+function eventNode(ev, userId) {
+  const { _noStanding, _noEntrant, ...pub } = ev;
+  const userEntrant = _noEntrant ? null : { standing: _noStanding ? null : { placement: (ev.id % 17) + 1 } };
+  return { ...pub, userEntrant: userId != null ? userEntrant : null };
+}
+
+// createFakeFetch(world, opts) -> fetch-compatible function plus a `calls` array.
+// opts.badToken           every call returns the recorded bad-token 400
+// opts.rateLimitFirst     the first N UserEvents calls return 429
+// opts.serverErrorPlayer  user id whose UserEvents calls always return 503
+// opts.schemaErrorOn      operation name that returns a validation error (no `path`)
+// opts.onUserEvents(n)    hook called with the running count of UserEvents calls
+function createFakeFetch(world, opts = {}) {
+  const calls = [];
+  const badTokenFixture = readFixture('error-badtoken-400.json');
+  let userEventsCalls = 0;
+  let rateLimited = 0;
+
+  async function fakeFetch(url, init) {
+    const req = JSON.parse(init.body);
+    const op = (/query\s+(\w+)/.exec(req.query) || [])[1];
+    const v = req.variables || {};
+    calls.push({ op, variables: v, auth: init.headers.Authorization });
+    if (opts.badToken) return jsonResponse(badTokenFixture.httpStatus, badTokenFixture.body);
+    if (opts.schemaErrorOn === op) {
+      return jsonResponse(200, { errors: [{ message: `Cannot query field "nope" on type "Query".`, locations: [{ line: 1, column: 2 }] }] });
+    }
+    const ext = (n) => ({ queryComplexity: n });
+
+    if (op === 'ResolveEvent') {
+      const ev = v.slug === world.event.slug ? world.event : null;
+      return jsonResponse(200, { data: { event: ev }, extensions: ext(4) });
+    }
+    if (op === 'EventEntrants') {
+      const per = v.perPage;
+      const all = world.entrants;
+      const slice = all.slice((v.page - 1) * per, v.page * per);
+      let i = 0;
+      const nodes = slice.map((e) => ({ id: e.id, participants: e.participants.map((p) => participantNode(p, i++)) }));
+      return jsonResponse(200, {
+        data: { event: { entrants: { pageInfo: { total: all.length, totalPages: Math.ceil(all.length / per) }, nodes } } },
+        extensions: ext(per * 5),
+      });
+    }
+    if (op === 'UserEvents') {
+      userEventsCalls++;
+      if (opts.onUserEvents) opts.onUserEvents(userEventsCalls);
+      if (opts.rateLimitFirst && rateLimited < opts.rateLimitFirst) {
+        rateLimited++;
+        return jsonResponse(429, { success: false, message: 'Rate limit exceeded - api-token' });
+      }
+      if (opts.serverErrorPlayer != null && String(v.userId) === String(opts.serverErrorPlayer)) {
+        return jsonResponse(503, { message: 'Service Unavailable' });
+      }
+      const p = world.players.find((x) => x.user && String(x.user.id) === String(v.userId));
+      if (!p) return jsonResponse(200, { data: { user: null }, extensions: ext(1) });
+      const per = v.perPage;
+      const slice = p.events.slice((v.page - 1) * per, v.page * per);
+      return jsonResponse(200, {
+        data: { user: { events: {
+          pageInfo: { total: p.events.length, totalPages: Math.ceil(p.events.length / per) },
+          nodes: slice.map((ev) => eventNode(ev, v.userId)),
+        } } },
+        extensions: ext(Math.round(per * 7.02)),
+      });
+    }
+    if (op === 'RecentStandings' || op === 'RecentStandingsAnyGame') {
+      const p = world.players.find((x) => String(x.id) === String(v.playerId));
+      if (!p) return jsonResponse(200, { data: { player: null }, extensions: ext(1) });
+      const list = (p.standings || []).filter((s) => op === 'RecentStandingsAnyGame' ||
+        !s.container.videogame || String(s.container.videogame.id) === String(v.videogameId));
+      return jsonResponse(200, { data: { player: { recentStandings: list } }, extensions: ext(196) });
+    }
+    return jsonResponse(400, { errors: [{ message: `Unknown operation ${op}` }] });
+  }
+  fakeFetch.calls = calls;
+  return fakeFetch;
+}
+
+// A virtual clock: sleep advances time instantly, so pacing is real arithmetic with no waiting.
+function virtualClock(startMs) {
+  let t = startMs;
+  return {
+    now: () => t,
+    sleep: async (ms) => { t += ms; },
+    advance: (ms) => { t += ms; },
+  };
+}
+
+function sink() {
+  const chunks = [];
+  return { write: (s) => { chunks.push(String(s)); return true; }, text: () => chunks.join('') };
+}
+
+module.exports = { buildWorld, createFakeFetch, virtualClock, sink, GAME, OTHER_GAME, EVENT_SLUG, readFixture };

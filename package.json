@@ -1,0 +1,12 @@
+{
+  "name": "seeding-script",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Pull two years of start.gg results for every registrant of an event into CSV files.",
+  "type": "commonjs",
+  "engines": { "node": ">=24" },
+  "scripts": {
+    "test": "node --test",
+    "pull": "node pull.js"
+  }
+}

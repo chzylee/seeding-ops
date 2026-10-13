@@ -30,6 +30,7 @@
 | Event | Date | Link | Tool used? | Entry |
 |---|---|---|---|---|
 | Chicago regional | last week (before 2026-10-12) | *(add)* | **No.** Seeded by hand. This is the baseline. | [Baseline](#baseline--chicago-regional-manual) |
+| Crescendo of Night 3 — Episode 0 · Andante (UNI2) - PC | 2026-10-13 | [link](https://www.start.gg/tournament/crescendo-of-night-3-episode-0/event/andante-uni2-pc) | **Yes.** First real run. | [Entry](#crescendo-of-night-3--episode-0--andante-uni2-pc--2026-10-13) |
 | Upcoming event 1 | week of 2026-10-19 | *(add)* | Planned | *(add)* |
 | Upcoming event 2 | week of 2026-10-19 | *(add)* | Planned | *(add)* |
 
@@ -43,6 +44,36 @@ Fill this in while it's fresh. It's what the tool is being measured against.
 - **Time it took:** *(rough)*
 - **Hardest players to place, and why:**
 - **What I wished I could see:**
+
+### Crescendo of Night 3 — Episode 0 · Andante (UNI2) - PC — 2026-10-13
+
+**Pull** *(Claude ran it; Noah's link)*
+- Run folder: `out/crescendo-of-night-3-episode-0__andante-uni2-pc__20261013-1739`, via `node seed.js <link>`
+- 5 registrants · 308 results (2024-10-13..2026-10-13) · 5 complete, 0 limited, 0 failed · 10 requests,
+  max queryComplexity 840, max 10 requests in any 60 s, 0 backoffs · exit 0
+- Region coverage: 2 with state, 4 with country, 1 with neither
+- `scripts/reconcile.js --live`: all 19 checks passed (fresh API registrant count 5 = 5).
+  `check-requests.js`: PASS.
+- Nothing broke. **Two players show 0 results while marked `complete`** (TaimRW9, Meezz). Checked
+  directly: start.gg has **0 sets ever** for both, and `recentStandings` is null. Their only
+  tournaments are registrations (tonight's; Meezz also "Freaky Frosty October!" with no sets).
+  **Confirmed: `user.events` lists only events actually competed in.** The zero is genuine.
+
+**Transformations asked of Claude**
+| Prompt (verbatim) | What it produced | Useful? | Keep as a standard view? |
+|---|---|---|---|
+| "give me a table of everyone's results and summarize patterns in a notes column" | Per-player table: region, 2-yr volume, event-game volume, best majors, recent form, shared-event comparisons, notes | *(Noah to rate)* | *(Noah)* |
+| "would it be easier for you to edit a table with a web view … add columns for results from these events if applicable: CEO, EVO, Combo Breaker, Frosty Faustings, Climax of Night · give me best placement, and best and average win-loss record from Boston blue beat events as well. then list other results in separate column" | `views/major-table.js` → `<run>/views/major-table.html`, served by `views/serve.js` at http://localhost:8765. One column per major (this game, main bracket = largest field, others marked "side"); BBB best placement + best and average set W-L (33 set lookups, cached in `views/bbb-records.json`); other results with expandable lists by game; notes from `views/notes.json` | *(Noah to rate)* | Likely: a "named majors + home series" view seems reusable per game |
+
+**Seeding:** *(Noah to fill in after the event: close calls and what decided them)*
+
+**Data observations** *(Claude)*
+- Blank placements were all **ladder** events (e.g. "UNI2BL Monthly Ladder #21", `-/35`): real
+  participation with no final standing. That supports keeping blank-placement rows.
+- One tournament can hold **several brackets in the same game** (Frosty Faustings XVIII ×2, TNS #35 ×2
+  on the same date). Views must show `event_name`, or a side bracket looks like a second tournament.
+- Comparing players at shared events gives rough head-to-head signal, but it's **placement at the
+  same event, not actual sets**.
 
 ### Entry template (copy for each event)
 
@@ -102,3 +133,9 @@ when Noah rules on it.
 | Results for other games available, with the event's game flagged | 2026-10-12 | Noah: *"sometimes those are helpful, but making sense of those results is more nuanced"* | In v1 build |
 | Reusable player registry: tag → tier, region, notes | 2026-10-12 | Noah's direct ask | Candidate (manual v0) |
 | Token supplied outside code, as an env var | 2026-10-12 | Noah: *"similar to how token would not be read directly from code in a cloud env"* | In v1 build |
+| Distinguish "complete, no start.gg history" from "complete with history" (e.g. a `no_history` flag, or a note in the prompt file) | 2026-10-13 | CoN3 Ep0: 2 of 5 players had 0 sets ever on start.gg | Candidate |
+| Real head-to-head (sets between registrants), not just placement at shared events | 2026-10-13 | CoN3 Ep0 analysis relied on shared-event placements | Candidate |
+| Standard views always show `event_name` alongside `tournament_name` | 2026-10-13 | Side brackets (Frosty Faustings XVIII ×2, TNS #35 ×2) | Candidate |
+| **Set-level W-L in the pull** (sets won and lost per event, DQs excluded), so views don't need their own fetch | 2026-10-13 | BBB W-L view needed 33 extra set lookups at view time | Candidate |
+| Configurable "named majors" and "home series" per game (regex on tournament name) | 2026-10-13 | CEO/Evo/CB/FF/Climax of Night + Boston Blue Beat for UNI2 | Candidate |
+| A browser view of the seeding table (not markdown) | 2026-10-13 | Noah: *"would it be easier … with a web view"*; ~10 columns + long lists | Candidate (built as a view script) |

@@ -311,3 +311,23 @@ first.
 
 **Not verified:** the launcher end to end against live start.gg. That's parked with the other live
 checks until the token is pasted. Double-click behavior was not exercised; only `node seed.js` was.
+
+---
+
+## Out-of-band addition — seeding views (orchestrating session, 2026-10-13)
+
+**Ask (Noah, chat), while seeding Crescendo of Night 3 Ep. 0:** a browser table with columns for
+CEO, Evo, Combo Breaker, Frosty Faustings and Climax of Night, plus Boston Blue Beat best placement
+and best and average W-L, plus other results.
+
+**Scope: view logic, outside the pull.** `pull.js`, `lib/` and the tests are unchanged.
+
+| Added | What |
+|---|---|
+| `views/major-table.js` | Reads one finished run folder → `<run>/views/major-table.html`. Major columns use this game only, with main bracket = largest field. **Fetches sets** for Boston Blue Beat W-L through `lib/startgg.createClient` (paced, retried), cached in `<run>/views/bbb-records.json`. The DQ rule is copied from `startgg-results/core.js` `tallyRecords`. Uses `Event.userEntrant(userId).paginatedSets`, verified live on this run: 33 lookups, every one returned sets. |
+| `views/serve.js` | A read-only static server for `out/` on 127.0.0.1:8765, with an index of run folders that have views. |
+
+**Not tested in the suite.** These are Claude-side views and change per request. Correctness was
+checked by hand on the live run: every rendered cell was compared with `results.csv`, and the W-L
+totals are consistent with the placements (e.g. 0-2 at 17th-25th finishes; 5-0 at a 1st place).
+Pass 2 may rule on whether views need tests.

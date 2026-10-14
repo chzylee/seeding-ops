@@ -63,7 +63,11 @@ async function fetchSetRecords(runDir, players, rows) {
     ...(fs.existsSync(cacheFile) ? JSON.parse(fs.readFileSync(cacheFile, 'utf8')) : {}),
   };
   const todo = rows.filter((r) => !cache[key(r)]);
-  if (todo.length) {
+  // --no-fetch renders from the cache only (e.g. while another render is still fetching:
+  // two fetching processes would together exceed start.gg's 80 requests / 60 s).
+  if (todo.length && process.argv.includes('--no-fetch')) {
+    process.stderr.write(`--no-fetch: ${todo.length} results have no cached W-L yet; shown as —\n`);
+  } else if (todo.length) {
     const { token } = loadToken({ envFile: path.join(__dirname, '..', '.env') });
     if (!token) throw new Error('No STARTGG_TOKEN in .env; needed to fetch set records.');
     const client = createClient({ token });
@@ -108,22 +112,6 @@ function majorCell(rows, major, records) {
     .join('');
 }
 
-function bbbCell(rows, records) {
-  const bbb = rows.filter((r) => r.is_event_game === 'true' && BBB.test(r.tournament_name));
-  if (!bbb.length) return '<span class="dim">—</span>';
-  const placed = bbb.filter((r) => r.placement).sort((a, b) => +a.placement - +b.placement || +b.num_entrants - +a.num_entrants);
-  const withWl = bbb.map((r) => ({ r, rec: wlOf(records, r) })).filter((x) => x.rec);
-  const lines = [];
-  if (placed[0]) lines.push(`Best placement: <b>${place(placed[0])}</b> · ${wlText(wlOf(records, placed[0]))}`);
-  if (withWl.length) {
-    const best = [...withWl].sort((a, b) => b.rec.w / (b.rec.w + b.rec.l) - a.rec.w / (a.rec.w + a.rec.l) || b.rec.w - a.rec.w)[0];
-    const W = withWl.reduce((n, x) => n + x.rec.w, 0), L = withWl.reduce((n, x) => n + x.rec.l, 0);
-    lines.push(`Best W-L: <b>${best.rec.w}-${best.rec.l}</b> <span class="dim">(${place(best.r)})</span>`);
-    lines.push(`Average W-L: <b>${(W / withWl.length).toFixed(1)}-${(L / withWl.length).toFixed(1)}</b> <span class="dim">over ${withWl.length} events</span>`);
-  }
-  return lines.map((l) => `<div class="line">${l}</div>`).join('');
-}
-
 // ---- Event series --------------------------------------------------------------------------
 // start.gg has no series field, so a series is inferred from the tournament name: configured
 // series (MAJORS, BBB) by regex; everything else by a normalized name (numbering, dates, years,
@@ -134,7 +122,7 @@ const PRIZE = /^(\$\d+\+?|\d[\d,]*\s*(jpy|usd|yen)\+?.*prize.*|.*prize pool!?)$/
 // The series part of a tournament name: bracketed notes removed first (they can hold " | "),
 // then the first " - " / " | " segment that isn't a prize tag.
 function seriesPart(name) {
-  const s = String(name).replace(/[\[({][^\])}]*[\])}]/g, ' ');   // [Week 9] (PC) {UNI 2}
+  const s = String(name).replace(/[\[({<][^\])}>]*[\])}>]/g, ' '); // [Week 9] (PC) {UNI 2} <PEEK>
   const parts = s.split(/\s+[-|–—]\s+/);
   return parts.find((p) => p.trim() && !PRIZE.test(p.trim())) || parts[0];
 }
@@ -147,7 +135,7 @@ function prettyLabel(name) {
     .replace(/\b(season|week|vol\.?|volume|episode|ep\.?)\s*\d+\b/gi, ' ')
     .replace(/#\s*\d+/g, ' ')
     .replace(/\b(19|20)\d{2}\b/g, ' ')
-    .replace(/\s+(i{1,3}|iv|v|vi{1,3}|ix|x{1,3}(ix|iv|v?i{0,3})?|\d+)\s*$/i, ' ')
+    .replace(/\s+([ivxlc]{1,7}|\d+)\s*$/i, ' ')                  // trailing XVII / LX / 3
     .replace(/\s+/g, ' ').replace(/^[\s:|-]+|[\s:|-]+$/g, '').trim() || String(name);
 }
 function normalizeName(name) {
@@ -160,8 +148,8 @@ function normalizeName(name) {
     .replace(/\b(19|20)\d{2}\b/g, ' ')
     .replace(/\b\d+(st|nd|rd|th)?\b/g, ' ')
     .replace(/[®™©]/g, ' ')
-    .replace(/\s+(i{1,3}|iv|v|vi{1,3}|ix|x{1,3}|x{0,3}(ix|iv|v?i{0,3}))\s*$/i, ' ')
     .replace(/[^a-z0-9:'&+ ]+/g, ' ')
+    .replace(/\s+[ivxlc]{1,7}\s*$/, ' ')                           // trailing roman numerals (XVII, LX)
     .replace(/\s+/g, ' ').replace(/^[\s:-]+|[\s:-]+$/g, '').trim();
   return s || String(name).toLowerCase();
 }
@@ -171,27 +159,31 @@ function seriesKeyFor(r) {
   if (BBB.test(r.tournament_name)) return 'Boston Blue Beat';
   return normalizeName(r.tournament_name);
 }
-// Main bracket per tournament (largest field), grouped into series; shorter keys absorb longer ones.
-function groupSeries(rows) {
+// One series index for the whole run, so a series has the same key for every player: a shorter
+// key (2+ words) absorbs any key that extends it word-for-word, across all players' results.
+function buildSeriesIndex(rows) {
+  const raw = [...new Set(rows.map(seriesKeyFor))].sort((a, b) => a.length - b.length);
+  const canon = {};
+  for (const k of raw) {
+    canon[k] ??= k;
+    if (k.split(' ').length < 2 || canon[k] !== k) continue;
+    for (const k2 of raw) if (k2 !== k && (k2 + ' ').startsWith(k + ' ') && canon[k2] == null) canon[k2] = k;
+  }
+  const names = {};
+  for (const r of rows) (names[canon[seriesKeyFor(r)]] ??= new Set()).add(r.tournament_name);
+  const label = (k) => (MAJORS.some((m) => m.label === k) || k === 'Boston Blue Beat' ? k
+    : prettyLabel([...names[k]].sort((a, b) => a.length - b.length)[0]));
+  return { keyOf: (r) => canon[seriesKeyFor(r)], label };
+}
+// Main bracket per tournament (largest field), grouped into series by the run's index.
+function groupSeries(rows, index = buildSeriesIndex(rows)) {
   const byT = {};
   for (const r of rows) (byT[r.tournament_name] ??= []).push(r); // brackets of one tournament can span days
   const mains = Object.values(byT).map((g) => [...g].sort((a, b) => +b.num_entrants - +a.num_entrants)[0]);
   const groups = {};
-  for (const r of mains) (groups[seriesKeyFor(r)] ??= []).push(r);
-  const keys = Object.keys(groups).sort((a, b) => a.length - b.length);
-  for (const k of keys) {
-    if (!groups[k]) continue;
-    for (const k2 of keys) {
-      if (k2 !== k && groups[k2] && k.split(' ').length >= 2 && (k2 + ' ').startsWith(k + ' ')) {
-        groups[k].push(...groups[k2]); delete groups[k2];
-      }
-    }
-  }
-  return Object.entries(groups).map(([k, rs]) => {
-    const pretty = MAJORS.some((m) => m.label === k) || k === 'Boston Blue Beat' ? k
-      : prettyLabel(rs.map((r) => r.tournament_name).sort((a, b) => a.length - b.length)[0]);
-    return { key: k, label: pretty, rows: rs.sort((a, b) => b.event_date.localeCompare(a.event_date)) };
-  });
+  for (const r of mains) (groups[index.keyOf(r)] ??= []).push(r);
+  return Object.entries(groups).map(([k, rs]) => (
+    { key: k, label: index.label(k), rows: rs.sort((a, b) => b.event_date.localeCompare(a.event_date)) }));
 }
 
 function seriesStats(rows, records) {
@@ -206,8 +198,20 @@ function seriesStats(rows, records) {
   };
 }
 
-function seriesTable(rows, records, { withGame = false } = {}) {
-  const series = groupSeries(rows).map((s) => ({ ...s, st: seriesStats(s.rows, records), maxN: Math.max(...s.rows.map((r) => +r.num_entrants)) }))
+// A summary cell for one series, in the format Noah ratified on the BBB column (2026-10-14).
+function seriesCell(group, records) {
+  if (!group) return '<span class="dim">—</span>';
+  const { bestPlaced, best, avg } = seriesStats(group.rows, records);
+  const lines = [];
+  if (bestPlaced) lines.push(`Best placement: <b>${place(bestPlaced)}</b> · ${wlText(wlOf(records, bestPlaced))}`);
+  if (best) lines.push(`Best W-L: <b>${best.rec.w}-${best.rec.l}</b> <span class="dim">(${place(best.r)})</span>`);
+  if (avg && avg.n > 1) lines.push(`Average W-L: <b>${avg.w.toFixed(1)}-${avg.l.toFixed(1)}</b> <span class="dim">over ${avg.n} events</span>`);
+  else if (group.rows.length === 1) lines.push('<span class="dim">1 event</span>');
+  return lines.map((l) => `<div class="line">${l}</div>`).join('') || '<span class="dim">no placement or W-L</span>';
+}
+
+function seriesTable(rows, records, { withGame = false, index } = {}) {
+  const series = groupSeries(rows, index).map((s) => ({ ...s, st: seriesStats(s.rows, records), maxN: Math.max(...s.rows.map((r) => +r.num_entrants)) }))
     .sort((a, b) => b.maxN - a.maxN || b.rows.length - a.rows.length);
   const head = ['Series', ...(withGame ? ['Game'] : []), 'Events', 'Best placement', 'Best W-L', 'Average W-L', 'Each event (placement · W-L)'];
   const body = series.map((s) => {
@@ -251,19 +255,39 @@ async function main() {
   const results = readCsv(path.join(runDir, 'results.csv'));
   const notesFile = path.join(runDir, 'views', 'notes.json');
   const notes = fs.existsSync(notesFile) ? JSON.parse(fs.readFileSync(notesFile, 'utf8')) : {};
-  const records = await fetchSetRecords(runDir, players, results);
+  // W-L for this game's results by default; --all-games also fetches other games (more requests).
+  const allGames = process.argv.includes('--all-games');
+  const records = await fetchSetRecords(runDir, players, allGames ? results : results.filter((r) => r.is_event_game === 'true'));
 
-  const ordered = [...players].sort((a, b) => (notes[a.player_id]?.seed ?? 99) - (notes[b.player_id]?.seed ?? 99) || +b.result_count - +a.result_count);
+  // Seeded players first (notes.json), then alphabetical: no ranking is implied by row order.
+  const ordered = [...players].sort((a, b) => (notes[a.player_id]?.seed ?? 999) - (notes[b.player_id]?.seed ?? 999)
+    || a.gamer_tag.localeCompare(b.gamer_tag, undefined, { sensitivity: 'base' }));
   const region = (p) => [p.region_state, p.region_country].filter(Boolean).join(', ');
-  const summaryHead = ['Seed', 'Player', 'Region', ...MAJORS.map((m) => m.label), 'Boston Blue Beat', 'Notes'];
+  const index = buildSeriesIndex(results);
+  const gameRows = results.filter((r) => r.is_event_game === 'true');
+  const groupsBy = Object.fromEntries(players.map((p) => [p.player_id,
+    Object.fromEntries(groupSeries(gameRows.filter((r) => r.player_id === p.player_id), index).map((g) => [g.key, g]))]));
+  // Columns: majors at least one registrant played, then the series the most registrants share
+  // (the comparable ones), top SHARED_MAX with at least SHARED_MIN players.
+  const SHARED_MAX = 6, SHARED_MIN = Math.max(2, Math.ceil(players.length * 0.2));
+  const majorsShown = MAJORS.filter((m) => players.some((p) => groupsBy[p.player_id][m.label]));
+  const reach = {};
+  for (const p of players) for (const k of Object.keys(groupsBy[p.player_id])) reach[k] = (reach[k] || 0) + 1;
+  const shared = Object.entries(reach).filter(([k, n]) => n >= SHARED_MIN && !MAJORS.some((m) => m.label === k))
+    .sort((a, b) => b[1] - a[1]).slice(0, SHARED_MAX).map(([k, n]) => ({ key: k, label: index.label(k), n }));
+  const hasNotes = players.some((p) => notes[p.player_id]);
+  const summaryHead = [...(hasNotes ? ['Seed'] : []), 'Player', 'Region', ...majorsShown.map((m) => m.label),
+    ...shared.map((s) => `${esc(s.label)} <span class="dim">(${s.n} of ${players.length})</span>`), ...(hasNotes ? ['Notes'] : [])];
   const summary = ordered.map((p) => {
     const rows = results.filter((r) => r.player_id === p.player_id);
     const n = notes[p.player_id] || {};
-    return `<tr><td class="seed">${esc(n.seed ?? '')}</td>`
-      + `<td><a href="#p${p.player_id}"><b>${esc(p.gamer_tag)}</b></a>${p.prefix ? ` <span class="dim">${esc(p.prefix)}</span>` : ''}</td>`
+    return `<tr>${hasNotes ? `<td class="seed">${esc(n.seed ?? '')}</td>` : ''}`
+      + `<td class="who"><a href="#p${p.player_id}"><b>${esc(p.gamer_tag)}</b></a>${p.prefix ? ` <span class="dim">${esc(p.prefix)}</span>` : ''}`
+      + `${gameRows.some((r) => r.player_id === p.player_id) ? '' : `<div class="dim">no ${esc(meta.game.name)} results</div>`}</td>`
       + `<td>${esc(region(p)) || '<span class="dim">—</span>'}</td>`
-      + MAJORS.map((m) => `<td>${majorCell(rows, m, records)}</td>`).join('')
-      + `<td>${bbbCell(rows, records)}</td><td class="notes">${esc(n.notes || '')}</td></tr>`;
+      + majorsShown.map((m) => `<td>${majorCell(rows, m, records)}</td>`).join('')
+      + shared.map((s) => `<td>${seriesCell(groupsBy[p.player_id][s.key], records)}</td>`).join('')
+      + `${hasNotes ? `<td class="notes">${esc(n.notes || '')}</td>` : ''}</tr>`;
   }).join('\n');
 
   const details = ordered.map((p) => {
@@ -274,10 +298,10 @@ async function main() {
       + `${region(p) ? ` <span class="dim">· ${esc(region(p))}</span>` : ''}</h2>`;
     if (!rows.length) return `${title}<p class="dim">No results on start.gg in the last two years.</p>`;
     return title
-      + (game.length ? seriesTable(game, records)
+      + (game.length ? seriesTable(game, records, { index })
         + `<details><summary>Every ${esc(meta.game.name)} result (${game.length})</summary>${resultsTable(game, records)}</details>`
         : `<p class="dim">No ${esc(meta.game.name)} results.</p>`)
-      + (other.length ? `<details><summary>Other games (${other.length} results)</summary>${seriesTable(other, records, { withGame: true })}</details>` : '');
+      + (other.length ? `<details><summary>Other games (${other.length} results${allGames ? '' : '; W-L not fetched, run with --all-games'})</summary>${seriesTable(other, records, { withGame: true, index })}</details>` : '');
   }).join('\n');
 
   const ev = meta.event;
@@ -290,6 +314,8 @@ th,td{border:1px solid #ddd;padding:5px 9px;vertical-align:top;text-align:left}
 th{background:#f0f0f0;font-weight:600;white-space:nowrap}
 table.summary td.seed{font-size:18px;font-weight:700;text-align:center}table.summary td.notes{min-width:260px;max-width:380px}
 table.summary .line{white-space:nowrap}
+table.summary .who{position:sticky;left:0;background:#fff;z-index:1;min-width:120px}
+table.summary th.who{background:#f0f0f0}
 table.res td.num{white-space:nowrap;text-align:right}table.res td.date{color:#888;white-space:nowrap}
 table.res td.each{min-width:240px}table.res td.each .line{white-space:nowrap}
 table.sortable th{cursor:pointer}table.sortable th:hover{background:#e6e6e6}
@@ -302,7 +328,7 @@ details{margin-top:8px}summary{cursor:pointer;color:#2459a6}
 Placement is out of the event's entrants. W-L counts sets won and lost at that event, with DQs excluded.
 Major columns count this game only, using the main bracket (largest field).
 Seed and notes are suggestions. Click a column header in a player's table to sort it.</div>
-<div class="wrap"><table class="summary"><thead><tr>${summaryHead.map((h) => `<th>${h}</th>`).join('')}</tr></thead><tbody>
+<div class="wrap"><table class="summary"><thead><tr>${summaryHead.map((h) => `<th${h === 'Player' ? ' class="who"' : ''}>${h}</th>`).join('')}</tr></thead><tbody>
 ${summary}
 </tbody></table></div>
 ${details}

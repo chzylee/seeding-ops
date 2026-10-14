@@ -136,6 +136,11 @@ when Noah rules on it.
 | Distinguish "complete, no start.gg history" from "complete with history" (e.g. a `no_history` flag, or a note in the prompt file) | 2026-10-13 | CoN3 Ep0: 2 of 5 players had 0 sets ever on start.gg | Candidate |
 | Real head-to-head (sets between registrants), not just placement at shared events | 2026-10-13 | CoN3 Ep0 analysis relied on shared-event placements | Candidate |
 | Standard views always show `event_name` alongside `tournament_name` | 2026-10-13 | Side brackets (Frosty Faustings XVIII ×2, TNS #35 ×2) | Candidate |
+| **Per result, show: event name, placement out of entrants, W-L.** Date is secondary. | 2026-10-14 | Noah: *"most important results info is the event name, placement out of entrants, and win-loss record. the date is secondary"* | **Ratified** |
+| **No aggregate counts** (number of results, wins, top-3s). Placements only mean something relative to the event. | 2026-10-14 | Noah: *"total wins is entirely irrelevant … '81 top 3' holds 0 value"* | **Ratified** |
+| **Characterize every event series** by best placement (with W-L), best W-L, average W-L. No series total. | 2026-10-14 | Noah: *"all event series should be characterized this way … i care about this kind of data per event series"* (on the BBB column) | **Ratified** |
+| Tables, not bullets, for result lists | 2026-10-14 | Noah: *"organizing in bullets like this is basically unreadable"* | **Ratified** |
+| Series identity from start.gg (league / series metadata) instead of name heuristics | 2026-10-14 | The view infers series from normalized names; misses like "ParagOnline UNI2" vs "ParagOnline UNDER NIGHT…" | Candidate |
 | **Set-level W-L in the pull** (sets won and lost per event, DQs excluded), so views don't need their own fetch | 2026-10-13 | BBB W-L view needed 33 extra set lookups at view time | Candidate |
 | Configurable "named majors" and "home series" per game (regex on tournament name) | 2026-10-13 | CEO/Evo/CB/FF/Climax of Night + Boston Blue Beat for UNI2 | Candidate |
 | A browser view of the seeding table (not markdown) | 2026-10-13 | Noah: *"would it be easier … with a web view"*; ~10 columns + long lists | Candidate (built as a view script) |

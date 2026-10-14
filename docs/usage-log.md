@@ -30,6 +30,7 @@
 | Event | Date | Link | Tool used? | Entry |
 |---|---|---|---|---|
 | Chicago regional | last week (before 2026-10-12) | *(add)* | **No.** Seeded by hand. This is the baseline. | [Baseline](#baseline--chicago-regional-manual) |
+| Crescendo of Night 3 — Episode 0 · Allegro (MBTL) - PC | 2026-10-14 | [link](https://www.start.gg/tournament/crescendo-of-night-3-episode-0/event/allegro-mbtl-pc) | **Yes.** 22 players. | [Entry](#crescendo-of-night-3--episode-0--allegro-mbtl-pc--2026-10-14) |
 | Crescendo of Night 3 — Episode 0 · Andante (UNI2) - PC | 2026-10-13 | [link](https://www.start.gg/tournament/crescendo-of-night-3-episode-0/event/andante-uni2-pc) | **Yes.** First real run. | [Entry](#crescendo-of-night-3--episode-0--andante-uni2-pc--2026-10-13) |
 | Upcoming event 1 | week of 2026-10-19 | *(add)* | Planned | *(add)* |
 | Upcoming event 2 | week of 2026-10-19 | *(add)* | Planned | *(add)* |
@@ -44,6 +45,30 @@ Fill this in while it's fresh. It's what the tool is being measured against.
 - **Time it took:** *(rough)*
 - **Hardest players to place, and why:**
 - **What I wished I could see:**
+
+### Crescendo of Night 3 — Episode 0 · Allegro (MBTL) - PC — 2026-10-14
+
+**Pull** *(Claude ran it; Noah's link; "the event for today")*
+- Run folder: `out/crescendo-of-night-3-episode-0__allegro-mbtl-pc__20261014-1833`
+- 22 registrants · 1,939 results (1,246 MBTL) · 22 complete · 42 requests, max 34 in any 60 s ·
+  about 1 minute · `reconcile.js`: all 17 checks passed
+- Nothing broke in the pull.
+
+**Friction: W-L is the slow part** *(Claude)*
+- W-L for 1,246 MBTL results took **~20 min**. start.gg answers each set query in ~3 s, and that
+  latency is the limit, not the 80/min cap: one-at-a-time ≈ 50 events/min; 4 events per request ≈ 70/min;
+  3 requests in flight ≈ 52/min (latency rose with concurrency). What helped was **fetching the
+  summary-column results first**, so the summary completes in ~8 min.
+- Strengthens the "set-level W-L in the pull" requirement: done there, it can run unattended
+  overnight or right after registration closes, not on seeding day.
+
+**View changes made for this event** *(Noah: "lets keep making the view better so i can use it for today")*
+- Summary columns are now **the series the most registrants share**, in the ratified BBB format:
+  Blood Moon (19 of 22), KIRBO CUP PLUS (16), Melty Sweep (15), Lunar Exam (12), Blue Glass Mingle (11),
+  Crescendo of Night (11). Majors only shown if someone played them (Evo hidden here).
+- Series are grouped once across the whole run, so a series is the same column for everyone.
+  Fixed: "Blood Moon LX"-style roman numerals and `<…>` notes split series apart (11 → 19 players).
+- Rows are alphabetical until seeds exist in `notes.json`. Player column stays visible on sideways scroll.
 
 ### Crescendo of Night 3 — Episode 0 · Andante (UNI2) - PC — 2026-10-13
 

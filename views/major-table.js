@@ -71,24 +71,60 @@ async function fetchSetRecords(runDir, players, rows) {
     const { token } = loadToken({ envFile: path.join(__dirname, '..', '.env') });
     if (!token) throw new Error('No STARTGG_TOKEN in .env; needed to fetch set records.');
     const client = createClient({ token });
-    const userIds = {};
     const save = () => fs.writeFileSync(cacheFile, JSON.stringify(cache, null, 1));
-    for (const [i, r] of todo.entries()) {
-      const p = players.find((x) => x.player_id === r.player_id);
-      if (!p || !p.user_slug) continue;
-      userIds[p.user_slug] ??= (await client.request('UserId', Q_USER_ID, { s: p.user_slug })).user.id;
+    const slugOf = Object.fromEntries(players.map((p) => [p.player_id, p.user_slug]));
+
+    // start.gg user ids for every player we need, 20 aliased lookups per request.
+    const userIds = {};
+    const slugs = [...new Set(todo.map((r) => slugOf[r.player_id]).filter(Boolean))];
+    for (let i = 0; i < slugs.length; i += 20) {
+      const chunk = slugs.slice(i, i + 20);
+      const q = `query(${chunk.map((_, j) => `$s${j}:String!`).join(',')}){ ${chunk.map((_, j) => `u${j}: user(slug:$s${j}){ id }`).join(' ')} }`;
+      const d = await client.request('UserIds', q, Object.fromEntries(chunk.map((s, j) => [`s${j}`, s])));
+      chunk.forEach((s, j) => { if (d && d[`u${j}`]) userIds[s] = d[`u${j}`].id; });
+    }
+
+    // Sets: BATCH events per request (aliases), first SMALL_PAGE sets each — enough for nearly every
+    // bracket and well under the 1000-complexity cap. An event with more sets than that is refetched
+    // on its own at perPage 40, from page 1, so page boundaries never mix.
+    const BATCH = 4, SMALL_PAGE = 12;
+    const work = todo.filter((r) => userIds[slugOf[r.player_id]] != null);
+    const fetchAlone = async (r) => {
       let sets = [], entrantId = null;
       for (let page = 1, total = 1; page <= total; page++) {
-        const d = await client.request('Sets', Q_SETS, { eid: r.event_id, uid: userIds[p.user_slug], page });
+        const d = await client.request('Sets', Q_SETS, { eid: r.event_id, uid: userIds[slugOf[r.player_id]], page });
         const ue = d && d.event && d.event.userEntrant;
         if (!ue) break;
         entrantId = ue.id; total = ue.paginatedSets.pageInfo.totalPages || 1;
         sets = sets.concat(ue.paginatedSets.nodes || []);
       }
-      cache[key(r)] = entrantId ? recordFor(entrantId, sets) : { missing: true };
-      if (i % 20 === 19) save(); // a killed render keeps what it fetched
-      process.stderr.write(`sets ${i + 1}/${todo.length} · ${r.gamer_tag} · ${eventLabel(r)}\n`);
-    }
+      return entrantId ? recordFor(entrantId, sets) : { missing: true };
+    };
+    // WORKERS requests in flight at once: start.gg answers each batch in ~3 s, so one at a time
+    // uses only ~20 of the 75/min the shared client allows. The client still paces every send.
+    const WORKERS = 3;
+    const chunks = [];
+    for (let i = 0; i < work.length; i += BATCH) chunks.push([i, work.slice(i, i + BATCH)]);
+    let done = 0;
+    const runChunk = async ([i, chunk]) => {
+      const q = `query(${chunk.map((_, j) => `$e${j}:ID!,$u${j}:ID!`).join(',')}){ ${chunk.map((_, j) =>
+        `x${j}: event(id:$e${j}){ userEntrant(userId:$u${j}){ id paginatedSets(page:1, perPage:${SMALL_PAGE}){ pageInfo{ totalPages }
+          nodes{ winnerId slots{ entrant{ id } standing{ stats{ score{ value } } } } } } } }`).join(' ')} }`;
+      const vars = {};
+      chunk.forEach((r, j) => { vars[`e${j}`] = r.event_id; vars[`u${j}`] = userIds[slugOf[r.player_id]]; });
+      const d = await client.request('SetsBatch', q, vars);
+      for (const [j, r] of chunk.entries()) {
+        const ue = d && d[`x${j}`] && d[`x${j}`].userEntrant;
+        if (!ue) cache[key(r)] = { missing: true };
+        else if ((ue.paginatedSets.pageInfo.totalPages || 1) > 1) cache[key(r)] = await fetchAlone(r);
+        else cache[key(r)] = recordFor(ue.id, ue.paginatedSets.nodes || []);
+      }
+      save(); // a killed render keeps what it fetched
+      done += chunk.length;
+      process.stderr.write(`sets ${done}/${work.length} · ${chunk[0].gamer_tag} · ${client.stats.requests} requests · complexity max ${client.stats.complexityMax}\n`);
+    };
+    const queue = [...chunks];
+    await Promise.all(Array.from({ length: WORKERS }, async () => { while (queue.length) await runChunk(queue.shift()); }));
     save();
   }
   return cache;
@@ -255,9 +291,6 @@ async function main() {
   const results = readCsv(path.join(runDir, 'results.csv'));
   const notesFile = path.join(runDir, 'views', 'notes.json');
   const notes = fs.existsSync(notesFile) ? JSON.parse(fs.readFileSync(notesFile, 'utf8')) : {};
-  // W-L for this game's results by default; --all-games also fetches other games (more requests).
-  const allGames = process.argv.includes('--all-games');
-  const records = await fetchSetRecords(runDir, players, allGames ? results : results.filter((r) => r.is_event_game === 'true'));
 
   // Seeded players first (notes.json), then alphabetical: no ranking is implied by row order.
   const ordered = [...players].sort((a, b) => (notes[a.player_id]?.seed ?? 999) - (notes[b.player_id]?.seed ?? 999)
@@ -275,6 +308,15 @@ async function main() {
   for (const p of players) for (const k of Object.keys(groupsBy[p.player_id])) reach[k] = (reach[k] || 0) + 1;
   const shared = Object.entries(reach).filter(([k, n]) => n >= SHARED_MIN && !MAJORS.some((m) => m.label === k))
     .sort((a, b) => b[1] - a[1]).slice(0, SHARED_MAX).map(([k, n]) => ({ key: k, label: index.label(k), n }));
+
+  // W-L for this game's results by default; --all-games also fetches other games (more requests).
+  // Fetch order: results the summary columns use (majors + shared series) first, so the summary is
+  // complete early; the per-player detail fills in after. start.gg's latency (~3 s per batch) is the limit.
+  const allGames = process.argv.includes('--all-games');
+  const summaryKeys = new Set([...majorsShown.map((m) => m.label), ...shared.map((x) => x.key)]);
+  const inSummary = (r) => r.is_event_game === 'true' && summaryKeys.has(index.keyOf(r));
+  const wanted = (allGames ? results : gameRows);
+  const records = await fetchSetRecords(runDir, players, [...wanted.filter(inSummary), ...wanted.filter((r) => !inSummary(r))]);
   const hasNotes = players.some((p) => notes[p.player_id]);
   const summaryHead = [...(hasNotes ? ['Seed'] : []), 'Player', 'Region', ...majorsShown.map((m) => m.label),
     ...shared.map((s) => `${esc(s.label)} <span class="dim">(${s.n} of ${players.length})</span>`), ...(hasNotes ? ['Notes'] : [])];

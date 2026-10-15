@@ -53,7 +53,7 @@ test('export: GET /api/e/<t>/<e>/export.csv serves the latest run\'s summary as 
   assert.strictEqual(rows.length, 15, 'one row per player');
   const tricky = rows.find((x) => x['start.gg player id'] === '102');
   assert.strictEqual(tricky.Player, `'=SUM(1,2) "the" @Kid, -x`);
-  assert.strictEqual(tricky.Prefix, `'+P`);
+  assert.strictEqual(tricky.Team, `'+P`);
   assert.ok(Object.keys(rows[0]).includes('Region'));
   assert.strictEqual((await inject(app.handler, { url: '/api/e/nope/nada/export.csv' })).status, 404);
 });

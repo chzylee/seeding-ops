@@ -174,7 +174,7 @@ table.cmp-series thead tr:first-child th:nth-child(3) { border-left: 2px solid v
 table.summary td.tier { text-align: center; font-variant-numeric: tabular-nums; font-size: 15px; white-space: nowrap; }
 .tag.needs { background: var(--warn-bg); color: var(--warn-fg); }
 .needs-ctl { display: inline-flex; align-items: center; gap: 4px; height: var(--ctl-h); white-space: nowrap; }
-body.needs-only table.summary tbody tr:not(.untiered) { display: none; }
+body.needs-only #summary > tbody > tr:not(.untiered) { display: none; }
 
 /* Notes collapsed to one line; expand for the full note + other games table */
 table.summary td.notes { min-width: 320px; max-width: 760px; }
@@ -214,3 +214,17 @@ input.sel { margin: 0 4px 0 0; vertical-align: middle; cursor: pointer; }
 .jump-ctl input { height: calc(var(--ctl-h) - 4px); width: 150px; }
 #pickA[readonly], #pickB[readonly] { background: var(--head); cursor: default; }
 @media (prefers-reduced-motion: reduce) { td.saved, #summary tbody tr.flash td { animation: none; } }
+
+/* Compare: up to 3 selected players as chips */
+.chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; min-height: var(--ctl-h); }
+.chip { display: inline-flex; align-items: center; gap: 6px; padding: 2px 4px 2px 8px; border: 1px solid var(--line-strong); border-radius: 999px; background: var(--accent-weak); font-weight: 600; }
+.chip-k { font-size: 11px; color: var(--accent-ink); font-weight: 700; }
+.chip-x { border: 0; background: transparent; cursor: pointer; padding: 0 4px; font-size: 12px; line-height: 1; color: var(--dim); height: auto; }
+.chip-x:hover { color: var(--fg); }
+input.sel:disabled { opacity: .35; cursor: not-allowed; }
+/* Team and Other games columns; notes clamp */
+table.summary td.team { white-space: nowrap; color: var(--ink-2); }
+table.summary td.other { min-width: 240px; max-width: 520px; }
+table.summary td.other details[open] { min-width: 560px; }
+table.summary td.notes { min-width: 200px; max-width: 360px; }
+table.summary td.notes .note-text { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }

@@ -35,11 +35,10 @@
   <table class="summary" id="summary"><thead></thead><tbody class="pinned"></tbody><tbody class="main"></tbody></table>
   <div id="details"></div>
 </main>
-<section id="compare" hidden aria-label="Compare two players">
+<section id="compare" hidden aria-label="Compare players">
   <div class="cmp-bar">
-    <label>A <input id="pickA" readonly placeholder="tick a row ☐" tabindex="-1"></label>
-    <label>B <input id="pickB" readonly placeholder="tick a row ☐" tabindex="-1"></label>
-    <button id="swap" type="button" title="Swap A and B">⇄</button>
+    <div id="cmpChips" class="chips" aria-live="polite"></div>
+    <button id="cmpClear" type="button" title="Deselect everyone">Clear</button>
     <span class="note">Compares placements at the same events. Not head-to-head sets.</span>
     <button id="compareClose" type="button" title="Close the compare panel">Close</button>
   </div>

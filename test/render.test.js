@@ -150,7 +150,7 @@ test('render: the app row adds a pin button and data-pid; the CLI row does not',
   const cli = R.summaryRow(players[0], ctx);
   assert.match(app, /^<tr data-pid="1">/);
   assert.match(app, /<button class="pin"/);
-  assert.ok(!cli.includes('button') && cli.startsWith('<tr><td class="who"'));
+  assert.ok(!cli.includes('button') && cli.startsWith('<tr><td class="team"'));
   // The app row: a compare checkbox and editable Tier/Notes cells; the static (CLI) row has neither.
   assert.match(app, /<input type="checkbox" class="sel"/);
   assert.match(app, /data-edit="tier"/);
@@ -166,7 +166,7 @@ test('render: summary text table (Sheets export) — same columns plus Prefix an
   const { ctx, players } = fixture();
   const ordered = M.orderPlayers(players, ctx.notes);
   const [head, ...body] = R.summaryTextTable(ctx, ordered);
-  assert.deepStrictEqual(head.slice(0, 3), ['Player', 'Prefix', 'Region']);
+  assert.deepStrictEqual(head.slice(0, 3), ['Team', 'Player', 'Region']);
   assert.strictEqual(head[head.length - 1], 'start.gg player id');
   assert.strictEqual(body.length, players.length);
   const p1 = body.find((r) => r[r.length - 1] === '1');
@@ -176,12 +176,14 @@ test('render: summary text table (Sheets export) — same columns plus Prefix an
   assert.match(bm, /^Best placement 1st \/ 20 · \d+-\d+; Best W-L \d+-\d+ \(.+\); Average W-L \d+\.\d-\d+\.\d over 2 events$/);
   for (const row of body) for (const c of row) assert.ok(!/[\r\n]/.test(c));
   // Columns in the export are the page's columns, in the page's order.
-  assert.deepStrictEqual(head.filter((h) => !['Prefix', 'start.gg player id'].includes(h)), R.summaryColumns(ctx).map((c) => c.text));
+  assert.deepStrictEqual(head.filter((h) => h !== 'start.gg player id'), R.summaryColumns(ctx).map((c) => c.text));
 });
 
 test('notes: always a Notes column; other games grouped game > series with best placement · W-L, best W-L, avg W-L, date of best', () => {
   const { ctx, players } = fixture();
   assert.ok(R.summaryColumns(ctx).some((c) => c.key === 'notes'), 'Notes column present even with no notes.json');
+  const keys = R.summaryColumns(ctx).map((c) => c.key);
+  assert.ok(keys.indexOf('other') === keys.indexOf('notes') - 1, 'Other games is its own column, right before Notes');
   const extra = [
     row(1, 'OKSL Gear Grinds #84', { is_event_game: 'false', game_name: 'GGST', placement: '9', num_entrants: '12', event_date: '2025-01-18' }),
     row(1, 'OKSL Gear Grinds #85', { is_event_game: 'false', game_name: 'GGST', placement: '3', num_entrants: '12', event_date: '2025-02-01' }),
@@ -194,12 +196,13 @@ test('notes: always a Notes column; other games grouped game > series with best 
   assert.strictEqual(games[0].game, 'GGST', 'games ordered by events entered (GGST 3 > SF6 1)');
   const gear = games[0].series.find((s) => /OKSL Gear Grinds/.test(s.label));
   assert.ok(gear, 'OKSL Gear Grinds #84/#85 grouped as one series');
-  const html = R.notesCell(players[0], c2);
+  const html = R.otherGamesCell(players[0], c2);
   assert.match(html, /<table class="mini">/, 'a table, not bullets');
   assert.match(html, /3rd \/ 12/, 'best placement out of entrants');
   assert.match(html, /2025-02-01/, 'date of the best placement');
   assert.doesNotMatch(html, /<ul|<li/, 'no bullets');
-  const text = R.notesText(players[0], c2);
+  const text = R.otherGamesText(players[0], c2);
   assert.match(text, /GGST \/ OKSL Gear Grinds: best 3rd \/ 12/);
-  assert.match(R.notesCell(players[3], c2), /No notes · no other games/);
+  assert.match(R.otherGamesCell(players[3], c2), /—/);
+  assert.match(R.notesCell(players[3], c2), /—/);
 });

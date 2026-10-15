@@ -24,15 +24,22 @@
     get(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } },
     set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* ignore */ } },
   };
-  const PIN_KEY = `seeding:pins:${SLUG}`, CMP_KEY = `seeding:compare:${SLUG}`, FREEZE_KEY = `seeding:freeze:${SLUG}`;
+  const PIN_KEY = `seeding:pins:${SLUG}`, CMP_KEY = `seeding:compare:${SLUG}`, FREEZE_KEY = `seeding:freeze2:${SLUG}`;
   let pins = store.get(PIN_KEY, []);
   if (!Array.isArray(pins)) pins = [];
-  let cmp = store.get(CMP_KEY, { on: false, a: null, b: null });
-  if (!cmp || typeof cmp !== 'object') cmp = { on: false, a: null, b: null };
+  // Compare: up to CMP_MAX selected rows (Noah, 2026-10-15: "up to 3 selectable"; no automatic
+  // overwrite — at the cap the other boxes grey out until one is deselected).
+  const CMP_MAX = 3;
+  let cmp = store.get(CMP_KEY, { on: false, ids: [] });
+  if (!cmp || typeof cmp !== 'object') cmp = { on: false, ids: [] };
+  if (!Array.isArray(cmp.ids)) cmp.ids = [cmp.a, cmp.b].filter(Boolean).map(String);
+  delete cmp.a; delete cmp.b;
+  cmp.ids = cmp.ids.slice(0, CMP_MAX);
 
   // Frozen columns by key (lib/view/render.js summaryColumns); Player is always frozen.
   // Default: the Seed column (when notes.json gives seeds) and Tier (registry/tiers.csv) stay with Player.
-  let frozen = store.get(FREEZE_KEY, ['seed', 'tier']);
+  // Default: everything through Tier (Team | Player | Region | Tier), plus Seed when notes.json gives seeds.
+  let frozen = store.get(FREEZE_KEY, ['seed', 'team', 'region', 'tier']);
   frozen = new Set(Array.isArray(frozen) ? frozen : []);
   let vm = null, ctx = null, byId = new Map(), ordered = [], observer = null;
 
@@ -334,9 +341,28 @@
     }
     $('playerList').innerHTML = [...idToLabel.values()].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }))
       .map((l) => `<option value="${R.esc(l)}"></option>`).join('');
-    $('pickA').value = cmp.a && idToLabel.get(cmp.a) || '';
-    $('pickB').value = cmp.b && idToLabel.get(cmp.b) || '';
+    renderChips();
   }
+  // The compare bar: one chip per selected player (✕ deselects), and Clear.
+  function renderChips() {
+    const letters = ['A', 'B', 'C'];
+    $('cmpChips').innerHTML = cmp.ids.length
+      ? cmp.ids.map((id, i) => `<span class="chip"><span class="chip-k">${letters[i]}</span>${R.esc(idToLabel.get(id) || id)}`
+        + `<button type="button" class="chip-x" data-rm="${R.esc(id)}" title="Deselect" aria-label="Deselect ${R.esc(idToLabel.get(id) || id)}">✕</button></span>`).join('')
+      : '<span class="dim">Tick up to 3 players in the table.</span>';
+    $('cmpClear').disabled = !cmp.ids.length;
+  }
+  function setSelection(ids) {
+    cmp.ids = ids.slice(0, CMP_MAX);
+    store.set(CMP_KEY, cmp);
+    syncSel();
+    if (cmp.ids.length >= 2 && !cmp.on) setCompare(true); else renderCompare();
+  }
+  $('cmpChips').addEventListener('click', (ev) => {
+    const x = ev.target.closest('button[data-rm]');
+    if (x) setSelection(cmp.ids.filter((id) => id !== x.dataset.rm));
+  });
+  $('cmpClear').addEventListener('click', () => setSelection([]));
   // An exact tag picks at once. On Enter / leaving the box, a partial tag picks the one player it
   // matches (start of tag first, then anywhere in it); with several matches, the list stays open.
   function resolve(value, final) {
@@ -349,28 +375,6 @@
     const hits = starts.length ? starts : labels.filter((l) => l.includes(v));
     return hits.length === 1 ? { id: labelToId.get(hits[0]) } : null;
   }
-  function pick(which, value, final = false) {
-    const r = resolve(value, final);
-    if (!r) return; // still typing, or ambiguous
-    const id = r.id;
-    if (final && id) $(which === 'a' ? 'pickA' : 'pickB').value = idToLabel.get(id);
-    if (cmp[which] === id) return;
-    cmp[which] = id || null;
-    store.set(CMP_KEY, cmp);
-    renderCompare();
-  }
-  for (const [el, which] of [[$('pickA'), 'a'], [$('pickB'), 'b']]) {
-    el.addEventListener('input', () => pick(which, el.value));
-    el.addEventListener('change', () => pick(which, el.value, true));
-    el.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') pick(which, el.value, true); });
-    el.addEventListener('focus', () => el.select());
-  }
-  $('swap').addEventListener('click', () => {
-    [cmp.a, cmp.b] = [cmp.b, cmp.a];
-    store.set(CMP_KEY, cmp);
-    fillPickers();
-    renderCompare();
-  });
 
   function setCompare(on) {
     const t0 = performance.now();
@@ -390,15 +394,16 @@
   function renderCompare() {
     if (!vm || !cmp.on) return;
     const t0 = performance.now();
-    const A = cmp.a && byId.get(cmp.a), B = cmp.b && byId.get(cmp.b);
-    if (!A || !B) {
-      cmpBody.innerHTML = `<p class="hint">Tick the box next to two players in the table above to compare them. ${A || B ? 'One more to go.' : ''}</p>`;
+    const ps = cmp.ids.map((id) => byId.get(id)).filter(Boolean);
+    if (ps.length < 2) {
+      cmpBody.innerHTML = `<p class="hint">Tick the box next to 2 or 3 players in the table above to compare them. ${ps.length ? 'One more to go.' : ''}</p>`;
       return;
     }
+    const two = ps.length === 2;
     cmpBody.innerHTML = `<h3>Summary</h3><div class="cmp-sum-wrap"><table class="summary"><colgroup></colgroup><thead>${R.summaryHeadRow(ctx)}</thead>`
-      + `<tbody>${R.summaryRow(A, ctx)}${R.summaryRow(B, ctx)}</tbody></table></div>`
-      + `<h3>Events both entered</h3><p class="dim">Placement and W-L of each at the same event. This is not head-to-head sets.</p>${R.bothEnteredTable(A, B, ctx)}`
-      + `<h3>Series</h3><p class="dim">${R.esc(vm.meta.game.name)} only. A series both have played is on one row (shaded).</p>${R.compareSeriesTable(A, B, ctx)}`;
+      + `<tbody>${ps.map((p) => R.summaryRow(p, ctx)).join('')}</tbody></table></div>`
+      + `<h3>${two ? 'Events both entered' : 'Events 2 or more of them entered'}</h3><p class="dim">Placement and W-L of each at the same event. This is not head-to-head sets.</p>${R.sharedEventsTable(ps, ctx)}`
+      + `<h3>Series</h3><p class="dim">${R.esc(vm.meta.game.name)} only. A series ${two ? 'both have' : '2 or more of them have'} played is shaded; series more of them played come first.</p>${R.compareSeriesTableN(ps, ctx)}`;
     alignCompare();
     applyFreeze();
     stickCompareHeads();
@@ -595,7 +600,7 @@
     applyFreeze();
     layoutPins();
     syncSel();
-    if (cmp.on && (cmp.a === String(pid) || cmp.b === String(pid))) renderCompare();
+    if (cmp.on && cmp.ids.includes(String(pid))) renderCompare();
   }
   table.addEventListener('dblclick', (ev) => {
     const td = ev.target.closest('td[data-edit]');
@@ -610,12 +615,15 @@
   // ---- Compare by selecting rows: tick two rows' boxes. A third tick replaces the older pick. ----
   function syncSel() {
     for (const tr of table.querySelectorAll('tbody tr[data-pid]')) {
-      const on = tr.dataset.pid === cmp.a || tr.dataset.pid === cmp.b;
+      const at = cmp.ids.indexOf(tr.dataset.pid), on = at >= 0;
+      const full = !on && cmp.ids.length >= CMP_MAX;
       tr.classList.toggle('selected', on);
       const box = tr.querySelector('input.sel');
       if (box) {
         box.checked = on;
-        box.title = on ? (tr.dataset.pid === cmp.a ? 'Selected as A (untick to clear)' : 'Selected as B (untick to clear)') : 'Select to compare (pick two)';
+        box.disabled = full;
+        box.title = on ? `Selected as ${'ABC'[at]} (untick to deselect)`
+          : full ? `${CMP_MAX} players selected — deselect one to pick another` : `Select to compare (up to ${CMP_MAX})`;
       }
     }
     fillPickers();
@@ -625,13 +633,9 @@
     if (!box) return;
     const pid = box.closest('tr').dataset.pid;
     if (box.checked) {
-      if (!cmp.a) cmp.a = pid;
-      else if (!cmp.b) cmp.b = pid;
-      else { cmp.a = cmp.b; cmp.b = pid; }
-    } else if (cmp.a === pid) { cmp.a = cmp.b; cmp.b = null; } else if (cmp.b === pid) cmp.b = null;
-    store.set(CMP_KEY, cmp);
-    syncSel();
-    if (cmp.a && cmp.b && !cmp.on) setCompare(true); else renderCompare();
+      if (cmp.ids.length >= CMP_MAX) { box.checked = false; return; } // the cap: no automatic overwrite
+      setSelection([...cmp.ids, pid]);
+    } else setSelection(cmp.ids.filter((id) => id !== pid));
   });
 
   // ---- Jump to a player: type a tag, Enter (or pick from the list) scrolls to the row. ----------

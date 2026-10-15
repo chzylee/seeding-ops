@@ -186,10 +186,61 @@ function createFakeFetch(world, opts = {}) {
         !s.container.videogame || String(s.container.videogame.id) === String(v.videogameId));
       return jsonResponse(200, { data: { player: { recentStandings: list } }, extensions: ext(196) });
     }
+    // ---- W-L (lib/wl.js): user ids by slug, then sets per (event, user) ----
+    if (op === 'UserIds') {
+      const data = {};
+      for (const [k, slug] of Object.entries(v)) {
+        const p = world.players.find((x) => x.user && x.user.slug === slug);
+        data[k.replace(/^s/, 'u')] = p ? { id: p.user.id } : null;
+      }
+      return jsonResponse(200, { data, extensions: ext(Object.keys(v).length) });
+    }
+    if (op === 'SetsBatch' || op === 'Sets') {
+      if (opts.onSets) opts.onSets(op, v);
+      const perPage = Number((/perPage:\s*(\d+)/.exec(req.query) || [])[1]);
+      const entrantFor = (eid, uid) => {
+        const p = world.players.find((x) => x.user && String(x.user.id) === String(uid));
+        const ev = p && (p.events || []).find((e) => String(e.id) === String(eid));
+        if (!ev || ev._noEntrant) return null;
+        const all = fakeSets(eid, uid).sets;
+        const page = op === 'Sets' ? v.page : 1;
+        return { id: fakeEntrantId(eid, uid), paginatedSets: {
+          pageInfo: { totalPages: Math.max(1, Math.ceil(all.length / perPage)) },
+          nodes: all.slice((page - 1) * perPage, page * perPage) } };
+      };
+      if (op === 'Sets') return jsonResponse(200, { data: { event: { userEntrant: entrantFor(v.eid, v.uid) } }, extensions: ext(300) });
+      const data = {};
+      for (let j = 0; `e${j}` in v; j++) data[`x${j}`] = { userEntrant: entrantFor(v[`e${j}`], v[`u${j}`]) };
+      return jsonResponse(200, { data, extensions: ext(700) });
+    }
     return jsonResponse(400, { errors: [{ message: `Unknown operation ${op}` }] });
   }
   fakeFetch.calls = calls;
   return fakeFetch;
+}
+
+// Sets for one (event, user), generated from the ids, with the record they should tally to,
+// counted while generating (not by running lib/view/model.recordFor over them).
+// Every 5th event has a DQ, every event has a bye, every 7th has 15 sets (more than one small
+// page, so lib/wl.js must refetch it alone).
+const fakeEntrantId = (eid, uid) => Number(uid) * 100_000 + (Number(eid) % 100_000);
+function fakeSets(eid, uid) {
+  const me = fakeEntrantId(eid, uid);
+  const n = Number(eid) % 7 === 0 ? 15 : 2 + (Number(eid) % 4);
+  const sets = [];
+  let w = 0, l = 0, dq = 0;
+  for (let i = 0; i < n; i++) {
+    const opp = 1 + i;
+    const won = (Number(eid) + i) % 3 !== 0;
+    sets.push({ winnerId: won ? me : opp, slots: [{ entrant: { id: me }, standing: { stats: { score: { value: won ? 2 : 0 } } } }, { entrant: { id: opp }, standing: { stats: { score: { value: won ? 0 : 2 } } } }] });
+    if (won) w++; else l++;
+  }
+  if (Number(eid) % 5 === 0) {
+    sets.push({ winnerId: me, slots: [{ entrant: { id: me }, standing: { stats: { score: { value: 0 } } } }, { entrant: { id: 999 }, standing: { stats: { score: { value: -1 } } } }] });
+    dq++;
+  }
+  sets.push({ winnerId: me, slots: [{ entrant: { id: me } }, { entrant: null }] }); // bye
+  return { sets, record: { w, l, dq } };
 }
 
 // A virtual clock: sleep advances time instantly, so pacing is real arithmetic with no waiting.
@@ -207,4 +258,4 @@ function sink() {
   return { write: (s) => { chunks.push(String(s)); return true; }, text: () => chunks.join('') };
 }
 
-module.exports = { buildWorld, createFakeFetch, virtualClock, sink, GAME, OTHER_GAME, EVENT_SLUG, readFixture };
+module.exports = { buildWorld, createFakeFetch, virtualClock, sink, GAME, OTHER_GAME, EVENT_SLUG, readFixture, fakeSets };

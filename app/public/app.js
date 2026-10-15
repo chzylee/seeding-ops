@@ -31,8 +31,8 @@
   if (!cmp || typeof cmp !== 'object') cmp = { on: false, a: null, b: null };
 
   // Frozen columns by key (lib/view/render.js summaryColumns); Player is always frozen.
-  // Default: the Seed column (when notes.json gives seeds) stays with Player.
-  let frozen = store.get(FREEZE_KEY, ['seed']);
+  // Default: the Seed column (when notes.json gives seeds) and Tier (registry/tiers.csv) stay with Player.
+  let frozen = store.get(FREEZE_KEY, ['seed', 'tier']);
   frozen = new Set(Array.isArray(frozen) ? frozen : []);
   let vm = null, ctx = null, byId = new Map(), ordered = [], observer = null;
 
@@ -43,7 +43,7 @@
     const players = model.players;
     const c = R.summaryContext({ meta: model.meta, players, rows, records: model.records, notes: model.notes || {},
       columns: model.columns, index: M.indexFromKeys(model.labels) });
-    c.otherNote = '; W-L not fetched for other games';
+    c.otherNote = '';
     return { ctx: c, byId: new Map(players.map((p) => [String(p.player_id), p])), ordered: M.orderPlayers(players, c.notes) };
   }
 
@@ -491,3 +491,14 @@
   if (cmp.on) { compare.hidden = false; $('compareToggle').setAttribute('aria-pressed', 'true'); }
   load().then(() => { if (cmp.on) renderCompare(); });
 }());
+
+// "Needs tier only": hide summary rows that have a tier (rows without one carry class="untiered").
+(function () {
+  const box = document.getElementById('needsOnly');
+  if (!box) return;
+  const KEY = 'seeding:needsOnly:' + location.pathname;
+  try { box.checked = localStorage.getItem(KEY) === '1'; } catch { /* per-viewer convenience only */ }
+  const apply = () => { document.body.classList.toggle('needs-only', box.checked); try { localStorage.setItem(KEY, box.checked ? '1' : '0'); } catch { /* ignore */ } };
+  box.addEventListener('change', apply);
+  apply();
+})();

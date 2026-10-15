@@ -169,3 +169,9 @@ table.cmp-series thead tr:first-child th:nth-child(3) { border-left: 2px solid v
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; scroll-behavior: auto !important; }
 }
+
+/* Tiers (registry/tiers.csv) */
+table.summary td.tier { text-align: center; font-variant-numeric: tabular-nums; font-size: 15px; white-space: nowrap; }
+.tag.needs { background: var(--warn-bg); color: var(--warn-fg); }
+.needs-ctl { display: inline-flex; align-items: center; gap: 4px; height: var(--ctl-h); white-space: nowrap; }
+body.needs-only table.summary tbody tr:not(.untiered) { display: none; }

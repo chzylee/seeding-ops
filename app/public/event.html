@@ -14,13 +14,16 @@
   <div class="bar">
     <button id="refresh" type="button" title="Pull this event again from start.gg, then fetch W-L">Refresh data</button>
     <button id="compareToggle" type="button" aria-pressed="false" title="Compare two players in the lower half">⇅ Compare</button>
+    <label class="freeze-ctl" title="Columns that stay put when you scroll sideways. ❄ in a column header freezes just that column.">Freeze
+      <select id="freezeN"></select></label>
+    <a id="export" class="button" href="#" download title="The summary table as a CSV. In Google Sheets: File → Import → Upload.">Download for Google Sheets</a>
     <span id="status" class="status" role="status" aria-live="polite"></span>
     <button id="update" type="button" hidden>Show new data</button>
     <details class="about"><summary>How to read this</summary>
       Placement is out of the event's entrants. W-L counts sets won and lost at that event, with DQs excluded.
       Major columns count this game only, using the main bracket (largest field). Series columns are the series
       the most registrants played: best placement (with its W-L), best W-L, and average W-L when there are 2+
-      events. Seed and notes are suggestions. 📌 pins a row under the header. Click a player for their tables;
+      events. Seed and notes are suggestions. 📌 pins a row under the header; ❄ freezes a column. Click a player for their tables;
       click a column header in those tables to sort.
     </details>
   </div>

@@ -27,7 +27,10 @@ h1 { font-size: 18px; margin: 0; }
 .sub { color: #666; font-size: 13px; }
 .bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 6px; }
 .bar button { border: 1px solid #b9c4d6; background: #f4f7fc; border-radius: 4px; padding: 3px 10px; }
-.bar button:hover { background: #e7eef9; }
+.bar button:hover, .bar a.button:hover { background: #e7eef9; }
+.bar a.button { border: 1px solid #b9c4d6; background: #f4f7fc; border-radius: 4px; padding: 3px 10px; color: var(--fg); }
+.freeze-ctl { font-size: 13px; color: #555; }
+.freeze-ctl select { font: inherit; }
 .bar button[aria-pressed="true"] { background: var(--accent); color: #fff; border-color: var(--accent); }
 .bar button:disabled { opacity: .55; cursor: default; }
 .status { font-size: 13px; color: #555; }
@@ -35,11 +38,12 @@ h1 { font-size: 18px; margin: 0; }
 .about { font-size: 12px; color: #555; max-width: 900px; }
 .about summary { color: var(--accent); cursor: pointer; }
 
-#pane { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 0 16px 48px; overscroll-behavior: contain; }
+/* No side padding on the scrollers: frozen cells stick at the very edge, so nothing scrolls past them in a gutter. */
+#pane { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 0 0 48px; overscroll-behavior: contain; }
 #compare { flex: 0 0 50%; min-height: 0; overflow: auto; border-top: 3px solid var(--split); background: var(--bg); padding: 0 16px 32px; }
 #compare[hidden] { display: none; }
 #msg:empty { display: none; }
-#msg { padding: 12px 0; color: #a11; }
+#msg { padding: 12px 16px; color: #a11; }
 
 /* ---- Tables (separate borders so sticky cells keep theirs) ---- */
 table { border-collapse: separate; border-spacing: 0; background: var(--cell); }
@@ -59,7 +63,7 @@ table.sortable th { cursor: pointer; }
 table.sortable th:hover { background: var(--head-hover); }
 
 /* ---- Summary: sticky header row, sticky player column, pinned rows frozen under the header ---- */
-table.summary { margin-top: 8px; }
+table.summary { margin: 8px 16px 0; }
 table.summary td.seed { font-size: 18px; font-weight: 700; text-align: center; }
 table.summary td.notes { min-width: 260px; max-width: 380px; }
 table.summary .line, table.summary td.region { white-space: nowrap; }
@@ -70,12 +74,20 @@ table.summary tbody.pinned td { position: sticky; background: var(--pin); z-inde
 table.summary tbody.pinned td.who { z-index: 4; background: var(--pin); }
 table.summary tbody.pinned tr.last-pin td { border-bottom: 2px solid var(--pin-edge); }
 table.summary tbody.main tr:hover td { background: #f7f9fd; }
+/* Frozen columns (Player always; others by choice): sticky-left, offsets set by app.js. */
+table.summary .frozen { position: sticky; z-index: 1; background: var(--cell); }
+table.summary th.frozen { z-index: 5; background: var(--head); }
+table.summary tbody.pinned td.frozen { z-index: 4; background: var(--pin); }
+table.summary .frozen-edge { box-shadow: inset -2px 0 0 #b9c4d6; }
+button.freeze { border: 0; background: none; padding: 0 0 0 6px; font-size: 12px; opacity: .25; vertical-align: 1px; }
+th:hover button.freeze, button.freeze:focus-visible { opacity: .7; }
+button.freeze[aria-pressed="true"] { opacity: 1; color: var(--accent); }
 button.pin { border: 0; background: none; padding: 0 5px 0 0; font-size: 13px; opacity: .3; filter: grayscale(1); }
 tr:hover button.pin, button.pin:focus-visible { opacity: .9; filter: none; }
 tbody.pinned button.pin { opacity: 1; filter: none; }
 
 /* ---- Per-player detail, rendered as it scrolls into view ---- */
-section.player { position: sticky; left: 0; max-width: calc(100vw - 32px); }
+section.player { position: sticky; left: 0; max-width: 100vw; padding: 0 16px; }
 section.player.rendered { content-visibility: auto; contain-intrinsic-size: auto 600px; }
 section.player h2 { font-size: 16px; margin: 28px 0 6px; }
 section.player .body { overflow-x: auto; }
@@ -88,8 +100,9 @@ section.player .body { overflow-x: auto; }
 #cmpBody h3 { font-size: 14px; margin: 14px 0 6px; }
 #cmpBody .hint { color: var(--dim); padding: 12px 0; }
 .cmp-sum-wrap { overflow-x: auto; }
-.cmp-sum-wrap table.summary { margin-top: 0; table-layout: fixed; }
-.cmp-sum-wrap table.summary thead th { position: static; }
+.cmp-sum-wrap { margin: 0 -16px; }
+.cmp-sum-wrap table.summary { margin: 0 16px; table-layout: fixed; }
+.cmp-sum-wrap table.summary thead th:not(.frozen) { position: static; }
 .cmp-sum-wrap table.summary td, .cmp-sum-wrap table.summary th { overflow: hidden; }
 table.cmp-series th.side { text-align: center; background: #e4ebf7; }
 table.cmp-series tr.both td { background: var(--both); }

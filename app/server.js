@@ -10,6 +10,7 @@
 //   GET  /api/e/<t>/<e>/data        the view model, computed at request time
 //   POST /api/e/<t>/<e>/refresh     re-pull + W-L in the background; 202, or 409 if a job runs
 //   GET  /api/e/<t>/<e>/status      { pulling, wl: {done,total,summaryDone,summaryTotal}, lastRunAt, error, ... }
+//   GET  /api/e/<t>/<e>/export.csv  the summary table as a CSV for Google Sheets (lib/view/export.js)
 //   GET  /static/<file>             the page's JS/CSS (a fixed list; nothing else is served)
 // Env: SEED_APP_MAX_PER_MIN caps the app's start.gg requests per rolling 60 s (default 75, the
 // pull's own pace). PORT overrides the port.
@@ -106,7 +107,7 @@ function createApp(opts = {}) {
         return send(res, 200, fs.readFileSync(PAGE), 'text/html; charset=utf-8');
       }
 
-      m = /^\/api\/e\/([^/]+)\/([^/]+)\/(data|status|refresh)$/.exec(p);
+      m = /^\/api\/e\/([^/]+)\/([^/]+)\/(data|status|refresh|export\.csv)$/.exec(p);
       if (m) {
         const [, t, e, what] = m;
         if (!data.SLUG_PART.test(t) || !data.SLUG_PART.test(e)) return notFound(res);
@@ -117,6 +118,12 @@ function createApp(opts = {}) {
           const vm = data.viewModel(latest.dir, { records: jobs.liveRecords(latest.dir) });
           vm.status = jobs.status(t, e);
           return json(res, 200, vm);
+        }
+        if (what === 'export.csv' && method === 'GET') {
+          const latest = data.latestFinished(outRoot, t, e);
+          if (!latest) return notFound(res);
+          const { filename, csv } = data.summaryExport(latest.dir, { records: jobs.liveRecords(latest.dir) });
+          return send(res, 200, csv, 'text/csv; charset=utf-8', { 'Content-Disposition': `attachment; filename="${filename}"` });
         }
         if (what === 'refresh' && method === 'POST') {
           if (req.headers['x-seeding-app'] !== '1') return send(res, 403, 'Missing X-Seeding-App header');

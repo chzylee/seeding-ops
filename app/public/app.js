@@ -21,12 +21,16 @@
     get(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } },
     set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* ignore */ } },
   };
-  const PIN_KEY = `seeding:pins:${SLUG}`, CMP_KEY = `seeding:compare:${SLUG}`;
+  const PIN_KEY = `seeding:pins:${SLUG}`, CMP_KEY = `seeding:compare:${SLUG}`, FREEZE_KEY = `seeding:freeze:${SLUG}`;
   let pins = store.get(PIN_KEY, []);
   if (!Array.isArray(pins)) pins = [];
   let cmp = store.get(CMP_KEY, { on: false, a: null, b: null });
   if (!cmp || typeof cmp !== 'object') cmp = { on: false, a: null, b: null };
 
+  // Frozen columns by key (lib/view/render.js summaryColumns); Player is always frozen.
+  // Default: the Seed column (when notes.json gives seeds) stays with Player.
+  let frozen = store.get(FREEZE_KEY, ['seed']);
+  frozen = new Set(Array.isArray(frozen) ? frozen : []);
   let vm = null, ctx = null, byId = new Map(), ordered = [], observer = null;
 
   // ---- Data ------------------------------------------------------------------------------------
@@ -88,14 +92,91 @@
   // ---- Summary + pins --------------------------------------------------------------------------
   let rowHtml = new Map();
   function renderSummary() {
-    thead.innerHTML = R.summaryHeadRow(ctx);
+    thead.innerHTML = R.summaryHeadRow(ctx, { app: true });
     rowHtml = new Map(ordered.map((p) => [String(p.player_id), R.summaryRow(p, ctx, { app: true })]));
     pins = pins.filter((id) => byId.has(String(id))).map(String);
     const pinned = new Set(pins);
     pinnedBody.innerHTML = pins.map((id) => rowHtml.get(id)).join('');
     mainBody.innerHTML = ordered.map((p, i) => (pinned.has(String(p.player_id)) ? '' : rowHtml.get(String(p.player_id)).replace('<tr ', `<tr data-i="${i}" `))).join('');
     for (const tr of pinnedBody.rows) tr.dataset.i = String(ordered.findIndex((p) => String(p.player_id) === tr.dataset.pid));
+    fillFreeze();
+    applyFreeze();
     layoutPins();
+  }
+
+  // ---- Freeze columns --------------------------------------------------------------------------
+  // A frozen column is sticky at the left edge plus the widths of the frozen columns before it, so
+  // it stays put while the others scroll under it. The same offsets go on the pinned block (same
+  // table) and on the compare panel's summary rows (same columns, same widths).
+  const colKeys = () => [...thead.rows[0].cells].map((th) => th.dataset.col);
+  const isFrozen = (k) => k === 'player' || frozen.has(k);
+  function freezeOffsets() {
+    const ths = [...thead.rows[0].cells];
+    let x = 0;
+    return ths.map((th) => {
+      if (!isFrozen(th.dataset.col)) return null;
+      const at = x;
+      x += th.getBoundingClientRect().width;
+      return at;
+    });
+  }
+  function applyFreezeTo(t, lefts) {
+    const last = lefts.reduce((m, v, i) => (v != null ? i : m), -1);
+    for (const tr of t.rows) {
+      for (let i = 0; i < tr.cells.length; i++) {
+        const c = tr.cells[i];
+        if (lefts[i] != null) {
+          c.classList.add('frozen');
+          c.style.left = `${lefts[i]}px`;
+          c.classList.toggle('frozen-edge', i === last);
+        } else if (c.classList.contains('frozen')) {
+          c.classList.remove('frozen', 'frozen-edge');
+          c.style.left = '';
+        }
+      }
+    }
+  }
+  function applyFreeze() {
+    if (!thead.rows[0]) return;
+    const lefts = freezeOffsets();
+    applyFreezeTo(table, lefts);
+    const cmpTable = cmp.on && cmpBody.querySelector('.cmp-sum-wrap table');
+    if (cmpTable) applyFreezeTo(cmpTable, lefts);
+    for (const b of thead.querySelectorAll('button.freeze')) {
+      const on = frozen.has(b.closest('th').dataset.col);
+      b.setAttribute('aria-pressed', String(on));
+      b.title = on ? 'Unfreeze this column' : 'Freeze this column when scrolling sideways';
+    }
+    const keys = colKeys();
+    const lead = keys.findIndex((k) => !isFrozen(k));
+    const n = lead < 0 ? keys.length : lead;
+    const exact = keys.every((k, i) => (i < n) === isFrozen(k) || k === 'player');
+    $('freezeN').value = exact ? String(n) : 'custom';
+  }
+  // "Freeze: first N columns" — through Player at the least.
+  function fillFreeze() {
+    const keys = colKeys(), names = [...thead.rows[0].cells].map((th) => th.childNodes[0].textContent.trim());
+    const p = keys.indexOf('player');
+    const opts = [];
+    for (let n = p + 1; n <= Math.min(keys.length - 1, p + 6); n++) {
+      opts.push(`<option value="${n}">${n === p + 1 ? (p === 0 ? 'Player only' : names.slice(0, n).join(' + ')) : `Through ${R.esc(names[n - 1])}`}</option>`);
+    }
+    opts.push('<option value="custom" disabled>Custom (❄ in headers)</option>');
+    $('freezeN').innerHTML = opts.join('');
+  }
+  $('freezeN').addEventListener('change', (ev) => {
+    const n = Number(ev.target.value);
+    if (!Number.isFinite(n)) return;
+    frozen = new Set(colKeys().slice(0, n).filter((k) => k !== 'player'));
+    store.set(FREEZE_KEY, [...frozen]);
+    applyFreeze();
+  });
+  function toggleFreeze(th) {
+    const k = th.dataset.col;
+    if (!k || k === 'player') return;
+    if (frozen.has(k)) frozen.delete(k); else frozen.add(k);
+    store.set(FREEZE_KEY, [...frozen]);
+    applyFreeze();
   }
 
   // Each pinned row's cells stick at the header's height plus the rows pinned above it.
@@ -185,6 +266,8 @@
   document.addEventListener('click', (ev) => {
     const pinBtn = ev.target.closest('button.pin');
     if (pinBtn) { togglePin(pinBtn.closest('tr')); return; }
+    const fzBtn = ev.target.closest('button.freeze');
+    if (fzBtn) { toggleFreeze(fzBtn.closest('th')); return; }
     const link = ev.target.closest('a[href^="#p"]');
     if (link) { ev.preventDefault(); goToPlayer(link.getAttribute('href').slice(2)); return; }
     const th = ev.target.closest('table.sortable th');
@@ -283,6 +366,7 @@
       + `<h3>Events both entered</h3><p class="dim">Placement and W-L of each at the same event. This is not head-to-head sets.</p>${R.bothEnteredTable(A, B, ctx)}`
       + `<h3>Series</h3><p class="dim">${R.esc(vm.meta.game.name)} only. A series both have played is on one row (shaded).</p>${R.compareSeriesTable(A, B, ctx)}`;
     alignCompare();
+    applyFreeze();
     perf.compareRenderMs = Math.round(performance.now() - t0);
   }
 
@@ -307,7 +391,7 @@
     syncing = true; pane.scrollLeft = ev.target.scrollLeft; requestAnimationFrame(() => { syncing = false; });
   }, { passive: true, capture: true });
 
-  window.addEventListener('resize', () => { layoutPins(); if (cmp.on) alignCompare(); });
+  window.addEventListener('resize', () => { layoutPins(); if (cmp.on) alignCompare(); applyFreeze(); });
 
   // ---- Refresh + status --------------------------------------------------------------------------
   let polling = null;
@@ -358,6 +442,8 @@
     startPolling();
   });
   $('update').addEventListener('click', () => load({ keep: true }));
+
+  $('export').href = api('export.csv');
 
   // ---- Start --------------------------------------------------------------------------------------
   if (cmp.on) { compare.hidden = false; $('compareToggle').setAttribute('aria-pressed', 'true'); }

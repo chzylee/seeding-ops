@@ -156,3 +156,20 @@ test('render: the app row adds a pin button and data-pid; the CLI row does not',
   assert.match(lazy, /data-lazy="game"/);
   assert.ok(tables(lazy).length < tables(R.playerBody(players[0], ctx)).length);
 });
+
+test('render: summary text table (Sheets export) — same columns plus Prefix and player id, one line per cell, same rules', () => {
+  const { ctx, players } = fixture();
+  const ordered = M.orderPlayers(players, ctx.notes);
+  const [head, ...body] = R.summaryTextTable(ctx, ordered);
+  assert.deepStrictEqual(head.slice(0, 3), ['Player', 'Prefix', 'Region']);
+  assert.strictEqual(head[head.length - 1], 'start.gg player id');
+  assert.strictEqual(body.length, players.length);
+  const p1 = body.find((r) => r[r.length - 1] === '1');
+  const ceo = p1[head.indexOf('CEO')];
+  assert.match(ceo, /^33rd \/ 400 · (\d+-\d+|—) \('26\)$/, 'major cell = placement / entrants · W-L (year)');
+  const bm = p1[head.findIndex((h) => h.startsWith('Blood Moon'))];
+  assert.match(bm, /^Best placement 1st \/ 20 · \d+-\d+; Best W-L \d+-\d+ \(.+\); Average W-L \d+\.\d-\d+\.\d over 2 events$/);
+  for (const row of body) for (const c of row) assert.ok(!/[\r\n]/.test(c));
+  // Columns in the export are the page's columns, in the page's order.
+  assert.deepStrictEqual(head.filter((h) => !['Prefix', 'start.gg player id'].includes(h)), R.summaryColumns(ctx).map((c) => c.text));
+});

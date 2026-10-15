@@ -83,7 +83,8 @@ function createApp(opts = {}) {
   async function handler(req, res) {
     try {
       if (!trustedHost(req)) return send(res, 403, 'Forbidden host');
-      const url = new URL(req.url, 'http://127.0.0.1');
+      // Prefixed, not resolved against a base: "//x" or "/\x" must stay a path, never become a host.
+      const url = new URL(`http://127.0.0.1${String(req.url).startsWith('/') ? '' : '/'}${req.url}`);
       let p;
       try { p = decodeURIComponent(url.pathname); } catch { return notFound(res); }
       const method = req.method;

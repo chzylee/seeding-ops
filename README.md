@@ -4,9 +4,18 @@
 
 ### App: the seeding table in your browser
 
-**Start it:** double-click **`app.cmd`** (it opens your browser), or run `npm run app` and open
-<http://127.0.0.1:8765/>. Leave the window open while you use it; close it to stop. It only listens
-on your own machine.
+**Start it:**
+
+| Command | What it does |
+|---|---|
+| `npm start` | Starts the app **and opens your browser**. The everyday way (Windows and Mac). |
+| double-click **`app.cmd`** | The same as `npm start`, without a terminal (Windows). |
+| `npm run dev` | Starts the app and **restarts it automatically when server code changes** (`app/`, `lib/`). Use it while the app is being changed. It doesn't open the browser; go to <http://127.0.0.1:8765/>. A restart stops a Refresh that's running, so avoid editing code mid-refresh. |
+| `npm run app` | Starts the app only; open <http://127.0.0.1:8765/> yourself. |
+
+Leave the window open while you use it; close it (or Ctrl+C) to stop. It only listens on your own
+machine. Page files (`app/public/`) are read fresh on every load, so a browser reload picks up their
+changes in any mode.
 
 - **One page per event, always the latest data.** The home page lists every event you've pulled.
   An event's page lives at `http://127.0.0.1:8765/e/<tournament>/<event>` and always shows that

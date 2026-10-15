@@ -4,11 +4,15 @@
   "private": true,
   "description": "Pull two years of start.gg results for every registrant of an event, and a local app to seed from them.",
   "type": "commonjs",
-  "engines": { "node": ">=24" },
+  "engines": {
+    "node": ">=24"
+  },
   "scripts": {
+    "start": "node app/server.js --open",
+    "dev": "node --watch app/server.js",
+    "app": "node app/server.js",
     "test": "node --test",
     "pull": "node pull.js",
-    "seed": "node seed.js",
-    "app": "node app/server.js"
+    "seed": "node seed.js"
   }
 }

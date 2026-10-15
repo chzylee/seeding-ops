@@ -344,3 +344,140 @@ REPORT
   look in the orchestrator's browser check (UI checklist items 6-7). (3) docs/usage-log.md has
   someone else's uncommitted edit in the tree; I left it unstaged.
 ```
+
+## Pass 1c — UI pass (Fable)
+
+Seat: a Fable subagent, at Noah's request: *"have a fable subagent take a pass and make this all look nice,
+following good ui standards and best practices … i dont need anything crazy. just a nicer looking view for all
+this. the content is pretty good so far."* Branch `build/webapp`, commit `c948033`, local only.
+
+### Terms as understood
+
+- **Scope:** presentation only. Same content, same columns, same order, same behaviors. `app/public/*` edited
+  freely; `lib/view/render.js` not touched (no class hooks turned out to be needed); server, routes, data,
+  model, fetch and tests untouched.
+- **Binding:** the Ratified / Built rows of `docs/usage-log.md` → Requirements surfaced (per result = event,
+  placement / entrants, W-L; no aggregate counts; series = best placement + best W-L + average W-L; tables not
+  bullets; Team | Player | Region | Tier ‖ majors | shared series | Other games | Notes, frozen through Tier;
+  rows short). Every pass-1/1b behavior listed in the brief.
+- **Register:** product UI (impeccable's `reference/product.md`): restrained color, one accent, system font,
+  density is a feature, consistent control vocabulary, motion only for state.
+
+### Assumptions I supplied
+
+1. **impeccable's init interview skipped** (the brief says so; no `PRODUCT.md` written). The brief was the
+   product context. Same call as pass 1b.
+2. **Edited the working tree directly.** Noah's :8765 server serves `app/public/*` from this tree, so each
+   file write was live on his next reload. Every write was a complete file (no half-states), and the three
+   files were checked on :8794 before the commit. Pass 1b used a scratch worktree instead; that is the safer
+   option if a later pass makes many incremental edits.
+3. **Two small copy additions** in "How to read this" (sorting, compare, double-click editing with Enter /
+   Esc). The page had no visible hint that Tier and Notes are editable. Content elsewhere is unchanged.
+
+### What the walk-through found
+
+Eclipse (182 players) on :8794 at 1440 × 900, 1000 × 640 and 760 × 640; the index page; compare with two
+selected; a pinned row; sorted Tier; the Tier and Notes editors opened and Esc-cancelled.
+
+| # | Finding | Kind |
+|---|---|---|
+| 1 | Toolbar was one flat wrap of seven controls in three visual styles (buttons, bare `<select>`, bare input, bare checkbox); on narrow windows single controls wrapped on their own | functional |
+| 2 | ❄ sat inline after each header label, so a sorted header read "Tier ❄ ▼"; the ❄ was also a 12 px target with no hover state | cosmetic |
+| 3 | A long tag (e.g. COPYKILLER4FUN) wrapped under the checkbox and pin inside the Player cell | functional |
+| 4 | Editable cells (Tier, Notes) had no hover affordance; only `cursor: cell` | functional |
+| 5 | The cell editor is anchored to the cell's left edge, so on the Notes column (far right) it ran off the viewport and the hint "Esc cancels" was clipped | functional |
+| 6 | "How to read this" when open shared its row with the Download button at 1000 px (its `max-width: 78ch` shrank the flex item) | cosmetic |
+| 7 | No spacing or z-index scale: ad-hoc 1/2/3/4/5/6/30/40 z-indexes and mixed px gaps | cosmetic |
+| 8 | Dead rules for the removed A/B pickers (`#pickA[readonly]`, `.cmp-bar input`, `.cmp-bar label`) | cosmetic |
+| 9 | `#msg` errors were bare red text with no surface; chips' ✕ had a 12 px hit area | cosmetic |
+| 10 | The selected row had no distinct hover; the "needs tier" tag inherited a stray left margin | cosmetic |
+
+### What changed, by file
+
+**`app/public/app.css`** (rewritten on the same selectors; the JS-facing names are listed in the file header)
+- **Tokens:** `--s-1…--s-6` (4/8/12/16/24 px) and `--z-cell … --z-popover` on `:root`; `--ink-2 #3f434a`,
+  `--dim #656a73` (5.6:1 on white, 4.9:1 on the header gray), `--accent-weak-2`, `--ok-bg`, `--err`,
+  `--err-bg`, one `--ease` (ease-out quint). Fixes 7.
+- **Toolbar:** `.bar .group` (inline-flex, wraps as a unit) and `.group.right` (margin-left auto). The
+  `<select>`, the jump input and the buttons share height, border, radius, hover and a focus ring;
+  checkboxes use `accent-color`. `.status:empty` collapses. Fixes 1.
+- **Headers:** 12.5 px / 600 / `--ink-2`, bottom-aligned; sortable headers get the hover tint; a sorted
+  header's label turns accent-ink with a 9 px arrow. `button.freeze` is absolutely positioned at the
+  header's right edge (headers are already `position: sticky`), 18 × 18 px, with hover and pressed
+  backgrounds; headers get 26 px right padding for it. Fixes 2.
+- **Player cell:** `td.who { white-space: nowrap }` with the link as an `inline-block` capped at 240 px that
+  wraps internally, so the tag wraps beside the controls. Fixes 3.
+- **Editable cells:** 1 px `--split` outline on hover inside `#summary`; the 2 px accent focus outline stays.
+  `.editor.flip { left: auto; right: 0 }`. Fixes 4, 5.
+- **Help panel:** `.about[open] { flex: 1 0 100% }` with the text in `.about-body { max-width: 78ch }`, on a
+  bordered `--bg` surface. Fixes 6.
+- **Smaller:** `#msg` as an error banner; `.chip-x` is a 20 px round target; `tr.selected:hover` darker;
+  `.tag.needs` without the left margin; `td b { font-weight: 650 }`; `.tag` as inline-block with 4 px radius;
+  `summary:hover` underline; the player-detail `h2` gets 36 px above. Reduced-motion block merged into one.
+  Dead picker rules removed. Fixes 8, 9, 10.
+- **Kept on purpose:** the 2 px inset frozen-edge rule (no shadow; see pass 1b on repaint cost); pinned-row
+  yellow and gold rule; row heights, cell padding and line-height (density is what Noah likes).
+
+**`app/public/event.html`**
+- Toolbar controls in three `div.group`s (`role="group"` with labels): Refresh / Compare / status / Show new
+  data; Freeze / Jump to / Needs tier only; Download. Same ids, so `app.js` is unchanged there.
+- "How to read this" text wrapped in `div.about-body`; two sentences added (sort / freeze / pin / compare,
+  and double-click editing with `<kbd>Enter</kbd>` / `<kbd>Esc</kbd>`).
+
+**`app/public/app.js`** (+3 lines, presentation only)
+- `openEditor`: after the popover is appended, if `td.left + box.offsetWidth` would pass the window's right
+  edge minus 8 px, the box gets `.flip`.
+
+### Deliberately left alone
+
+- **`lib/view/render.js`:** no change. Everything above was reachable from CSS and the HTML shell.
+- **Counts in labels, repeated "Best placement:" labels, left-aligned headers over number columns:** pass
+  1b's open items; still need either Noah's ruling or render.js markup.
+- **Colors and the light-only theme**, the font stack, row density, the pinned-row yellow.
+- **One thing I saw but did not touch:** with the compare panel open, a sideways scroll of the main table
+  from the compare panel's summary strip (the two are synced both ways) once left the header and body a
+  frame apart in a screenshot. It settled on its own and may be a screenshot artifact; noting it, not a fix.
+
+### Evidence
+
+- **Tests, before and after:** `NODE_OPTIONS="--require ./testlib/no-network.js" node --test
+  --test-skip-pattern="binds 127.0.0.1"` → tests 106 · pass 103 · fail 0 · skipped 3, both before (at
+  `bc93955`) and after (at `c948033`).
+- **Browser** (embedded pane, my own server on :8794 against the real `out/`; Noah's :8765 never touched):
+  - Eclipse at 1440 × 900: the toolbar is one row with Download at the right; sorted "Tier ▼" reads with the
+    ❄ at the header edge; row hover and the frozen edge as before.
+  - Eclipse at 1000 × 640 and 760 × 640: groups wrap as units (Download + help on the second row, then
+    Freeze/Jump/Needs on its own row at 760); nothing overflows.
+  - Compare: ticked Skeleton and Moai → panel opened with chips A/B, Clear, Close; the series table's A/B
+    heads stuck under the bar while scrolling; Clear and Close worked.
+  - Pin: pinned Moai → row moved under the header with the gold rule; persisted across a reload.
+  - "How to read this": opens on its own full row, text at 78ch, closes again.
+  - Editors: Tier editor opened by double-click (Tier 11, Reason empty, hint line) and Esc-cancelled; Notes
+    editor opened on the far-right column, got `.flip`, right edge at 968 px of a 1000 px viewport, and
+    Esc-cancelled. Network log shows only `GET …/data`; no `POST …/player/<id>` was sent.
+  - Player detail (clicked Skeleton): series table with tags and sortable heads; index page renders.
+  - No console errors on any page.
+- **Not verified:** Refresh data (never pressed; it calls start.gg). The Sheets download link is unchanged.
+  Jump-to was exercised only by code in pass 1 and is unchanged here.
+
+### REPORT
+
+```
+REPORT
+- Overview: A restrained UI pass on the seeding app's front end, same content and behavior. app.css
+  rewritten on the same selectors (spacing + z-index tokens, one control vocabulary, header ❄ at the
+  edge, player tag beside its controls, editable-cell hover, help panel on its own row, dead rules
+  gone); event.html toolbar in three groups + two help sentences; app.js +3 lines so the cell editor
+  flips left near the window edge. Commit c948033 on build/webapp, local. Tests 106 / 103 pass / 0
+  fail / 3 skipped before and after. Checked in the browser pane on :8794 at 1440, 1000 and 760 px.
+- Ran: impeccable loaded (polish + product register, init interview skipped per the brief); the
+  walk-through found 10 items (5 functional, 5 cosmetic), all 10 fixed; every listed behavior
+  exercised except Refresh data (never pressed) and the download (link unchanged). No save request
+  was sent; registry/ and out/ untouched; Noah's :8765 server never stopped.
+- Queued: pass 1b's render.js items (counts in labels, dimmed repeated labels, number-column header
+  alignment) still need Noah's ruling or markup hooks + test updates. A scratch worktree for the
+  next pass that touches app/public/* incrementally, since :8765 serves the working tree live.
+- Needs attention: (1) Noah's page picks up the new CSS on his next reload; pins, selection and
+  freeze choices survive (localStorage, unchanged keys). (2) The one-frame header/body offset seen
+  once during synced sideways scroll with compare open: unconfirmed, pre-existing, not changed.
+```

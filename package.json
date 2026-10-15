@@ -2,12 +2,13 @@
   "name": "seeding-script",
   "version": "0.1.0",
   "private": true,
-  "description": "Pull two years of start.gg results for every registrant of an event into CSV files.",
+  "description": "Pull two years of start.gg results for every registrant of an event, and a local app to seed from them.",
   "type": "commonjs",
   "engines": { "node": ">=24" },
   "scripts": {
     "test": "node --test",
     "pull": "node pull.js",
-    "seed": "node seed.js"
+    "seed": "node seed.js",
+    "app": "node app/server.js"
   }
 }

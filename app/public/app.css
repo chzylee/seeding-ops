@@ -1,0 +1,97 @@
+/* app/public/app.css — the seeding app. Light only, like increment 1's view. */
+:root {
+  --bg: #fafafa; --fg: #1a1a1a; --dim: #888; --line: #ddd; --head: #f0f0f0; --head-hover: #e6e6e6;
+  --cell: #fff; --pin: #fff8db; --pin-edge: #c9a227; --accent: #2459a6; --split: #9bb3d9; --both: #f3f7ff;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; }
+body { margin: 0; font: 14px/1.45 system-ui, sans-serif; background: var(--bg); color: var(--fg); }
+a { color: var(--accent); text-decoration: none; }
+.dim { color: var(--dim); }
+button { font: inherit; cursor: pointer; }
+
+/* ---- Index ---- */
+body.index main { max-width: 900px; margin: 0 auto; padding: 16px; }
+body.index h1 { font-size: 19px; }
+ul.events { list-style: none; padding: 0; }
+ul.events li { background: var(--cell); border: 1px solid var(--line); border-radius: 4px; padding: 8px 12px; margin-bottom: 8px; }
+ul.events a { font-weight: 600; }
+.busy { font-size: 12px; color: #7a4a00; background: #fde8c8; border-radius: 3px; padding: 0 5px; margin-left: 6px; }
+
+/* ---- App layout: header, table pane, optional compare panel (lower half) ---- */
+body.app { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+header#top { flex: none; padding: 8px 16px 6px; background: var(--cell); border-bottom: 1px solid var(--line); }
+.titlebar { display: flex; align-items: baseline; gap: 12px; }
+.back { font-size: 13px; white-space: nowrap; }
+h1 { font-size: 18px; margin: 0; }
+.sub { color: #666; font-size: 13px; }
+.bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 6px; }
+.bar button { border: 1px solid #b9c4d6; background: #f4f7fc; border-radius: 4px; padding: 3px 10px; }
+.bar button:hover { background: #e7eef9; }
+.bar button[aria-pressed="true"] { background: var(--accent); color: #fff; border-color: var(--accent); }
+.bar button:disabled { opacity: .55; cursor: default; }
+.status { font-size: 13px; color: #555; }
+.status.err { color: #a11; }
+.about { font-size: 12px; color: #555; max-width: 900px; }
+.about summary { color: var(--accent); cursor: pointer; }
+
+#pane { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 0 16px 48px; overscroll-behavior: contain; }
+#compare { flex: 0 0 50%; min-height: 0; overflow: auto; border-top: 3px solid var(--split); background: var(--bg); padding: 0 16px 32px; }
+#compare[hidden] { display: none; }
+#msg:empty { display: none; }
+#msg { padding: 12px 0; color: #a11; }
+
+/* ---- Tables (separate borders so sticky cells keep theirs) ---- */
+table { border-collapse: separate; border-spacing: 0; background: var(--cell); }
+th, td { border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); padding: 5px 9px; vertical-align: top; text-align: left; }
+tr > :first-child { border-left: 1px solid var(--line); }
+thead tr:first-child > * { border-top: 1px solid var(--line); }
+th { background: var(--head); font-weight: 600; white-space: nowrap; }
+.tag { font-size: 11px; background: #eef; border-radius: 3px; padding: 0 4px; color: #446; margin-left: 4px; }
+.tag.major { background: #fde8c8; color: #7a4a00; }
+details { margin-top: 8px; }
+summary { cursor: pointer; color: var(--accent); }
+table.res td.num { white-space: nowrap; text-align: right; }
+table.res td.date { color: var(--dim); white-space: nowrap; }
+table.res td.each { min-width: 240px; }
+table.res td.each .line { white-space: nowrap; }
+table.sortable th { cursor: pointer; }
+table.sortable th:hover { background: var(--head-hover); }
+
+/* ---- Summary: sticky header row, sticky player column, pinned rows frozen under the header ---- */
+table.summary { margin-top: 8px; }
+table.summary td.seed { font-size: 18px; font-weight: 700; text-align: center; }
+table.summary td.notes { min-width: 260px; max-width: 380px; }
+table.summary .line, table.summary td.region { white-space: nowrap; }
+table.summary thead th { position: sticky; top: 0; z-index: 3; }
+table.summary th.who { left: 0; z-index: 5; }
+table.summary td.who { position: sticky; left: 0; background: var(--cell); z-index: 1; min-width: 150px; }
+table.summary tbody.pinned td { position: sticky; background: var(--pin); z-index: 2; }
+table.summary tbody.pinned td.who { z-index: 4; background: var(--pin); }
+table.summary tbody.pinned tr.last-pin td { border-bottom: 2px solid var(--pin-edge); }
+table.summary tbody.main tr:hover td { background: #f7f9fd; }
+button.pin { border: 0; background: none; padding: 0 5px 0 0; font-size: 13px; opacity: .3; filter: grayscale(1); }
+tr:hover button.pin, button.pin:focus-visible { opacity: .9; filter: none; }
+tbody.pinned button.pin { opacity: 1; filter: none; }
+
+/* ---- Per-player detail, rendered as it scrolls into view ---- */
+section.player { position: sticky; left: 0; max-width: calc(100vw - 32px); }
+section.player.rendered { content-visibility: auto; contain-intrinsic-size: auto 600px; }
+section.player h2 { font-size: 16px; margin: 28px 0 6px; }
+section.player .body { overflow-x: auto; }
+
+/* ---- Compare panel ---- */
+.cmp-bar { position: sticky; top: 0; z-index: 6; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 8px 0; background: var(--bg); border-bottom: 1px solid var(--line); }
+.cmp-bar input { font: inherit; width: 220px; padding: 2px 6px; }
+.cmp-bar .note { font-size: 12px; color: #7a4a00; background: #fde8c8; border-radius: 3px; padding: 1px 6px; }
+.cmp-bar button { border: 1px solid #b9c4d6; background: #f4f7fc; border-radius: 4px; padding: 2px 9px; }
+#cmpBody h3 { font-size: 14px; margin: 14px 0 6px; }
+#cmpBody .hint { color: var(--dim); padding: 12px 0; }
+.cmp-sum-wrap { overflow-x: auto; }
+.cmp-sum-wrap table.summary { margin-top: 0; table-layout: fixed; }
+.cmp-sum-wrap table.summary thead th { position: static; }
+.cmp-sum-wrap table.summary td, .cmp-sum-wrap table.summary th { overflow: hidden; }
+table.cmp-series th.side { text-align: center; background: #e4ebf7; }
+table.cmp-series tr.both td { background: var(--both); }
+table.cmp-series tbody td:nth-child(5), table.cmp-series thead tr:nth-child(2) th:nth-child(4),
+table.cmp-series thead tr:first-child th:nth-child(3) { border-left: 2px solid var(--split); }

@@ -15,6 +15,9 @@
   const details = $('details'), compare = $('compare'), cmpBody = $('cmpBody');
   const perf = (window.__seedPerf = { marks: {} });
   const mark = (k) => { perf.marks[k] = Math.round(performance.now()); };
+  // Main-thread tasks over 50 ms (Chrome's Long Tasks API), kept for the performance check.
+  perf.longTasks = [];
+  try { new PerformanceObserver((l) => { for (const e of l.getEntries()) perf.longTasks.push([Math.round(e.startTime), Math.round(e.duration)]); }).observe({ type: 'longtask', buffered: true }); } catch { /* not supported */ }
 
   // localStorage is a convenience: any failure (private mode, quota, bad JSON) falls back to defaults.
   const store = {
@@ -223,21 +226,44 @@
   }
   function renderSection(sec) {
     if (sec.classList.contains('rendered')) return;
+    const t0 = performance.now();
     const p = byId.get(sec.dataset.pid);
     const body = sec.querySelector('.body');
     body.innerHTML = R.playerBody(p, ctx, { lazy: true });
     body.style.minHeight = '';
     sec.classList.add('rendered');
     if (observer) observer.unobserve(sec);
+    (perf.sectionMs ||= []).push(Math.round(performance.now() - t0));
+  }
+  // Sections near the viewport queue up and render a few per frame (about 12 ms of work), so a
+  // fast scroll past many players never builds them all in one long task.
+  const queue = new Set();
+  let queued = false;
+  function enqueue(sec) {
+    queue.add(sec);
+    if (queued) return;
+    queued = true;
+    requestAnimationFrame(function drain() {
+      const t0 = performance.now();
+      for (const s of queue) {
+        queue.delete(s);
+        if (s.isConnected) renderSection(s);
+        if (performance.now() - t0 > 12) break;
+      }
+      if (queue.size) requestAnimationFrame(drain); else queued = false;
+    });
   }
   function renderDetails(eager) {
     if (observer) observer.disconnect();
+    queue.clear();
     details.innerHTML = ordered.map((p) => `<section class="player" data-pid="${R.esc(p.player_id)}">${R.playerTitle(p)}`
       + `<div class="body" style="min-height:${estimate(p)}px"></div></section>`).join('');
     const want = new Set(eager);
     observer = 'IntersectionObserver' in window ? new IntersectionObserver((entries) => {
-      for (const en of entries) if (en.isIntersecting) renderSection(en.target);
-    }, { root: pane, rootMargin: '1200px 0px' }) : null;
+      for (const en of entries) {
+        if (en.isIntersecting) enqueue(en.target); else queue.delete(en.target);
+      }
+    }, { root: pane, rootMargin: '800px 0px' }) : null;
     for (const sec of details.children) {
       if (want.has(sec.dataset.pid) || !observer) renderSection(sec);
       else observer.observe(sec);

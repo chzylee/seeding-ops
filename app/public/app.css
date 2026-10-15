@@ -88,7 +88,7 @@ tbody.pinned button.pin { opacity: 1; filter: none; }
 
 /* ---- Per-player detail, rendered as it scrolls into view ---- */
 section.player { position: sticky; left: 0; max-width: 100vw; padding: 0 16px; }
-section.player.rendered { content-visibility: auto; contain-intrinsic-size: auto 600px; }
+section.player.rendered { contain: layout paint; }
 section.player h2 { font-size: 16px; margin: 28px 0 6px; }
 section.player .body { overflow-x: auto; }
 

@@ -44,6 +44,7 @@
     const c = R.summaryContext({ meta: model.meta, players, rows, records: model.records, notes: model.notes || {},
       columns: model.columns, index: M.indexFromKeys(model.labels) });
     c.otherNote = '';
+    c.app = true; // the Tier column shows (and is editable) even before any tier exists
     return { ctx: c, byId: new Map(players.map((p) => [String(p.player_id), p])), ordered: M.orderPlayers(players, c.notes) };
   }
 
@@ -109,6 +110,7 @@
     fillFreeze();
     applyFreeze();
     layoutPins();
+    syncSel();
   }
 
   // ---- Freeze columns --------------------------------------------------------------------------
@@ -301,6 +303,8 @@
     if (fzBtn) { toggleFreeze(fzBtn.closest('th')); return; }
     const link = ev.target.closest('a[href^="#p"]');
     if (link) { ev.preventDefault(); goToPlayer(link.getAttribute('href').slice(2)); return; }
+    const sth = ev.target.closest('#summary thead th');
+    if (sth) { sortSummary(sth); return; }
     const th = ev.target.closest('table.sortable th');
     if (!th) return;
     const t = th.closest('table'), tb = t.tBodies[0], i = th.cellIndex;
@@ -377,7 +381,6 @@
     if (on) {
       renderCompare();
       requestAnimationFrame(() => setTimeout(() => { perf.compareOpenMs = Math.round(performance.now() - t0); }, 0));
-      if (!cmp.a) $('pickA').focus(); else if (!cmp.b) $('pickB').focus();
     }
     layoutPins();
   }
@@ -389,7 +392,7 @@
     const t0 = performance.now();
     const A = cmp.a && byId.get(cmp.a), B = cmp.b && byId.get(cmp.b);
     if (!A || !B) {
-      cmpBody.innerHTML = `<p class="hint">Pick two players above (type part of a tag). ${A || B ? 'One more to go.' : ''}</p>`;
+      cmpBody.innerHTML = `<p class="hint">Tick the box next to two players in the table above to compare them. ${A || B ? 'One more to go.' : ''}</p>`;
       return;
     }
     cmpBody.innerHTML = `<h3>Summary</h3><div class="cmp-sum-wrap"><table class="summary"><colgroup></colgroup><thead>${R.summaryHeadRow(ctx)}</thead>`
@@ -486,6 +489,170 @@
   $('update').addEventListener('click', () => load({ keep: true }));
 
   $('export').href = api('export.csv');
+
+  // ---- Sorting the summary: click a header (again to reverse). Pinned rows stay put. ------------
+  // Cells carry data-v (lib/view/render.js): tier number, tag/region text, or best placement /
+  // field size for majors/series (lower = better). Tier sorts high-first on the first click.
+  function sortSummary(th) {
+    const key = th.dataset.col;
+    if (!key || key === 'notes') return;
+    const i = th.cellIndex;
+    const first = key === 'tier' ? -1 : 1;
+    const dir = th.dataset.dir ? -Number(th.dataset.dir) : first;
+    for (const h of thead.rows[0].cells) delete h.dataset.dir;
+    th.dataset.dir = String(dir);
+    const val = (tr) => { const c = tr.cells[i]; return c && c.dataset.v != null ? c.dataset.v : (c ? c.innerText : ''); };
+    const rows = [...mainBody.rows];
+    rows.sort((a, b) => {
+      const x = val(a), y = val(b), nx = parseFloat(x), ny = parseFloat(y);
+      const c = (!isNaN(nx) && !isNaN(ny)) ? nx - ny : String(x).localeCompare(String(y));
+      return c * dir || Number(a.dataset.i) - Number(b.dataset.i);
+    });
+    mainBody.append(...rows);
+    rows.forEach((tr, k) => { tr.dataset.i = String(k); });
+  }
+
+  // ---- Editing Tier and Notes: double-click a cell, or focus it and press Enter (or F2). ---------
+  // Enter saves, Esc cancels, clicking away saves (spreadsheet conventions). Notes: Shift+Enter is
+  // a new line. Saves go to registry/tiers.csv via POST .../player/<id>; only that row re-renders.
+  let editing = null;
+  function openEditor(td) {
+    if (editing || !td || !td.dataset.edit) return;
+    const tr = td.closest('tr'), pid = tr.dataset.pid, n = ctx.notes[pid] || {};
+    const kind = td.dataset.edit;
+    const box = document.createElement('div');
+    box.className = `editor editor-${kind}`;
+    if (kind === 'tier') {
+      box.innerHTML = '<label>Tier <input class="ed-tier" type="number" min="0" max="20" step="1"></label>'
+        + '<label>Reason <input class="ed-just" type="text" placeholder="why this tier (optional)"></label>'
+        + '<div class="ed-hint">Enter saves · Esc cancels</div>';
+      box.querySelector('.ed-tier').value = Number.isFinite(n.tier) ? n.tier : '';
+      box.querySelector('.ed-just').value = n.justification || '';
+    } else {
+      box.innerHTML = '<textarea class="ed-notes" rows="4" placeholder="notes"></textarea><div class="ed-hint">Enter saves · Shift+Enter new line · Esc cancels</div>';
+      box.querySelector('.ed-notes').value = n.notes || '';
+    }
+    td.classList.add('editing');
+    td.appendChild(box);
+    editing = { td, tr, pid, kind, box };
+    const first = box.querySelector('input,textarea');
+    first.focus();
+    if (first.select) first.select();
+    box.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Escape') { ev.preventDefault(); closeEditor(false); }
+      else if (ev.key === 'Enter' && !(kind === 'notes' && ev.shiftKey)) { ev.preventDefault(); closeEditor(true); }
+    });
+    box.addEventListener('focusout', (ev) => { if (!box.contains(ev.relatedTarget)) closeEditor(true); });
+    box.addEventListener('dblclick', (ev) => ev.stopPropagation());
+    box.addEventListener('click', (ev) => ev.stopPropagation());
+  }
+  async function closeEditor(save) {
+    if (!editing) return;
+    const { td, pid, kind, box } = editing;
+    editing = null;
+    const fields = kind === 'tier'
+      ? { tier: box.querySelector('.ed-tier').value.trim(), justification: box.querySelector('.ed-just').value.trim() }
+      : { notes: box.querySelector('.ed-notes').value };
+    box.remove();
+    td.classList.remove('editing');
+    if (!save) { td.focus(); return; }
+    const n = ctx.notes[pid] || {};
+    const same = kind === 'tier'
+      ? String(Number.isFinite(n.tier) ? n.tier : '') === fields.tier && (n.justification || '') === fields.justification
+      : (n.notes || '') === fields.notes;
+    if (same) { td.focus(); return; }
+    td.classList.add('saving');
+    let res, body;
+    try {
+      res = await fetch(api(`player/${encodeURIComponent(pid)}`), { method: 'POST', headers: { 'X-Seeding-App': '1', 'Content-Type': 'application/json' }, body: JSON.stringify(fields) });
+      body = await res.json().catch(() => ({}));
+    } catch (err) { body = { error: err.message }; res = { ok: false }; }
+    td.classList.remove('saving');
+    if (!res.ok) {
+      showMsg(`Not saved: ${body.error || 'error'}`);
+      td.classList.add('save-failed');
+      setTimeout(() => td.classList.remove('save-failed'), 2500);
+      return;
+    }
+    showMsg('');
+    ctx.notes[pid] = { ...n, tier: body.tier == null ? undefined : body.tier, justification: body.justification, notes: body.notes };
+    ctx.hasTiers = true;
+    rerenderRow(pid, kind);
+  }
+  function rerenderRow(pid, focusKind) {
+    const p = byId.get(String(pid));
+    const html = R.summaryRow(p, ctx, { app: true });
+    rowHtml.set(String(pid), html);
+    for (const tr of table.querySelectorAll(`tbody tr[data-pid="${CSS.escape(String(pid))}"]`)) {
+      const tmp = document.createElement('tbody');
+      tmp.innerHTML = html;
+      const fresh = tmp.firstElementChild;
+      fresh.dataset.i = tr.dataset.i;
+      tr.replaceWith(fresh);
+      const cell = fresh.querySelector(`td[data-edit="${focusKind}"]`);
+      if (cell) { cell.classList.add('saved'); setTimeout(() => cell.classList.remove('saved'), 1200); cell.focus(); }
+    }
+    applyFreeze();
+    layoutPins();
+    syncSel();
+    if (cmp.on && (cmp.a === String(pid) || cmp.b === String(pid))) renderCompare();
+  }
+  table.addEventListener('dblclick', (ev) => {
+    const td = ev.target.closest('td[data-edit]');
+    if (td) { ev.preventDefault(); openEditor(td); }
+  });
+  table.addEventListener('keydown', (ev) => {
+    if (ev.key !== 'Enter' && ev.key !== 'F2') return;
+    const td = ev.target.closest && ev.target.closest('td[data-edit]');
+    if (td && ev.target === td) { ev.preventDefault(); openEditor(td); }
+  });
+
+  // ---- Compare by selecting rows: tick two rows' boxes. A third tick replaces the older pick. ----
+  function syncSel() {
+    for (const tr of table.querySelectorAll('tbody tr[data-pid]')) {
+      const on = tr.dataset.pid === cmp.a || tr.dataset.pid === cmp.b;
+      tr.classList.toggle('selected', on);
+      const box = tr.querySelector('input.sel');
+      if (box) {
+        box.checked = on;
+        box.title = on ? (tr.dataset.pid === cmp.a ? 'Selected as A (untick to clear)' : 'Selected as B (untick to clear)') : 'Select to compare (pick two)';
+      }
+    }
+    fillPickers();
+  }
+  table.addEventListener('change', (ev) => {
+    const box = ev.target.closest('input.sel');
+    if (!box) return;
+    const pid = box.closest('tr').dataset.pid;
+    if (box.checked) {
+      if (!cmp.a) cmp.a = pid;
+      else if (!cmp.b) cmp.b = pid;
+      else { cmp.a = cmp.b; cmp.b = pid; }
+    } else if (cmp.a === pid) { cmp.a = cmp.b; cmp.b = null; } else if (cmp.b === pid) cmp.b = null;
+    store.set(CMP_KEY, cmp);
+    syncSel();
+    if (cmp.a && cmp.b && !cmp.on) setCompare(true); else renderCompare();
+  });
+
+  // ---- Jump to a player: type a tag, Enter (or pick from the list) scrolls to the row. ----------
+  function jumpTo(value) {
+    const r = resolve(value, true);
+    if (!r || !r.id) return false;
+    const tr = table.querySelector(`tbody tr[data-pid="${CSS.escape(r.id)}"]`);
+    if (!tr) return false;
+    if (getComputedStyle(tr).display === 'none') { $('needsOnly').checked = false; $('needsOnly').dispatchEvent(new Event('change')); }
+    tr.scrollIntoView({ block: 'center' });
+    tr.classList.add('flash');
+    setTimeout(() => tr.classList.remove('flash'), 1600);
+    const cell = tr.querySelector('td[data-edit="tier"]');
+    if (cell) cell.focus({ preventScroll: true });
+    return true;
+  }
+  const jump = $('jump');
+  if (jump) {
+    jump.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); if (jumpTo(jump.value)) jump.select(); } });
+    jump.addEventListener('change', () => { if (jumpTo(jump.value)) jump.select(); });
+  }
 
   // ---- Start --------------------------------------------------------------------------------------
   if (cmp.on) { compare.hidden = false; $('compareToggle').setAttribute('aria-pressed', 'true'); }

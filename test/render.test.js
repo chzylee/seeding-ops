@@ -150,7 +150,12 @@ test('render: the app row adds a pin button and data-pid; the CLI row does not',
   const cli = R.summaryRow(players[0], ctx);
   assert.match(app, /^<tr data-pid="1">/);
   assert.match(app, /<button class="pin"/);
-  assert.ok(!cli.includes('button') && cli.startsWith('<tr><td class="who">'));
+  assert.ok(!cli.includes('button') && cli.startsWith('<tr><td class="who"'));
+  // The app row: a compare checkbox and editable Tier/Notes cells; the static (CLI) row has neither.
+  assert.match(app, /<input type="checkbox" class="sel"/);
+  assert.match(app, /data-edit="tier"/);
+  assert.match(app, /data-edit="notes"/);
+  assert.ok(!/data-edit|class="sel"/.test(cli));
   // Lazy bodies leave the collapsed tables empty until opened.
   const lazy = R.playerBody(players[0], ctx, { lazy: true });
   assert.match(lazy, /data-lazy="game"/);
@@ -196,5 +201,5 @@ test('notes: always a Notes column; other games grouped game > series with best 
   assert.doesNotMatch(html, /<ul|<li/, 'no bullets');
   const text = R.notesText(players[0], c2);
   assert.match(text, /GGST \/ OKSL Gear Grinds: best 3rd \/ 12/);
-  assert.match(R.notesCell(players[3], c2), /No other games/);
+  assert.match(R.notesCell(players[3], c2), /No notes · no other games/);
 });

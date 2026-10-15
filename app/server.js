@@ -107,6 +107,24 @@ function createApp(opts = {}) {
         return send(res, 200, fs.readFileSync(PAGE), 'text/html; charset=utf-8');
       }
 
+      // Edit one player's tier / justification / notes in registry/tiers.csv (lib/view/data.js updatePlayer).
+      m = /^\/api\/e\/([^/]+)\/([^/]+)\/player\/(\d+)$/.exec(p);
+      if (m) {
+        const [, t, e, pid] = m;
+        if (!data.SLUG_PART.test(t) || !data.SLUG_PART.test(e)) return notFound(res);
+        if (method !== 'POST') return send(res, 405, 'Method not allowed');
+        if (req.headers['x-seeding-app'] !== '1') return send(res, 403, 'Missing X-Seeding-App header');
+        const latest = data.latestFinished(outRoot, t, e);
+        if (!latest) return notFound(res);
+        let body = '';
+        for await (const chunk of req) { body += chunk; if (body.length > 20000) return send(res, 413, 'Too large'); }
+        let fields;
+        try { fields = JSON.parse(body || '{}'); } catch { return json(res, 400, { error: 'Body must be JSON.' }); }
+        const allowed = Object.fromEntries(Object.entries(fields).filter(([k]) => ['tier', 'justification', 'notes'].includes(k)));
+        try { return json(res, 200, data.updatePlayer(latest.dir, pid, allowed)); }
+        catch (err) { return json(res, err.status || 500, { error: err.message }); }
+      }
+
       m = /^\/api\/e\/([^/]+)\/([^/]+)\/(data|status|refresh|export\.csv)$/.exec(p);
       if (m) {
         const [, t, e, what] = m;

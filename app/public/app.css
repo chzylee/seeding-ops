@@ -181,3 +181,36 @@ table.summary td.notes { min-width: 320px; max-width: 760px; }
 details.notes-x > summary { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 420px; cursor: pointer; }
 details.notes-x[open] > summary { white-space: normal; max-width: none; margin-bottom: 4px; }
 details.notes-x[open] { min-width: 560px; }
+
+/* Sorting the summary */
+#summary thead th[data-col]:not([data-col="notes"]) { cursor: pointer; }
+#summary thead th[data-dir="1"]::after { content: " ▲"; font-size: 10px; color: var(--accent); }
+#summary thead th[data-dir="-1"]::after { content: " ▼"; font-size: 10px; color: var(--accent); }
+
+/* Editing Tier / Notes */
+td[data-edit] { cursor: cell; }
+td[data-edit]:focus { outline: 2px solid var(--accent); outline-offset: -2px; }
+td.editing { overflow: visible; z-index: 30; }
+td.editing:not(.frozen) { position: relative; }
+.editor { position: absolute; left: 0; top: 0; z-index: 40; background: #fff; border: 1px solid var(--accent); border-radius: var(--radius);
+  box-shadow: 0 6px 20px rgba(0,0,0,.18); padding: 8px; display: grid; gap: 6px; min-width: 260px; text-align: left; font-size: 13px; }
+.editor label { display: grid; grid-template-columns: 52px 1fr; align-items: center; gap: 6px; font-weight: 600; }
+.editor input, .editor textarea { font: inherit; padding: 4px 6px; border: 1px solid var(--line-strong); border-radius: 4px; width: 100%; box-sizing: border-box; }
+.editor .ed-tier { width: 70px; }
+.editor-notes { min-width: 420px; }
+.editor .ed-hint { color: var(--dim); font-size: 11px; font-weight: 400; }
+td.saving { opacity: .55; }
+td.saved { animation: saved 1.2s ease-out; }
+@keyframes saved { from { background: #dff3e4; } to { background: inherit; } }
+td.save-failed { background: #fde2e2 !important; }
+.note-just { margin-bottom: 4px; }
+
+/* Select rows to compare; jump to a tag */
+input.sel { margin: 0 4px 0 0; vertical-align: middle; cursor: pointer; }
+#summary tbody tr.selected td { background: var(--accent-weak); }
+#summary tbody tr.flash td { animation: flash 1.6s ease-out; }
+@keyframes flash { from { background: #fff1a8; } to { background: inherit; } }
+.jump-ctl { display: inline-flex; align-items: center; gap: 4px; height: var(--ctl-h); white-space: nowrap; }
+.jump-ctl input { height: calc(var(--ctl-h) - 4px); width: 150px; }
+#pickA[readonly], #pickB[readonly] { background: var(--head); cursor: default; }
+@media (prefers-reduced-motion: reduce) { td.saved, #summary tbody tr.flash td { animation: none; } }

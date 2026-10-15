@@ -16,6 +16,7 @@
     <button id="compareToggle" type="button" aria-pressed="false" title="Compare two players in the lower half">⇅ Compare</button>
     <label class="freeze-ctl" title="Columns that stay put when you scroll sideways. ❄ in a column header freezes just that column.">Freeze
       <select id="freezeN"></select></label>
+    <label class="jump-ctl" title="Type a tag and press Enter to scroll to that player">Jump to <input id="jump" list="playerList" placeholder="type a tag" autocomplete="off" spellcheck="false"></label>
     <label class="needs-ctl" title="Show only registrants with no tier in registry/tiers.csv"><input type="checkbox" id="needsOnly"> Needs tier only</label>
     <a id="export" class="button" href="#" download title="The summary table as a CSV. In Google Sheets: File → Import → Upload.">Download for Google Sheets</a>
     <span id="status" class="status" role="status" aria-live="polite"></span>
@@ -36,8 +37,8 @@
 </main>
 <section id="compare" hidden aria-label="Compare two players">
   <div class="cmp-bar">
-    <label>A <input id="pickA" list="playerList" placeholder="type a tag" autocomplete="off" spellcheck="false"></label>
-    <label>B <input id="pickB" list="playerList" placeholder="type a tag" autocomplete="off" spellcheck="false"></label>
+    <label>A <input id="pickA" readonly placeholder="tick a row ☐" tabindex="-1"></label>
+    <label>B <input id="pickB" readonly placeholder="tick a row ☐" tabindex="-1"></label>
     <button id="swap" type="button" title="Swap A and B">⇄</button>
     <span class="note">Compares placements at the same events. Not head-to-head sets.</span>
     <button id="compareClose" type="button" title="Close the compare panel">Close</button>

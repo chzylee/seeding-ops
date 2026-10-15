@@ -481,3 +481,244 @@ REPORT
   freeze choices survive (localStorage, unchanged keys). (2) The one-frame header/body offset seen
   once during synced sideways scroll with compare open: unconfirmed, pre-existing, not changed.
 ```
+
+---
+
+## Pass 2 — engineering auditor review
+
+Seat: engineering-auditor persona v0.2.0 (`personal-staff/personas/library/engineering-auditor.md`,
+Profile block). Model: Sonnet. Report-only: no source edited, no server of mine left running, nothing
+run against the real `registry/tiers.csv` or Noah's live :8765 process. Reviewed at `build/webapp`
+HEAD `70473b7`, covering passes 1, 1b, 1c and the out-of-band commits between them
+(`c5c9211`, `abf13ab`, `86c4bc1`, `94ee23c`, `59a21b0`, `8e394c7`, `6da478c`, `bc93955`).
+
+### Terms as understood
+
+- Scope: every acceptance item (1–12, 6b, 11b) against the code at HEAD, the four ratified display
+  rules in every table including the now-N-player compare, the out-of-band tiers feature
+  (`lib/view/data.js` `updatePlayer`/`readNotes`, the `POST /player/<id>` route), `lib/wl.js` vs.
+  start.gg's server-time-budget error, the known open items (`--port 0`, Q1, the Sheets apostrophe),
+  and baseline security (nothing outside `out/` + static, `.env` never served, POST routes guarded).
+- Hard constraints honored: all exercise of `updatePlayer`/the player-edit route ran against a
+  `git clone --branch build/webapp` in a scratch temp folder, never the real repo; no live start.gg
+  calls; Noah's :8765 was never touched (no requests sent to it, no Refresh pressed anywhere); my own
+  scratch server ran once on :8795 against a synthetic run and was stopped immediately after.
+- Not this seat's to give: item 12 (closing approval is pass 4's). The live browser-UI click-through
+  (pin/compare/freeze/refresh by hand) is the orchestrating session's assigned check per the dispatch
+  contract and Noah's own :8765 is the only instance that should be clicked through; I verified the
+  same behavior at the code and test level instead (see "Could not verify").
+
+### Verdict: NOT APPROVED
+
+Two DEFECT-level findings (A2-1, A2-2) sit on paths Noah is relying on right now — live tier editing
+and Refresh during today's large event — and both are reproducible, not speculative. Everything else
+checked out: all 12 acceptance items plus 6b/11b are built and evidence-backed, the four ratified
+display rules hold everywhere including the 3-way compare, the security/static-serving boundary is
+sound, and passes 1/1b/1c are honest, well-evidenced reports. This reads as approve-with-findings
+quality work carrying two regressions serious enough to return for pass 3's repair loop, not a
+build that is broadly wrong.
+
+### Findings
+
+**A2-1 — DEFECT — tier/notes edits can silently fork into a duplicate `registry/tiers.csv` row**
+(maps to usage-log.md "Tier and notes editable in place" (Built, 59a21b0) and acceptance 6b's sibling
+tiers feature; the dispatch's explicit ask to check "tag matching to the wrong row, duplicate rows").
+
+`lib/view/data.js:205` — `updatePlayer`'s own tag-normalizer:
+```
+const norm = (s) => String(s || '').trim().toLowerCase().replace(/s+/g, ' ');
+```
+This should collapse whitespace, exactly like the correct helper 75 lines above it in the same file,
+`readNotes`'s `norm` at `lib/view/data.js:130`:
+```
+const norm = (s) => String(s || '').trim().toLowerCase().replace(/\s+/g, ' ');
+```
+`updatePlayer`'s version is missing the backslash: it strips runs of the literal letter s, not
+whitespace. `readNotes` (what the page displays) and `updatePlayer` (what a tier/notes edit writes)
+now use two different, independently-maintained copies of the same matching logic, and they have
+drifted apart by one character.
+
+Reproduced in an isolated clone (`git clone --branch build/webapp`, never the real repo): seeded
+`registry/tiers.csv` with one sheet-imported row, `sheet_tag` "Mrs Smith" (single space, no
+`player_id` yet — the normal pre-link state for every one of the 654 imported rows). Gave a player on
+a fake pull the tag "Mrs  Smith" (double space — an ordinary sheet-entry variance). POSTed a tier
+edit for that player through the real route (`POST /api/e/<t>/<e>/player/<id>`, in-process via
+`testlib/inject.js`, no network):
+```
+BEFORE: 1 row  - "Mrs Smith" / tier 7  / source "sheet import"
+POST /api/e/.../player/101 {"tier":9,"justification":"retest"} -> 200
+AFTER:  2 rows - "Mrs Smith" / tier 7  / source "sheet import"   (untouched, orphaned)
+                 "Mrs  Smith" / tier 9 / source "app", player_id 101  (new row)
+```
+The edit didn't update the existing row — it created a second one, because `updatePlayer`'s broken
+`norm` never collapses the double space to match the single-spaced stored tag (both tags lose only
+their literal "s" characters, which doesn't make them equal). The original tier-7 row is now an
+untethered duplicate: orphaned today, but because it still carries no `player_id`, `readNotes`'s
+(correct) tag-matching will attach it by tag to the next player whose tag normalizes to "mrs
+smith" — which could be a different real person — misattributing tier 7 and an empty justification to
+them. This is exactly the "duplicate rows" / "tag matching to the wrong row" failure mode the dispatch
+named to check for, and it reproduces on any tag whose whitespace isn't byte-identical between
+start.gg and the sheet import (also plausible for accents/casing drift, not just spacing).
+
+Zero test coverage exists for this: `grep -rn "TIERS_FILE|updatePlayer|tiers.csv" test/` returns
+nothing except comments. It also isn't easily testable as shipped: `TIERS_FILE`
+(`lib/view/data.js:116`) is a module-scope `const`, and `module.exports` only copies its value out —
+reassigning `data.TIERS_FILE` in a test does not redirect `readTiers`/`updatePlayer`, which close over
+the original constant. That's very likely why this shipped with no unit test: the write path can't be
+pointed at a scratch file without `chdir`-ing into a full repo copy (what I did to reproduce this).
+
+**A2-2 — DEFECT — the start.gg "server-time budget" bug-class requirement was not built**
+(usage-log.md row: "Handle start.gg's server-time budget... `lib/wl.js` / the app's refresh need the
+same (or adaptive) handling" — explicitly scoped "for pass 2/3 of the webapp build.")
+
+`git log --oneline 6cf3bb2^..HEAD -- lib/startgg.js lib/pacing.js lib/wl.js app/jobs.js
+app/limit-fetch.js` returns no commits — none of these files were touched anywhere in this build
+(pass 1, 1b, 1c, or the out-of-band work). The classifier that decides whether an error is retried,
+`classifyError` in `lib/startgg.js:133`, still only recognizes rate-limiting via
+`RATE_RE = /rate limit/i` (`lib/startgg.js:131`). The live error text recorded in usage-log.md —
+"You have gone over the threshold for recent request time. Please wait before sending another
+request." — does not contain the phrase "rate limit", so `RATE_RE` never matches it. Simulated
+`classifyError` with that exact text under the two shapes start.gg is most likely to send it in (a
+pre-execution GraphQL error with no `path`, or an HTTP 4xx body message):
+```
+gql error, no path, status 200  -> 'query'   (FATAL - pacing.isRetryable('query') === false)
+HTTP 400, body.message          -> 'query'   (FATAL)
+gql error, WITH path            -> 'server'  (retryable, but caps at ~32s backoff, not the 90s the
+                                               usage log says this error actually needed)
+```
+In the most likely cases the app throws immediately with no retry at all; in the best case it retries
+with a backoff that's still short of what was observed to work. Either way, `wl.fetchSetRecords`
+(used by both the CLI and `app/jobs.js`'s Refresh) stops the W-L fetch outright when this error hits —
+it does not hang or crash the server (the job's `.catch` sets `phase: 'error'` and the new run still
+shows, partial W-L intact), but Refresh does not recover or retry past this wall, which is the entire
+point of the requirement. This is the live error the orchestrator was hitting on Eclipse (182
+players) the same day this build was dispatched, under the exact condition described as "current
+focus" in the dispatch contract: "Noah is seeding a large event TODAY." Pass 1's own Findings/queue
+(Q1-Q6) does not mention this requirement at all — it wasn't declined with a reason, it was dropped.
+
+**A2-3 — DEFECT, carried forward, still unfixed — `--port 0` resolves to 8765**
+(flagged by pass 1b's "Needs attention," repeated by pass 1c, still present at HEAD.)
+
+`app/server.js:169`: `const port = Number(arg('--port') || process.env.PORT) || DEFAULT_PORT;`.
+Confirmed still live by direct evaluation: `arg('--port')` returns the string '0', which is truthy,
+so `Number('0') === 0`, and `0 || DEFAULT_PORT` falls through to 8765. This is why the "server binds
+127.0.0.1" test has to be skipped by pattern (`--test-skip-pattern="binds 127.0.0.1"`) rather than run
+— it tries to bind an ephemeral port and instead collides with Noah's live server. Two UI-pass seats
+(1b, 1c) named this as a one-line fix for "pass 2/3" and it still wasn't made; acceptance item 1 only
+reads PASS because the skip papers over it, not because it's fixed.
+
+**A2-4 — NOTE — the N-player compare's pure logic has no unit tests**
+(acceptance 7/8, the "Compare up to 3" row in usage-log.md, Built in out-of-band commit `bc93955`.)
+
+`eventsSharedBy` and `alignSeriesN` (`lib/view/model.js`), and `sharedEventsTable` /
+`compareSeriesTableN` (`lib/view/render.js`) — the N-player replacements for increment 1's 2-player
+`eventsBothEntered`/`alignSeries`/`bothEnteredTable`/`compareSeriesTable` — have zero references
+anywhere under `test/` (`grep -rln` across all four names returns nothing), while their 2-player
+predecessors are directly tested in `test/view-model.test.js`. A synthetic 3-player spot check I ran
+by hand (3 players, 2 overlapping events, 2 series merging under one canonical key) produced correct
+output, so I found no live bug here — but this is new pure logic behind a ratified, user-facing
+feature, shipped with no regression net, which is exactly what acceptance item 2 asked this build to
+avoid for the rest of the view-logic module.
+
+**A2-5 — NOTE — carried forward, unresolved — Q1 (Events column / toggle counts vs. "no aggregate
+counts")**. No ruling appears in usage-log.md since pass 1 raised it; `playerBody`
+(`lib/view/render.js:279,281`) still renders "Every {game} result ({n})" and
+"Other games ({n} results...)". Unchanged by 1b or 1c (both explicitly left it alone, correctly,
+since it's Noah's ruling to make, not a styling choice). Still open.
+
+**A2-6 — NOTE — carried forward, unresolved — the Sheets leading-apostrophe guard is unverified**.
+`lib/view/export.js`'s `RISKY`/`sheetsCell` implementation is sound on inspection (OWASP CSV-injection
+convention, applied only to cells starting with = + - @, tab or CR) and round-trips through the CSV
+parser in `test/export.test.js`, but whether Google Sheets actually hides the apostrophe on import
+(vs. showing it as a literal character) has still not been tried in Noah's account. Not independently
+verifiable by a report-only pass either; carried forward unchanged.
+
+**A2-7 — NOTE — an unlogged engineer's-choice ruling**. `orderPlayers` (`lib/view/model.js:182-187`)
+now sorts seed ascending, then tier descending, then alphabetical — tier sorting wasn't in
+design-webapp.md (which only commits to "rows remain alphabetical unless notes.json provides seeds"),
+and it's a reasonable reading of usage-log's "sorts by tier like his sheet filter," but it was added in
+an out-of-band commit with no "Engineer's-choice ruling" entry anywhere (pass 1's table predates it).
+No adverse behavior found; flagging the process gap, not the choice.
+
+### Verified, no finding
+
+- Acceptance 1: fresh `git clone --branch build/webapp`,
+  `NODE_OPTIONS="--require ./testlib/no-network.js" node --test --test-skip-pattern="binds 127.0.0.1"`
+  -> tests 106, pass 103, fail 0, skipped 3 (matches pass 1c's claim exactly, re-run independently).
+- Acceptance 2, 3, 4, 5, 6, 6b, 7, 8, 11, 11b: spot-checked against the actual route table in
+  `app/server.js`, the render functions in `lib/view/render.js`, and the compare/freeze/pin logic in
+  `app/public/app.js`; all match their acceptance wording and the four ratified display rules hold
+  structurally in every table I read, 2-player and 3-player compare included (`seriesStatCells` is the
+  single shared cell-renderer behind both).
+- Acceptance 9 (performance), partial re-check: re-ran `scripts/synth-run.js` (200 players, 20,000
+  results) in the isolated clone and hit its `/data` endpoint on a scratch server on :8795 (stopped
+  immediately after): 3,580,270 bytes in 36ms server-side — consistent with pass 1's recorded 3.58 MB /
+  196ms-cold figure (the difference is a raw curl hit vs. a full page navigation+render). I did not
+  redo the in-browser paint-timing/long-task measurements pass 1 recorded; see "Could not verify."
+- Acceptance 10 / security: `.env` and 22 other path-traversal probes still 404 in the clone's test
+  run; `STATIC` (`app/server.js:32`) is a fixed allowlist of 4 files, nothing under `out/` is served raw,
+  `trustedHost` + the required `X-Seeding-App` header (no CORS preflight ever answered, so a
+  cross-origin page's POST is blocked before it's sent) still guard both POST routes. Also manually hit
+  `/.env` on the scratch :8795 instance -> 404, as a second, direct confirmation outside the test suite.
+- Testability/atomicity of the write path (apart from A2-1's matching bug): `updatePlayer`'s
+  CSV write is temp-file-then-rename (`lib/view/data.js:227-229`), and every operation inside it is
+  synchronous (readFileSync/writeFileSync/renameSync), so two concurrent in-process POSTs cannot
+  interleave — no race condition beyond the matching bug itself.
+
+### Could not verify
+
+- Live browser-UI click-through (pin, compare toggle, freeze, Refresh by hand, smooth scrolling):
+  this is the orchestrating session's assigned check against Noah's own :8765 per the dispatch
+  contract, and I was told not to touch that instance or press its Refresh. I verified the same
+  behaviors at the code/test level instead (see above); a true hands-on walkthrough is still
+  outstanding and isn't this pass's to give.
+- Google Sheets import of the exported CSV (the leading-apostrophe question, A2-6): needs Noah's
+  own Google account; out of reach for a report-only pass.
+- Full in-browser performance profile (long-task timings, scroll-frame p95, compare-open paint
+  time): I re-ran the data-generation and a raw HTTP timing check (see above) but did not reproduce
+  pass 1's embedded-browser instrumentation; no reason to doubt its numbers, just not independently
+  re-measured by this pass.
+- `app.cmd` end to end: by inspection only, same as pass 1 — it opens the desktop's default
+  browser, which this seat has no path to exercise safely either.
+
+### REPORT
+
+```
+REPORT
+- Overview: Report-only audit of the seeding-script webapp build (passes 1, 1b, 1c, and the
+  out-of-band tiers/compare-N/sort/jump commits between them), at build/webapp HEAD 70473b7.
+  Verdict: NOT APPROVED. Two reproducible DEFECTs sit on paths Noah is using today - a tag-matching
+  typo in the tier/notes write path that forks a duplicate row in registry/tiers.csv instead of
+  updating the existing one, and a start.gg error class ("threshold for recent request time") that
+  the dispatch named as a required fix for pass 2/3 and that was never attempted anywhere in the
+  build. A third, smaller defect (--port 0 resolving to 8765) was flagged by pass 1b, repeated by
+  pass 1c, and is still unfixed. Everything else checked out: all 12 acceptance items + 6b/11b are
+  built and evidence-backed, the four ratified display rules hold in every table including the new
+  3-way compare, and the security/static-serving boundary is sound.
+- Found: A2-1 DEFECT (tier/notes edit can duplicate a tiers.csv row) - A2-2 DEFECT (server-time-budget
+  bug class unaddressed) - A2-3 DEFECT, carried (--port 0) - A2-4 NOTE (N-player compare logic
+  untested) - A2-5 NOTE, carried (Q1 unresolved) - A2-6 NOTE, carried (Sheets apostrophe unverified)
+  - A2-7 NOTE (unlogged tier-sort ruling).
+- Ran: fresh git clone --branch build/webapp into a scratch temp folder (never the real repo);
+  full offline test suite (106/103/0/3, matches pass 1c exactly); a reproduction of A2-1 against the
+  real POST route via testlib/inject.js with a seeded scratch registry/tiers.csv; a simulation of
+  classifyError with the literal observed start.gg error text (A2-2); a direct re-evaluation of the
+  --port 0 parsing (A2-3); a synthetic 3-player spot-check of the untested compare logic (A2-4); a
+  scripts/synth-run.js (200x100) regeneration and a raw endpoint-timing check on a scratch :8795
+  server, stopped immediately after. Nothing was run against the real registry/, .env, out/, or
+  Noah's :8765 process.
+- Attributed: core / seeding-script webapp increment 2, pass 2. STATED (dispatch-contract-webapp.md).
+- Queued: A2-1 and A2-2 need pass 3 repair before pass 4 can close; A2-3 is a one-line fix repeated
+  across three passes without landing. A2-4/A2-7 are process notes for pass 3 to pick up or decline.
+  A2-5/A2-6 are unchanged open items that remain Noah's or the next increment's to resolve, not
+  pass 3's.
+- Spend: no live start.gg calls (not needed for this review); one scratch server on :8795, stopped
+  immediately after use; no commits except this record.
+- Parked: nothing half-done; the isolated clone and scratch output live only under this session's
+  temp folder and were never pushed or merged back.
+- Needs attention: (1) A2-1 and A2-2 are both live-use-affecting today and should be pass 3's first
+  priority, ahead of the carried-forward notes. (2) A2-3's fix needs its own explicit check for a
+  literal 0 (an empty/undefined --port should mean "use default"; a --port of exactly 0 should mean
+  "let the OS pick"), since a plain `||` chain can't tell those apart. (3) Q1 and the
+  Sheets-apostrophe check still need Noah directly; neither is pass 3's to rule on.
+```

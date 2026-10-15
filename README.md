@@ -2,6 +2,39 @@
 
 ## Quick start (seeding a bracket)
 
+### App: the seeding table in your browser
+
+**Start it:** double-click **`app.cmd`** (it opens your browser), or run `npm run app` and open
+<http://127.0.0.1:8765/>. Leave the window open while you use it; close it to stop. It only listens
+on your own machine.
+
+- **One page per event, always the latest data.** The home page lists every event you've pulled.
+  An event's page lives at `http://127.0.0.1:8765/e/<tournament>/<event>` and always shows that
+  event's newest finished pull. Bookmark it: the address never changes, and a **browser reload**
+  shows the newest data.
+- **Refresh data** pulls the event again from start.gg (a new run folder; old ones are kept), carries
+  over the W-L already fetched, then fetches the missing W-L, summary columns first. The status line
+  shows progress (`Pulling…`, then `W-L 340 / 1,200 (summary 210 / 400)`), and the page switches to
+  the new pull by itself. Reloading during the W-L fetch shows what's been fetched so far. One refresh
+  runs at a time.
+- **📌 Pin** (on each row) freezes that row under the header so you can scroll and compare against
+  it. Pin as many as you like; click again to unpin.
+- **Freeze** columns so they stay put when you scroll sideways: the *Freeze* menu picks how many
+  leading columns, or click **❄** in any column header to freeze just that one. Player always stays.
+- **⇅ Compare** splits the window: pick two players (type part of a tag, Enter) and the lower half
+  shows their summary rows, the events both entered (each one's placement and W-L there; this is
+  *not* head-to-head sets), and their series side by side.
+- **Download for Google Sheets** saves the summary table as a CSV. In Sheets: *File → Import →
+  Upload*, then *Replace current sheet*. Tags that start with `=`, `+`, `-` or `@` get a leading `'`
+  so Sheets keeps them as text.
+- Pins, frozen columns and the compare pair are remembered per event in this browser.
+
+The app pulls with the same code and token as `seed.cmd`. To keep it from using all of start.gg's
+rate limit while something else uses the same token, set `SEED_APP_MAX_PER_MIN` (default 75 per
+rolling 60 s). `views/major-table.js <run folder>` still writes the same view as a single HTML file.
+
+### Pulling from the command line
+
 **One-time setup**
 
 1. Install **Node 24+** from <https://nodejs.org>.
@@ -151,6 +184,22 @@ tool can reuse them:
   auto-resumes an unfinished run of the same event touched in the last 24 h, writes
   `claude-prompt.txt` into each finished run folder, and opens the output folder. It adds no
   fetch logic. Set `SEED_NO_OPEN=1` to stop it opening Explorer or Notepad.
+
+The seeding view (increment 2, spec [`docs/design-webapp.md`](docs/design-webapp.md)):
+
+- `lib/view/model.js`: the view's pure logic: series index, grouping, stats, column choice,
+  W-L tally, events both entered. Runs in Node and in the browser.
+- `lib/view/render.js`: HTML (and the export's plain text) for every cell and table. Also shared
+  by Node and the browser, so the app and `views/major-table.js` show the same cells.
+- `lib/view/data.js`: run folders on disk → the page's JSON; the latest finished run per event.
+  `lib/view/export.js`: the Google Sheets CSV.
+- `lib/wl.js`: W-L (sets) for result rows through `lib/startgg`'s client, cached in
+  `<run>/views/set-records.json`.
+- `app/server.js` (`npm run app`, `app.cmd`): the local server; `app/jobs.js` the refresh job;
+  `app/limit-fetch.js` the app's request ceiling; `app/public/` the page (plain HTML/CSS/JS, no build).
+- `views/major-table.js`: the same view as one HTML file per run, for keeping or sending.
+- `scripts/synth-run.js <folder>`: a synthetic 200 × 100 run for load-testing the app
+  (`node app/server.js --out <folder>`).
 
 ## Hand this to Claude
 

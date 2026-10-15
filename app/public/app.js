@@ -404,6 +404,9 @@
       + `<tbody>${ps.map((p) => R.summaryRow(p, ctx)).join('')}</tbody></table></div>`
       + `<h3>${two ? 'Events both entered' : 'Events 2 or more of them entered'}</h3><p class="dim">Placement and W-L of each at the same event. This is not head-to-head sets.</p>${R.sharedEventsTable(ps, ctx)}`
       + `<h3>Series</h3><p class="dim">${R.esc(vm.meta.game.name)} only. A series ${two ? 'both have' : '2 or more of them have'} played is shaded; series more of them played come first.</p>${R.compareSeriesTableN(ps, ctx)}`;
+    const keys = R.summaryColumns(ctx).map((c) => c.key);
+    const cmpHead = cmpBody.querySelector('.cmp-sum-wrap thead tr');
+    if (cmpHead) [...cmpHead.cells].forEach((th, i) => { th.dataset.col = keys[i]; });
     alignCompare();
     applyFreeze();
     stickCompareHeads();
@@ -414,7 +417,7 @@
   function alignCompare() {
     const wrap = cmpBody.querySelector('.cmp-sum-wrap');
     if (!wrap) return;
-    const widths = [...thead.rows[0].cells].map((th) => th.getBoundingClientRect().width);
+    const widths = [...thead.rows[0].cells].filter((th) => getComputedStyle(th).display !== 'none').map((th) => th.getBoundingClientRect().width);
     const t = wrap.querySelector('table');
     t.querySelector('colgroup').innerHTML = widths.map((w) => `<col style="width:${w}px">`).join('');
     t.style.width = `${widths.reduce((a, b) => a + b, 0)}px`;
@@ -673,6 +676,21 @@
   const KEY = 'seeding:needsOnly:' + location.pathname;
   try { box.checked = localStorage.getItem(KEY) === '1'; } catch { /* per-viewer convenience only */ }
   const apply = () => { document.body.classList.toggle('needs-only', box.checked); try { localStorage.setItem(KEY, box.checked ? '1' : '0'); } catch { /* ignore */ } };
+  box.addEventListener('change', apply);
+  apply();
+})();
+
+// "Show team": hide or show the Team column (main table + compare panel). Per viewer, remembered.
+(function () {
+  const box = document.getElementById('showTeam');
+  if (!box) return;
+  const KEY = 'seeding:showTeam';
+  try { box.checked = localStorage.getItem(KEY) !== '0'; } catch { /* per-viewer convenience only */ }
+  const apply = () => {
+    document.body.classList.toggle('hide-team', !box.checked);
+    try { localStorage.setItem(KEY, box.checked ? '1' : '0'); } catch { /* ignore */ }
+    window.dispatchEvent(new Event('resize')); // re-measure frozen columns, pinned rows and the compare panel
+  };
   box.addEventListener('change', apply);
   apply();
 })();

@@ -263,3 +263,7 @@ table.summary td.notes .note-text { display: -webkit-box; -webkit-line-clamp: 3;
   * { transition: none !important; scroll-behavior: auto !important; }
   td.saved, #summary tbody tr.flash td { animation: none; }
 }
+
+/* "Show team" off: the Team column is hidden in the table and the compare panel */
+body.hide-team #summary th[data-col="team"], body.hide-team #summary td.team,
+body.hide-team .cmp-sum-wrap th[data-col="team"], body.hide-team .cmp-sum-wrap td.team { display: none; }

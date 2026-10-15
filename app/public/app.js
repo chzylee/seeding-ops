@@ -444,17 +444,16 @@
       let st;
       try { st = await (await fetch(api('status'), { cache: 'no-store' })).json(); } catch { return; }
       showStatus(st);
+      const finished = !st.running && !st.busy;
+      if (finished) { clearInterval(polling); polling = null; }
+      // A new run (the pull finished) shows at once; the finished W-L shows when the job ends.
       const newRun = vm && st.run && st.run !== vm.run.folder;
-      if (newRun) { load({ keep: true }); return; } // the pull finished: show the new run now
+      if (newRun || (finished && st.phase === 'done')) { load({ keep: true }); return; }
       if (st.running && st.wl && st.wl.done !== lastDone && st.wl.done > 0) {
         lastDone = st.wl.done;
         const b = $('update');
         b.hidden = false;
         b.textContent = `Show W-L so far (${st.wl.done.toLocaleString()} new)`;
-      }
-      if (!st.running && !st.busy) {
-        clearInterval(polling); polling = null;
-        if (st.phase === 'done') load({ keep: true });
       }
     }, 2000);
   }

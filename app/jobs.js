@@ -43,6 +43,12 @@ class Jobs {
     }).finally(() => {
       job.finishedAt = new Date(this.now()).toISOString();
       if (job.cache && job.runDir) { try { wl.saveCache(job.runDir, job.cache); } catch { /* reported below */ } }
+      if (job.runDir) {
+        try {
+          fs.writeFileSync(path.join(job.runDir, 'views', 'refresh-sends.json'),
+            JSON.stringify({ max_per_60s: this.opts.maxPerMinute, requests: job.sends.length, sent_at_ms: job.sends }) + '\n');
+        } catch { /* the run itself is intact without this record */ }
+      }
       job.cache = null;
       this.current = null;
     });
@@ -83,7 +89,10 @@ class Jobs {
     if (!token) throw new Error('No start.gg token. Paste it after STARTGG_TOKEN= in the .env file and restart the app.');
     const sleep = this.opts.sleep || ((ms) => new Promise((r) => setTimeout(r, ms)));
     const base = this.opts.fetchImpl || ((u, i) => globalThis.fetch(u, i));
-    const fetchImpl = limitFetch(base, { max: this.opts.maxPerMinute, now: () => this.now(), sleep, onSend: () => { job.requests++; } });
+    // Actual send times (after the limiter's wait). The request logs record when the client
+    // decided to send, which can be earlier; this is the record of what reached start.gg.
+    job.sends = [];
+    const fetchImpl = limitFetch(base, { max: this.opts.maxPerMinute, now: () => this.now(), sleep, onSend: (t) => { job.requests++; job.sends.push(t); } });
 
     // 1. The pull: a fresh run folder, exactly as `node pull.js <url>` makes it.
     const prev = data.latestFinished(outRoot, job.t, job.e);

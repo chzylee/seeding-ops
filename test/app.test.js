@@ -225,6 +225,24 @@ test('app: a pull that cannot start leaves the previous run on the page and repo
   assert.strictEqual(calls.calls.length, 0);
 });
 
+test('app: a refresh never sends more than SEED_APP_MAX_PER_MIN in any rolling 60 s (actual sends, recorded in the run)', async () => {
+  const outRoot = tmpOut();
+  const world = buildWorld(START / 1000);
+  await pullAt(outRoot, START, world);
+  const fake = createFakeFetch(world);
+  const clock = virtualClock(START + HOUR);
+  const app = createApp({ outRoot, getToken: () => TOKEN, fetchImpl: fake, now: clock.now, sleep: clock.sleep, maxPerMinute: 10 });
+  await inject(app.handler, { url: `${API}/refresh`, method: 'POST', headers: { 'X-Seeding-App': '1' } });
+  await app.jobs.last.get(`${T}/${E}`).promise;
+  assert.strictEqual(app.jobs.status(T, E).phase, 'done');
+  const st = app.jobs.status(T, E);
+  const rec = JSON.parse(fs.readFileSync(path.join(outRoot, st.run, 'views', 'refresh-sends.json'), 'utf8'));
+  assert.strictEqual(rec.max_per_60s, 10);
+  assert.strictEqual(rec.requests, fake.calls.length, 'every HTTP call is recorded');
+  assert.ok(rec.requests > 30, 'enough requests to need throttling');
+  assert.strictEqual(pacing.maxInAnyWindow(rec.sent_at_ms), 10);
+});
+
 test('app: the limiter keeps any rolling 60 s at or under its ceiling, across concurrent callers', async () => {
   const { limitFetch } = require('../app/limit-fetch');
   const clock = virtualClock(START);

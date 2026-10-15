@@ -539,6 +539,9 @@
     }
     td.classList.add('editing');
     td.appendChild(box);
+    // Near the window's right edge the popover hangs left from the cell instead of running off-screen.
+    const edge = document.documentElement.clientWidth - 8;
+    if (td.getBoundingClientRect().left + box.offsetWidth > edge) box.classList.add('flip');
     editing = { td, tr, pid, kind, box };
     const first = box.querySelector('input,textarea');
     first.focus();

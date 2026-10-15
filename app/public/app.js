@@ -88,8 +88,12 @@
     $('title').textContent = [ev.tournament_name, ev.name].filter(Boolean).join(' · ');
     const w = vm.meta.window || {};
     const runAt = new Date(vm.run.run_at);
-    $('sub').textContent = `${vm.meta.game.name} · ${vm.meta.registrant_count} registrants · results ${String(w.start).slice(0, 10)} to ${String(w.end).slice(0, 10)}`
-      + ` · pulled ${runAt.toLocaleString()} · W-L known for ${vm.wl.known.toLocaleString()} of ${vm.wl.total.toLocaleString()} ${vm.meta.game.name} results`;
+    // Two units (event facts, then W-L progress) so the line wraps between them, not mid-phrase.
+    const facts = document.createElement('span'), wl = document.createElement('span');
+    facts.textContent = `${vm.meta.game.name} · ${vm.meta.registrant_count} registrants · results ${String(w.start).slice(0, 10)} to ${String(w.end).slice(0, 10)}`
+      + ` · pulled ${runAt.toLocaleString()}`;
+    wl.textContent = `W-L known for ${vm.wl.known.toLocaleString()} of ${vm.wl.total.toLocaleString()} ${vm.meta.game.name} results`;
+    $('sub').replaceChildren(facts, wl);
   }
 
   // ---- Summary + pins --------------------------------------------------------------------------
@@ -285,7 +289,8 @@
     const all = [...details.children];
     const i = all.indexOf(sec);
     for (const s of all.slice(Math.max(0, i - 3), i + 2)) renderSection(s);
-    sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    const still = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+    sec.scrollIntoView({ behavior: still ? 'auto' : 'smooth', block: 'start' });
   }
 
   // ---- Sorting (any table.sortable, including ones rendered later) ------------------------------
@@ -393,6 +398,7 @@
       + `<h3>Series</h3><p class="dim">${R.esc(vm.meta.game.name)} only. A series both have played is on one row (shaded).</p>${R.compareSeriesTable(A, B, ctx)}`;
     alignCompare();
     applyFreeze();
+    stickCompareHeads();
     perf.compareRenderMs = Math.round(performance.now() - t0);
   }
 
@@ -406,6 +412,17 @@
     t.style.width = `${widths.reduce((a, b) => a + b, 0)}px`;
     wrap.scrollLeft = pane.scrollLeft;
   }
+  // The panel's table heads stick under its picker bar (whose height changes when it wraps), and
+  // the series table's second head row under its first.
+  function stickCompareHeads() {
+    const bar = compare.querySelector('.cmp-bar');
+    if (!bar || compare.hidden) return;
+    const top = Math.floor(bar.getBoundingClientRect().height);
+    compare.style.setProperty('--cmp-top', `${top}px`);
+    const cs = cmpBody.querySelector('table.cmp-series');
+    const side = cs && cs.tHead && cs.tHead.rows[0] && cs.tHead.rows[0].cells[1];
+    if (side) compare.style.setProperty('--cmp-top2', `${top + Math.floor(side.getBoundingClientRect().height)}px`);
+  }
   let syncing = false;
   pane.addEventListener('scroll', () => {
     const wrap = cmp.on && cmpBody.querySelector('.cmp-sum-wrap');
@@ -417,7 +434,7 @@
     syncing = true; pane.scrollLeft = ev.target.scrollLeft; requestAnimationFrame(() => { syncing = false; });
   }, { passive: true, capture: true });
 
-  window.addEventListener('resize', () => { layoutPins(); if (cmp.on) alignCompare(); applyFreeze(); });
+  window.addEventListener('resize', () => { layoutPins(); if (cmp.on) { alignCompare(); stickCompareHeads(); } applyFreeze(); });
 
   // ---- Refresh + status --------------------------------------------------------------------------
   let polling = null;

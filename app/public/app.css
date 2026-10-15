@@ -1,110 +1,161 @@
-/* app/public/app.css — the seeding app. Light only, like increment 1's view. */
+/* app/public/app.css — the seeding app. Light only, like increment 1's view.
+   Dense tables first: calm neutrals, one blue accent for actions and selection, tabular numerals. */
 :root {
-  --bg: #fafafa; --fg: #1a1a1a; --dim: #888; --line: #ddd; --head: #f0f0f0; --head-hover: #e6e6e6;
-  --cell: #fff; --pin: #fff8db; --pin-edge: #c9a227; --accent: #2459a6; --split: #9bb3d9; --both: #f3f7ff;
+  --bg: #f7f7f8; --fg: #1a1a1a; --ink-2: #444; --dim: #6b6b6b;          /* --dim: 5.3:1 on white, 4.6:1 on --head */
+  --line: #dedfe2; --line-strong: #c4cad3;
+  --head: #f1f2f4; --head-hover: #e6e8ec; --cell: #fff; --row-hover: #f1f5fb;
+  --pin: #fff6d6; --pin-hover: #fdefc0; --pin-edge: #c9a227;
+  --accent: #2459a6; --accent-ink: #1d4785; --accent-weak: #e8eef8;
+  --split: #9bb3d9; --both: #e9f0fb;
+  --warn-bg: #fde8c8; --warn-fg: #6e4300;
+  --ctl-h: 30px; --radius: 6px;
 }
 * { box-sizing: border-box; }
+[hidden] { display: none !important; } /* the toolbar's display rules must not resurrect hidden controls */
 html, body { height: 100%; }
-body { margin: 0; font: 14px/1.45 system-ui, sans-serif; background: var(--bg); color: var(--fg); }
+body { margin: 0; font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; background: var(--bg); color: var(--fg); }
 a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
 .dim { color: var(--dim); }
 button { font: inherit; cursor: pointer; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
 /* ---- Index ---- */
 body.index main { max-width: 900px; margin: 0 auto; padding: 16px; }
 body.index h1 { font-size: 19px; }
 ul.events { list-style: none; padding: 0; }
-ul.events li { background: var(--cell); border: 1px solid var(--line); border-radius: 4px; padding: 8px 12px; margin-bottom: 8px; }
+ul.events li { background: var(--cell); border: 1px solid var(--line); border-radius: var(--radius); padding: 9px 12px; margin-bottom: 8px; }
+ul.events li:hover { border-color: var(--line-strong); }
 ul.events a { font-weight: 600; }
-.busy { font-size: 12px; color: #7a4a00; background: #fde8c8; border-radius: 3px; padding: 0 5px; margin-left: 6px; }
+.busy { font-size: 12px; color: var(--warn-fg); background: var(--warn-bg); border-radius: 3px; padding: 0 5px; margin-left: 6px; }
 
 /* ---- App layout: header, table pane, optional compare panel (lower half) ---- */
 body.app { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
-header#top { flex: none; padding: 8px 16px 6px; background: var(--cell); border-bottom: 1px solid var(--line); }
+header#top { flex: none; padding: 10px 16px 8px; background: var(--cell); border-bottom: 1px solid var(--line-strong); }
 .titlebar { display: flex; align-items: baseline; gap: 12px; }
 .back { font-size: 13px; white-space: nowrap; }
-h1 { font-size: 18px; margin: 0; }
-.sub { color: #666; font-size: 13px; }
-.bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 6px; }
-.bar button { border: 1px solid #b9c4d6; background: #f4f7fc; border-radius: 4px; padding: 3px 10px; }
-.bar button:hover, .bar a.button:hover { background: #e7eef9; }
-.bar a.button { border: 1px solid #b9c4d6; background: #f4f7fc; border-radius: 4px; padding: 3px 10px; color: var(--fg); }
-.freeze-ctl { font-size: 13px; color: #555; }
-.freeze-ctl select { font: inherit; }
+h1 { font-size: 18px; font-weight: 650; margin: 0; letter-spacing: -0.005em; }
+/* Event facts, then W-L progress; they wrap as two units, never mid-phrase. */
+.sub { display: flex; flex-wrap: wrap; column-gap: 14px; color: var(--dim); font-size: 13px; margin-top: 1px; font-variant-numeric: tabular-nums; }
+
+/* Toolbar: one control height, one button style. */
+.bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 8px; }
+.bar button, .bar a.button, .cmp-bar button {
+  display: inline-flex; align-items: center; height: var(--ctl-h); padding: 0 12px;
+  border: 1px solid var(--line-strong); background: var(--cell); color: var(--fg); border-radius: var(--radius);
+  white-space: nowrap; transition: background-color 120ms ease-out, border-color 120ms ease-out;
+}
+.bar button:hover, .bar a.button:hover, .cmp-bar button:hover { background: var(--accent-weak); border-color: var(--split); text-decoration: none; }
+.bar button:active, .bar a.button:active, .cmp-bar button:active { background: #dbe5f4; }
 .bar button[aria-pressed="true"] { background: var(--accent); color: #fff; border-color: var(--accent); }
-.bar button:disabled { opacity: .55; cursor: default; }
-.status { font-size: 13px; color: #555; }
+.bar button[aria-pressed="true"]:hover { background: var(--accent-ink); }
+.bar button:disabled { opacity: .5; cursor: default; background: var(--cell); border-color: var(--line-strong); }
+.bar #update { background: var(--accent); color: #fff; border-color: var(--accent); }
+.bar #update:hover { background: var(--accent-ink); }
+.freeze-ctl { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--dim); }
+.freeze-ctl select { font: inherit; font-size: 13px; color: var(--fg); height: var(--ctl-h); max-width: 17em; padding: 0 6px;
+  border: 1px solid var(--line-strong); border-radius: var(--radius); background: var(--cell); cursor: pointer; }
+.status { font-size: 13px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
 .status.err { color: #a11; }
-.about { font-size: 12px; color: #555; max-width: 900px; }
-.about summary { color: var(--accent); cursor: pointer; }
+.about { font-size: 13px; color: var(--ink-2); margin: 0 0 0 auto; }
+.about[open] { flex-basis: 100%; margin-left: 0; max-width: 75ch; line-height: 1.5; padding-bottom: 2px; }
+.about summary { color: var(--accent); cursor: pointer; line-height: var(--ctl-h); }
 
 /* No side padding on the scrollers: frozen cells stick at the very edge, so nothing scrolls past them in a gutter. */
 #pane { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 0 0 48px; overscroll-behavior: contain; }
-#compare { flex: 0 0 50%; min-height: 0; overflow: auto; border-top: 3px solid var(--split); background: var(--bg); padding: 0 16px 32px; }
+#compare { flex: 0 0 50%; min-height: 0; overflow: auto; border-top: 2px solid var(--split); box-shadow: 0 -3px 6px rgba(20, 40, 80, .08);
+  background: var(--bg); padding: 0 16px 32px; position: relative; }
 #compare[hidden] { display: none; }
 #msg:empty { display: none; }
 #msg { padding: 12px 16px; color: #a11; }
 
 /* ---- Tables (separate borders so sticky cells keep theirs) ---- */
-table { border-collapse: separate; border-spacing: 0; background: var(--cell); }
-th, td { border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); padding: 5px 9px; vertical-align: top; text-align: left; }
+table { border-collapse: separate; border-spacing: 0; background: var(--cell); font-variant-numeric: tabular-nums; }
+th, td { border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); padding: 6px 10px; vertical-align: top; text-align: left; line-height: 1.38; }
 tr > :first-child { border-left: 1px solid var(--line); }
 thead tr:first-child > * { border-top: 1px solid var(--line); }
-th { background: var(--head); font-weight: 600; white-space: nowrap; }
-.tag { font-size: 11px; background: #eef; border-radius: 3px; padding: 0 4px; color: #446; margin-left: 4px; }
-.tag.major { background: #fde8c8; color: #7a4a00; }
+th { background: var(--head); font-weight: 600; font-size: 13px; color: #2b2b2b; white-space: nowrap; vertical-align: bottom; }
+thead tr:last-child > * { border-bottom-color: var(--line-strong); }
+.tag { font-size: 11px; background: #eceef8; border-radius: 3px; padding: 0 4px; color: #3f4566; margin-left: 4px; white-space: nowrap; }
+.tag.major { background: var(--warn-bg); color: var(--warn-fg); }
 details { margin-top: 8px; }
 summary { cursor: pointer; color: var(--accent); }
+table.res { margin-top: 2px; }
+table.res td:first-child { min-width: 11em; }
 table.res td.num { white-space: nowrap; text-align: right; }
 table.res td.date { color: var(--dim); white-space: nowrap; }
 table.res td.each { min-width: 240px; }
 table.res td.each .line { white-space: nowrap; }
-table.sortable th { cursor: pointer; }
+table.res tbody tr:hover td { background: var(--row-hover); }
+table.sortable th { cursor: pointer; user-select: none; }
 table.sortable th:hover { background: var(--head-hover); }
+table.sortable th[data-dir="1"]::after { content: " ▲"; font-size: 10px; color: var(--accent); }
+table.sortable th[data-dir="-1"]::after { content: " ▼"; font-size: 10px; color: var(--accent); }
 
 /* ---- Summary: sticky header row, sticky player column, pinned rows frozen under the header ---- */
 table.summary { margin: 8px 16px 0; }
 table.summary td.seed { font-size: 18px; font-weight: 700; text-align: center; }
 table.summary td.notes { min-width: 260px; max-width: 380px; }
 table.summary .line, table.summary td.region { white-space: nowrap; }
+table.summary .line + .line { margin-top: 1px; }
 table.summary thead th { position: sticky; top: 0; z-index: 3; }
 table.summary th.who { left: 0; z-index: 5; }
-table.summary td.who { position: sticky; left: 0; background: var(--cell); z-index: 1; min-width: 150px; }
+table.summary td.who { position: sticky; left: 0; background: var(--cell); z-index: 1; min-width: 160px; }
+table.summary td.who a { font-weight: 600; }
 table.summary tbody.pinned td { position: sticky; background: var(--pin); z-index: 2; }
 table.summary tbody.pinned td.who { z-index: 4; background: var(--pin); }
+table.summary tbody.pinned tr:hover td { background: var(--pin-hover); }
 table.summary tbody.pinned tr.last-pin td { border-bottom: 2px solid var(--pin-edge); }
-table.summary tbody.main tr:hover td { background: #f7f9fd; }
+table.summary tbody.main tr:hover td { background: var(--row-hover); }
 /* Frozen columns (Player always; others by choice): sticky-left, offsets set by app.js. */
 table.summary .frozen { position: sticky; z-index: 1; background: var(--cell); }
 table.summary th.frozen { z-index: 5; background: var(--head); }
 table.summary tbody.pinned td.frozen { z-index: 4; background: var(--pin); }
-table.summary .frozen-edge { box-shadow: inset -2px 0 0 #b9c4d6; }
-button.freeze { border: 0; background: none; padding: 0 0 0 6px; font-size: 12px; opacity: .25; vertical-align: 1px; }
-th:hover button.freeze, button.freeze:focus-visible { opacity: .7; }
+table.summary tbody.pinned tr:hover td.frozen { background: var(--pin-hover); }
+table.summary tbody.main tr:hover td.frozen { background: var(--row-hover); }
+/* The frozen block's right edge: a firm rule (no blurred shadow: it would repaint on every sideways scroll). */
+table.summary .frozen-edge { box-shadow: inset -2px 0 0 var(--line-strong); }
+button.freeze { border: 0; background: none; padding: 0 0 0 6px; font-size: 12px; opacity: .3; vertical-align: 1px; }
+th:hover button.freeze, button.freeze:focus-visible { opacity: .75; }
 button.freeze[aria-pressed="true"] { opacity: 1; color: var(--accent); }
-button.pin { border: 0; background: none; padding: 0 5px 0 0; font-size: 13px; opacity: .3; filter: grayscale(1); }
+button.pin { border: 0; background: none; padding: 1px 3px; margin: -1px 3px 0 -3px; border-radius: 4px; font-size: 13px; opacity: .3; filter: grayscale(1); }
 tr:hover button.pin, button.pin:focus-visible { opacity: .9; filter: none; }
+button.pin:hover { background: rgba(201, 162, 39, .18); }
 tbody.pinned button.pin { opacity: 1; filter: none; }
 
 /* ---- Per-player detail, rendered as it scrolls into view ---- */
 section.player { position: sticky; left: 0; max-width: 100vw; padding: 0 16px; }
 section.player.rendered { contain: layout paint; }
-section.player h2 { font-size: 16px; margin: 28px 0 6px; }
+section.player h2 { font-size: 16px; font-weight: 650; margin: 32px 0 8px; scroll-margin-top: 8px; }
 section.player .body { overflow-x: auto; }
+section.player .body > details > summary { padding: 2px 0; }
 
 /* ---- Compare panel ---- */
-.cmp-bar { position: sticky; top: 0; z-index: 6; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 8px 0; background: var(--bg); border-bottom: 1px solid var(--line); }
-.cmp-bar input { font: inherit; width: 220px; padding: 2px 6px; }
-.cmp-bar .note { font-size: 12px; color: #7a4a00; background: #fde8c8; border-radius: 3px; padding: 1px 6px; }
-.cmp-bar button { border: 1px solid #b9c4d6; background: #f4f7fc; border-radius: 4px; padding: 2px 9px; }
-#cmpBody h3 { font-size: 14px; margin: 14px 0 6px; }
+.cmp-bar { position: sticky; top: 0; z-index: 6; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; padding: 8px 0;
+  background: var(--bg); border-bottom: 1px solid var(--line-strong); }
+.cmp-bar label { display: inline-flex; align-items: center; gap: 6px; font-weight: 650; }
+.cmp-bar input { font: inherit; font-weight: 400; width: clamp(150px, 18vw, 220px); height: var(--ctl-h); padding: 0 8px;
+  border: 1px solid var(--line-strong); border-radius: var(--radius); background: var(--cell); color: var(--fg); }
+.cmp-bar input::placeholder { color: var(--dim); }
+.cmp-bar .note { flex: 1 1 13em; line-height: 1.3; font-size: 12px; color: var(--warn-fg); }
+.cmp-bar #compareClose { margin-left: auto; }
+#cmpBody h3 { font-size: 14px; font-weight: 650; margin: 18px 0 6px; }
+#cmpBody h3 + p.dim { margin: 0 0 6px; font-size: 13px; }
 #cmpBody .hint { color: var(--dim); padding: 12px 0; }
+/* Column heads in the panel stay under the bar while its tables scroll (offsets set by app.js). */
+#cmpBody table.res thead th { position: sticky; top: var(--cmp-top, 0px); z-index: 2; }
+#cmpBody table.cmp-series thead tr:nth-child(2) th { top: var(--cmp-top2, 0px); }
 .cmp-sum-wrap { overflow-x: auto; }
 .cmp-sum-wrap { margin: 0 -16px; }
 .cmp-sum-wrap table.summary { margin: 0 16px; table-layout: fixed; }
 .cmp-sum-wrap table.summary thead th:not(.frozen) { position: static; }
 .cmp-sum-wrap table.summary td, .cmp-sum-wrap table.summary th { overflow: hidden; }
-table.cmp-series th.side { text-align: center; background: #e4ebf7; }
+table.cmp-series th.side { text-align: center; background: var(--accent-weak); color: var(--accent-ink); font-size: 14px; }
 table.cmp-series tr.both td { background: var(--both); }
+table.cmp-series tr.both:hover td { background: #dde8f8; }
 table.cmp-series tbody td:nth-child(5), table.cmp-series thead tr:nth-child(2) th:nth-child(4),
 table.cmp-series thead tr:first-child th:nth-child(3) { border-left: 2px solid var(--split); }
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; scroll-behavior: auto !important; }
+}

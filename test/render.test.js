@@ -173,3 +173,28 @@ test('render: summary text table (Sheets export) — same columns plus Prefix an
   // Columns in the export are the page's columns, in the page's order.
   assert.deepStrictEqual(head.filter((h) => !['Prefix', 'start.gg player id'].includes(h)), R.summaryColumns(ctx).map((c) => c.text));
 });
+
+test('notes: always a Notes column; other games grouped game > series with best placement · W-L, best W-L, avg W-L, date of best', () => {
+  const { ctx, players } = fixture();
+  assert.ok(R.summaryColumns(ctx).some((c) => c.key === 'notes'), 'Notes column present even with no notes.json');
+  const extra = [
+    row(1, 'OKSL Gear Grinds #84', { is_event_game: 'false', game_name: 'GGST', placement: '9', num_entrants: '12', event_date: '2025-01-18' }),
+    row(1, 'OKSL Gear Grinds #85', { is_event_game: 'false', game_name: 'GGST', placement: '3', num_entrants: '12', event_date: '2025-02-01' }),
+    row(1, 'Fight Night 9', { is_event_game: 'false', game_name: 'SF6', placement: '5', num_entrants: '30', event_date: '2025-05-05' }),
+  ];
+  const rows = [...Object.values(ctx.rowsBy).flat(), ...extra];
+  const index = M.buildSeriesIndex(rows);
+  const c2 = R.summaryContext({ meta: ctx.meta, players, rows, records: ctx.records, notes: {}, columns: { majors: ctx.majors, shared: ctx.shared }, index });
+  const games = R.otherGameSeries(c2.rowsBy['1'], c2.records, c2.index);
+  assert.strictEqual(games[0].game, 'GGST', 'games ordered by events entered (GGST 3 > SF6 1)');
+  const gear = games[0].series.find((s) => /OKSL Gear Grinds/.test(s.label));
+  assert.ok(gear, 'OKSL Gear Grinds #84/#85 grouped as one series');
+  const html = R.notesCell(players[0], c2);
+  assert.match(html, /<table class="mini">/, 'a table, not bullets');
+  assert.match(html, /3rd \/ 12/, 'best placement out of entrants');
+  assert.match(html, /2025-02-01/, 'date of the best placement');
+  assert.doesNotMatch(html, /<ul|<li/, 'no bullets');
+  const text = R.notesText(players[0], c2);
+  assert.match(text, /GGST \/ OKSL Gear Grinds: best 3rd \/ 12/);
+  assert.match(R.notesCell(players[3], c2), /No other games/);
+});

@@ -25,7 +25,8 @@ DISPATCH
 | Pass | Seat | Model | Posture |
 |---|---|---|---|
 | 1 | lead-engineer | Opus | Build to `docs/design-webapp.md`; `docs/build-record-webapp.md` §Pass 1 |
-| 2 | engineering-auditor | Sonnet | Report-only review |
+| 1b | fresh UI agent using the `impeccable` skill | Opus | **Light UI polish** of the app's page (layout, hierarchy, readability, scrolling feel), per Noah: *"have a fresh opus subagent take a light pass with impeccable skills to improve ui."* Front-end files only. Must keep every behavior and the four ratified display rules, with tests green |
+| 2 | engineering-auditor | Sonnet | Report-only review, **covering pass 1 and pass 1b** |
 | 3 | lead-engineer, fresh job | Sonnet | Repair: every finding FIXED or DECLINED with reasoning |
 | 4 | engineering-auditor, fresh job | Opus | Closing re-review; the build is not complete until this approves |
 

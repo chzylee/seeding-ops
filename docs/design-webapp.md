@@ -93,6 +93,32 @@ Tier import from Noah's sheet (explicitly deferred). Head-to-head **sets** betwe
 authentication, multi-user. Changing the pull (`lib/run.js` behavior, CSV schema). Editing seeds/notes
 from the page.
 
+## Amendment A1 — freeze columns, Google Sheets export (Noah, 2026-10-15, mid-pass-1)
+
+> "i should also be able to import to google sheets because that is much easier for me to both manage
+> and share. the ability to freeze columns and rows would also be awesome."
+
+- **Freeze columns:** a control on the summary table to choose how many leading columns stay fixed
+  when scrolling sideways (Player is always frozen), or to freeze specific columns by clicking their
+  header. Frozen columns stay aligned in the pinned-row block and the compare panel. Persist per event
+  like pins. **Freeze rows = the 📌 pin** (already specified).
+- **Download for Google Sheets:** a button that downloads the summary table as a CSV built to be
+  imported with Sheets' *File → Import → Upload → Replace current sheet*: one header row, one row per
+  player, each cell's lines joined so it reads as one line in a spreadsheet cell (e.g. `9th / 196 · 4-2 ('26)`), UTF-8.
+  **Tags that start with `= + - @`** must import as text, not formulas. Choose and test the escaping, and
+  record the choice. The download is served by the app (`GET /api/e/<t>/<e>/export.csv`); no browser-only blob tricks.
+- Out of scope still: tier import/editing (next increment, see below).
+
+## Next increment (not this build) — tiers as Noah's database
+
+Noah, 2026-10-15: *"ideally i manage a separate independent sheet of tiers, but we shouldnt lock in to my
+existing all players/seeds sheet … one table for players to tiers, another table from players to
+results/notes thats much like the generated sheet from results"* and *"we're going to keep building now
+but incrementally because i am literally using this right now."* Shape: `registry/` tables (tiers:
+player_id, tag, game, tier, justification, decided_on, source; results/notes), Sheets-importable, one-time
+seed from his existing sheet, tier + justification editable in the app, "needs tier" filter, his Tier
+Guide shown alongside. Recorded here so this build's structure doesn't block it.
+
 ## Amendment log
 
 - 2026-10-15: created (Noah, chat). Process: full 4 passes now (Noah, D: "Full 4 passes now").

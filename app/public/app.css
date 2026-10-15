@@ -175,3 +175,9 @@ table.summary td.tier { text-align: center; font-variant-numeric: tabular-nums; 
 .tag.needs { background: var(--warn-bg); color: var(--warn-fg); }
 .needs-ctl { display: inline-flex; align-items: center; gap: 4px; height: var(--ctl-h); white-space: nowrap; }
 body.needs-only table.summary tbody tr:not(.untiered) { display: none; }
+
+/* Notes collapsed to one line; expand for the full note + other games table */
+table.summary td.notes { min-width: 320px; max-width: 760px; }
+details.notes-x > summary { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 420px; cursor: pointer; }
+details.notes-x[open] > summary { white-space: normal; max-width: none; margin-bottom: 4px; }
+details.notes-x[open] { min-width: 560px; }

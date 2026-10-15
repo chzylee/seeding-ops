@@ -183,3 +183,164 @@ REPORT
   without a visible apostrophe. (3) If a :8766 server was views/serve.js from this tree, it is gone;
   npm run app replaces it.
 ```
+
+---
+
+## Pass 1b — UI polish (impeccable)
+
+Seat: a fresh Opus agent with the `impeccable` skill, which Noah named: *"have a fresh opus subagent take
+a light pass with impeccable skills to improve ui"*. Branch `build/webapp`, polish commit `9a7a756`, local only.
+
+### Terms as understood
+
+- **Scope:** a light presentation pass on `app/public/*`. Hierarchy, alignment, spacing, type, contrast,
+  toolbar, compare layout, frozen/pinned affordances, multi-line cell readability. No new information,
+  no new features. Server, routes, data, model logic and fetch code untouched.
+- **Binding:** the four Ratified display rules; every pass-1 behavior (pin/unpin, freeze, compare
+  split + pickers + swap + close, Refresh + status, Sheets download, sortable headers, player links,
+  "How to read this"); the offline suite at 0 fail.
+- **Live:** Noah is using the app on :8765, and that server reads `app/public/*` from this working tree
+  on every request. So the edits were made and checked in a scratch git worktree served on :8793 (with
+  `--out` pointed at the real, read-only `out/`). They were fast-forwarded into `build/webapp` only after
+  verification. A reload on :8765 now shows the new UI.
+
+### Assumptions I supplied
+
+1. **I skipped impeccable's setup gate.** The skill stops for an `init` interview (writing `PRODUCT.md`)
+   when a project has none. That needs Noah's answers, and the file is outside this seat's file scope.
+   I used the dispatch brief as product context instead (register: product UI, a dense data tool; user:
+   one TO seeding a 182-player event today). No `PRODUCT.md` was written. Amendable: run
+   `impeccable init` later if the UI keeps growing.
+2. **I left `lib/view/render.js` alone.** Its markup is shared with `views/major-table.js` (whose output
+   pass 1 kept byte-identical), and `test/render.test.js` pins it (e.g. `Best placement: <b>1st / 20</b>`).
+   Everything here is CSS plus three small presentation hooks in `app.js`.
+
+### What the critique found
+
+I walked the Eclipse page (182 players), the Allegro MBTL page (24 players) and the index in the browser
+pane at about 800 px wide, then read the CSS. In the product register, the bar is a TO fluent in
+spreadsheets who trusts the page and stops noticing it.
+
+| # | Finding | Kind |
+|---|---|---|
+| 1 | Secondary text (`.dim`: years, "(5th / 29)", "1 event", dashes, dates) was `#888`: 3.5:1 on white, under WCAG AA's 4.5:1 | functional |
+| 2 | The Freeze `<select>` sized itself to its longest option ("Through TNS Melty Blood Actress Again Current Code (85 of 182)"), about 410 px, crowding the toolbar | functional |
+| 3 | Compare series table: the A/B name header scrolls away, so 35 rows down you can't tell which side is which | functional |
+| 4 | The compare picker bar wrapped at about 800 px: the note squeezed into two lines and Close dropped to a second row (bar 89 px tall in a half-height panel) | functional |
+| 5 | Detail and compare tables: the Series/Event column shrank to one word per line ("TNS / Melty / Blood / Actress / …"), making rows 5–6 lines tall | functional |
+| 6 | Shared-series shading in compare (`#f3f7ff`) was nearly invisible on white | functional |
+| 7 | Toolbar controls came in three heights and two button styles (`.bar` vs `.cmp-bar`); "How to read this" opened inline in the flex row | cosmetic |
+| 8 | Proportional digits: placements and W-L don't line up down a column | cosmetic |
+| 9 | Summary row hover (`#f7f9fd`) was barely visible, so tracking one row across a wide table was hard | cosmetic |
+| 10 | The header subline was one run-on string; it wrapped mid-phrase and buried the W-L progress | cosmetic |
+| 11 | Sorted headers showed no direction | cosmetic |
+| 12 | The smooth jump to a player ignored `prefers-reduced-motion` | cosmetic |
+
+### What changed, by file
+
+**`app/public/app.css`** (rewritten in place on the selectors the JS relies on: `.frozen`, `.frozen-edge`,
+`.last-pin`, `tbody.pinned`, `.cmp-sum-wrap`, …)
+- **Tokens on `:root`:** `--dim #6b6b6b` (5.3:1 on white, 4.6:1 on the header gray), `--line-strong`,
+  `--row-hover`, `--pin-hover`, `--accent-weak` / `--accent-ink`, `--both #e9f0fb`, `--ctl-h 30px`,
+  `--radius 6px`. Fixes 1 and 6.
+- **Tables:** `font-variant-numeric: tabular-nums`; cell padding 6/10 and line-height 1.38 (slightly
+  denser multi-line cells); 13 px headers, bottom-aligned, with a stronger rule under the head row. Fixes 8.
+- **Row hover:** `--row-hover` on summary rows, frozen and pinned cells included (pinned rows get their
+  own darker yellow). Detail and compare result rows get hover too. Fixes 9.
+- **Toolbar:** `.bar` and `.cmp-bar` now share one control height and one button style, with hover,
+  active and disabled states. The pressed Compare button and the "Show new data" button use the accent.
+  The Freeze select is capped at 17em. "How to read this" sits at the right and, when open, takes a full
+  row capped at 75ch. `[hidden] { display: none !important }` is there because the new
+  `display: inline-flex` on toolbar buttons would otherwise show the hidden "Show new data" button. I
+  caught that in the browser and fixed it before committing. Fixes 2 and 7.
+- **Name columns:** `table.res td:first-child { min-width: 11em }`, so series and event names wrap to two
+  lines at most. Fixes 5.
+- **Sort direction:** `th[data-dir]` shows ▲/▼, using the attribute `app.js` already sets. Fixes 11.
+- **Compare:** the picker bar stays on one row at 800 px (inputs `clamp(150px, 18vw, 220px)`, the note
+  flexes, Close is pinned right). Bar height went from 89 to 48 px. The A/B labels are bold and the panel
+  has a top shadow. Table heads in the panel stick under the bar (`--cmp-top`, `--cmp-top2`). Fixes 3 and 4.
+- **Frozen edge:** still a 2 px inset rule. I tried a soft drop shadow there and removed it. It would
+  repaint 182+ sticky cells on every sideways scroll, and the scroll feel is what Noah said he likes.
+- **Reduced motion:** `@media (prefers-reduced-motion: reduce)` turns off transitions and smooth scrolling.
+
+**`app/public/app.js`** (presentation only, +25/−5)
+- **`renderHeader`:** the subline is now two spans (event facts, then W-L progress), so it wraps between
+  them. The text is the same. Fixes 10.
+- **`stickCompareHeads()`:** measures the picker bar (its height changes when it wraps) and the series
+  table's first head row, then sets the two CSS variables. It runs after each compare render and on
+  resize. Fixes 3.
+- **`goToPlayer`:** uses `behavior: 'auto'` under reduced motion and smooth scrolling otherwise, as before. Fixes 12.
+
+**Not touched:** `event.html`, `lib/view/render.js`, the server, routes, data, model, fetch and tests.
+
+### Deliberately left alone
+
+- **Counts in labels:** "Every … result (6)", "Other games (123 results…)", "(85 of 182)" in series
+  headers, and the per-series Events column. These are pass 1's open Q1, which needs Noah's ruling. It
+  isn't a styling decision.
+- **Repeated labels in series cells** ("Best placement:" on every line). Dimming the labels would need
+  render.js markup that `test/render.test.js` pins, and muting the whole line would also mute the W-L,
+  which rule 1 makes primary.
+- **Left-aligned headers over right-aligned number columns** in the result tables. Fixing that needs
+  per-column classes from render.js. It's minor, so I skipped it.
+- **Information, order, columns and copy:** unchanged, apart from the subline split.
+
+### Evidence
+
+- **Tests, before and after:** `NODE_OPTIONS="--require ./testlib/no-network.js" node --test
+  --test-skip-pattern="server binds 127.0.0.1"`. Before (`6cf3bb2`): tests 105 · pass 102 · fail 0 ·
+  skipped 3. After (`9a7a756`, in the worktree and again on `build/webapp`): tests 105 · pass 102 ·
+  fail 0 · skipped 3. The set of test lines is identical (diff of the sorted ✔/✖ lines: no difference).
+- **Why one test was excluded (pre-existing, environment-only):** `app: the server binds 127.0.0.1`
+  calls `main(['--port', '0', …])`, and in `app/server.js`, `Number(arg('--port') || process.env.PORT) ||
+  DEFAULT_PORT` turns `0` into `8765`. With Noah's server holding 8765, the listen fails with
+  EADDRINUSE and `'listening'` never fires. That hangs all of `app.test.js` (over 10 min observed; under
+  a 90 s timeout, 7 of 8 app tests pass and the file fails). The test passes whenever 8765 is free,
+  which is how pass 1 ran it. This pass didn't cause it, and I'm not allowed to change the server or the
+  tests. See Needs attention.
+- **Browser** (embedded pane, a background tab on :8793, about 800 × 850):
+  - **Eclipse before:** the Freeze select was about 410 px wide; the compare bar was 89 px tall with
+    Close on row 2; series names stacked one word per line; the compare head scrolled out of view.
+  - **Eclipse after:** the toolbar fits on one row. Pinning 2 rows put them under the header, aligned,
+    with the gold rule under the block, and hover shows on frozen cells. Unpinning one took the pins from
+    `["5043546","499202"]` to `["499202"]`. Freeze "Through Region" made Region stick with its ❄ pressed,
+    and the compare summary followed. Compare with A = A Haru In A Dry Land and B = Arhkma MuddyKipz gave
+    a 48 px bar, and the head offsets tracked the bar height: the A/B name heads stayed visible while the
+    series table scrolled. ⇄ swapped the pickers. Close hid the panel. `#update` computed to
+    `display: none`.
+  - **Allegro after:** "How to read this" opens as a full-width block and closes again. Clicking Best
+    placement sorted it ▲. Series names fit on 1–2 lines.
+  - **Index:** same layout, with the new tokens. No console errors on any page.
+- **Not verified in the browser:** the smooth jump when a player name is clicked. A hidden tab doesn't
+  run smooth scrolling or `requestAnimationFrame` normally, and bringing my tab to the front would have
+  taken the pane away from Noah's :8765 tab. Only that call's `behavior` changed. I didn't re-measure
+  scroll-frame timing either, for the same reason. The only paint-cost addition is one panel shadow.
+  I didn't press Refresh (no live calls). The Sheets download link is unchanged.
+
+### REPORT
+
+```
+REPORT
+- Overview: Light UI polish of the seeding app (impeccable, product register). Front end only:
+  app/public/app.css rewritten on the same selectors, plus three presentation hooks in app.js.
+  Commit 9a7a756 on build/webapp (local). The offline suite was 105 tests · 102 pass · 0 fail ·
+  3 skipped both before and after, with the same test lines. One pre-existing test was excluded
+  because Noah's :8765 server holds the port (see Needs attention).
+- Ran: an impeccable critique found 12 issues (6 functional, 6 cosmetic) and all 12 were fixed:
+  contrast (#888 -> #6b6b6b, 3.5 -> 5.3:1), tabular numerals, one toolbar control style with a
+  width-capped Freeze select, visible row hover including frozen and pinned cells, a readable series
+  column, sort arrows, the compare bar on one row, sticky A/B heads in compare, stronger
+  shared-series shading, a two-part header line, and reduced motion. Verified in a background
+  browser tab on :8793 against the real Eclipse (182) and Allegro (24) data. The edits were made in
+  a scratch worktree and fast-forwarded only after checking, so Noah's live :8765 page never served
+  a half-edited file.
+- Queued: Q1 (counts in labels) still needs Noah's ruling; untouched. Aligning headers with number
+  columns and dimming cell labels both need render.js markup and test changes; left for a later
+  pass.
+- Needs attention: (1) app/server.js treats --port 0 as 8765 (Number(x || env) || DEFAULT), so the
+  test "server binds 127.0.0.1" hangs app.test.js whenever the app is running on 8765. For pass 2/3:
+  parse 0 as a real port. Until then, run the suite with the app stopped, or skip that test as above.
+  (2) The player-link smooth jump and scroll timing weren't re-checked in a foreground tab; worth a
+  look in the orchestrator's browser check (UI checklist items 6-7). (3) docs/usage-log.md has
+  someone else's uncommitted edit in the tree; I left it unstaged.
+```

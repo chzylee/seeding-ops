@@ -10,7 +10,8 @@ const { run } = require('../lib/run');
 const { parseCsv } = require('../lib/output');
 const pacing = require('../lib/pacing');
 const M = require('../lib/view/model');
-const { createApp, main } = require('../app/server');
+const http = require('node:http');
+const { createApp, main, resolvePort, DEFAULT_PORT } = require('../app/server');
 const { inject } = require('../testlib/inject');
 const { buildWorld, createFakeFetch, virtualClock, sink, fakeSets, EVENT_SLUG } = require('../testlib/fake-api');
 
@@ -253,6 +254,19 @@ test('app: the limiter keeps any rolling 60 s at or under its ceiling, across co
   assert.strictEqual(pacing.maxInAnyWindow(times), 18);
 });
 
+// A2-3: `Number(arg('--port') || env) || DEFAULT_PORT` can't distinguish a literal "0" (let the
+// OS pick) from an absent/empty one (use the default) — both are falsy, so "0" always fell
+// through to 8765. resolvePort fixes that; these are its own unit tests, pure and fast.
+test('resolvePort: "0" is a real port request (the OS picks); missing/empty means the default', () => {
+  assert.strictEqual(resolvePort('0'), 0);
+  assert.strictEqual(resolvePort(0), 0);
+  assert.strictEqual(resolvePort(null), DEFAULT_PORT);
+  assert.strictEqual(resolvePort(undefined), DEFAULT_PORT);
+  assert.strictEqual(resolvePort(''), DEFAULT_PORT);
+  assert.strictEqual(resolvePort('8080'), 8080);
+  assert.strictEqual(resolvePort('not-a-port'), DEFAULT_PORT);
+});
+
 test('app: the server binds 127.0.0.1', async () => {
   const outRoot = tmpOut();
   const log = console.log;
@@ -261,6 +275,38 @@ test('app: the server binds 127.0.0.1', async () => {
     const server = main(['--port', '0', '--out', outRoot]);
     await new Promise((r) => server.once('listening', r));
     assert.strictEqual(server.address().address, '127.0.0.1');
+    assert.notStrictEqual(server.address().port, 0, 'the OS assigned a real ephemeral port');
     await new Promise((r) => server.close(r));
   } finally { console.log = log; }
+});
+
+// A2-3's own acceptance test: this must pass even while something else holds the default port —
+// exactly Noah's situation, his own app live on 8765 — the whole point of "0" meaning "let the OS
+// pick." If 8765 is free here, a dummy listener simulates the occupied port; if it's already
+// taken (Noah's app, running this suite on his machine), that real contention stands in for it
+// and this test never touches or closes that other server.
+test('app: "--port 0" binds a fresh ephemeral port even while DEFAULT_PORT is already taken', async () => {
+  const busy = http.createServer(() => {});
+  let weOwnBusy = true;
+  await new Promise((resolve, reject) => {
+    busy.once('error', (err) => {
+      if (err.code !== 'EADDRINUSE') return reject(err);
+      weOwnBusy = false; // something else (plausibly Noah's own app) already holds it
+      resolve();
+    });
+    busy.listen(DEFAULT_PORT, '127.0.0.1', resolve);
+  });
+  const outRoot = tmpOut();
+  const log = console.log;
+  console.log = () => {};
+  try {
+    const server = main(['--port', '0', '--out', outRoot]);
+    await new Promise((resolve, reject) => { server.once('listening', resolve); server.once('error', reject); });
+    assert.strictEqual(server.address().address, '127.0.0.1');
+    assert.notStrictEqual(server.address().port, DEFAULT_PORT);
+    await new Promise((r) => server.close(r));
+  } finally {
+    console.log = log;
+    if (weOwnBusy) await new Promise((r) => busy.close(r));
+  }
 });

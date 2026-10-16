@@ -141,6 +141,42 @@ test('run: a player whose requests keep failing ends "failed", is listed in meta
   assert.strictEqual(r.fetchImpl.calls.filter((c) => c.op === 'UserEvents' && String(c.variables.userId) === '9003').length, 5);
 });
 
+// A4-3 (build-record-webapp.md, pass 4): A2-2's start.gg server-time-budget fix classifies the
+// error as its own retryable kind ('time-budget', lib/startgg.js), which also reaches this CLI
+// pull (lib/run.js), not only the app's Refresh -- RUN_FATAL_KINDS (lib/run.js) was never updated
+// to include it, so a player who hits this error retries the full time-budget schedule (8 tries,
+// a flat 90 s wait each) and then just that ONE player fails; the run goes on to completion,
+// instead of the whole run stopping resumably the way a pre-A2-2 'query'-classified error would
+// have. Pass 5's decision (recorded in docs/build-record-webapp.md): KEEP this for the CLI too,
+// deliberately, rather than reverting it. This error is specifically a recoverable pacing issue,
+// not a real query/schema problem, and Noah's own rationale for wanting it handled at all was an
+// unattended overnight CLI pull that keeps going rather than stopping dead on the first registrant
+// it's slow to clear for -- a failed player is still fully resumable afterward (`--resume` retries
+// exactly the players that failed, same as every other failure kind here), so nothing about this
+// is silent or unresumable, it just no longer takes the rest of the run down with it. This test
+// pins that decision: if someone later adds 'time-budget' to RUN_FATAL_KINDS (restoring the
+// pre-A2-2 whole-run stop for this one error class), this test documents what changes and fails,
+// rather than the change passing unnoticed.
+test('run: a time-budget error retries the full 8-try/90s schedule, then fails just that ONE player -- the run continues and completes (A4-3: kept for the CLI, deliberately -- see docs/build-record-webapp.md Pass 5)', async () => {
+  const r = await freshRun({ timeBudgetPlayer: 9008 }); // Player8 (id 108), an ordinary registrant
+  assert.strictEqual(r.code, EXIT_INCOMPLETE);
+  const { players, meta, checks } = reconcile(r.runDir);
+  assert.deepStrictEqual(checks.filter((c) => !c.ok), []);
+  assert.strictEqual(players.find((p) => p.player_id === '108').history_status, 'failed');
+  assert.strictEqual(meta.failed_players.length, 1);
+  assert.strictEqual(meta.failed_players[0].player_id, '108');
+  assert.match(meta.failed_players[0].error, /gave up after 8 tries/, 'the time-budget schedule (8 tries), not the general 5');
+  // Retried the full schedule for that player, and only that player.
+  assert.strictEqual(r.fetchImpl.calls.filter((c) => c.op === 'UserEvents' && String(c.variables.userId) === '9008').length, 8);
+  // The whole run was NOT stopped: every other player still completed normally (the old, pre-A2-2
+  // behavior -- a 'query'-classified error in RUN_FATAL_KINDS -- would have halted at player 108
+  // with "Stopped at player N/15" and written no final output at all; see the schema-error test
+  // below for what that looks like).
+  assert.strictEqual(meta.history_status.failed, 1);
+  assert.strictEqual(meta.history_status.complete + meta.history_status.limited, 14);
+  assert.ok(r.std.includes('Done:'), 'the run reached final output, not a resumable stop');
+});
+
 test('run: missing token -> plain message, exit 2, no output folder, no request', async () => {
   const r = await freshRun({}, { token: '' });
   assert.strictEqual(r.code, EXIT_SETUP);

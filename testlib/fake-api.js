@@ -123,6 +123,10 @@ function eventNode(ev, userId) {
 // opts.badToken           every call returns the recorded bad-token 400
 // opts.rateLimitFirst     the first N UserEvents calls return 429
 // opts.serverErrorPlayer  user id whose UserEvents calls always return 503
+// opts.timeBudgetPlayer   user id whose UserEvents calls always return start.gg's server-time-
+//                         budget error (A4-3, build-record-webapp.md pass 4/5): the literal live
+//                         message, as a pre-execution GraphQL error (no `path`) -- the same shape
+//                         lib/startgg.js's classifyError (BUDGET_RE) recognizes as 'time-budget'.
 // opts.schemaErrorOn      operation name that returns a validation error (no `path`)
 // opts.onUserEvents(n)    hook called with the running count of UserEvents calls
 function createFakeFetch(world, opts = {}) {
@@ -166,6 +170,9 @@ function createFakeFetch(world, opts = {}) {
       }
       if (opts.serverErrorPlayer != null && String(v.userId) === String(opts.serverErrorPlayer)) {
         return jsonResponse(503, { message: 'Service Unavailable' });
+      }
+      if (opts.timeBudgetPlayer != null && String(v.userId) === String(opts.timeBudgetPlayer)) {
+        return jsonResponse(200, { errors: [{ message: 'You have gone over the threshold for recent request time. Please wait before sending another request.' }] });
       }
       const p = world.players.find((x) => x.user && String(x.user.id) === String(v.userId));
       if (!p) return jsonResponse(200, { data: { user: null }, extensions: ext(1) });

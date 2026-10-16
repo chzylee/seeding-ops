@@ -722,3 +722,155 @@ REPORT
   "let the OS pick"), since a plain `||` chain can't tell those apart. (3) Q1 and the
   Sheets-apostrophe check still need Noah directly; neither is pass 3's to rule on.
 ```
+
+---
+
+## Pass 3 — repair (lead engineer, fresh)
+
+Seat: Lead engineer (builds & updates) persona v0.4.0 (`personal-staff/personas/library/lead-engineer.md`,
+Profile block, fresh job per the contract — no memory of passes 1/1b/1c/2 beyond what this record
+and the contract state). Model: Sonnet. Branch `build/webapp`, four commits on top of HEAD
+(`9a07c40`, `2b7ea7e`, `526ab34`, `fbe42a8`), local only, plus this record's commit. Reviewed-at
+HEAD when this pass started: `7f7c556` (an out-of-band front-end commit, "Show team toggle…",
+landed between pass 2's review and this pass; `app/public/*` only, no overlap with anything below).
+
+### Terms as understood
+
+- **Scope:** disposition every one of pass 2's findings A2-1 through A2-7 — FIXED (with
+  re-runnable evidence) or DECLINED (with reasoning), per the dispatch contract's pass-3 clause and
+  the lead-engineer persona's directive 9 (fix only what's in-window; report and queue the rest).
+  A2-1/A2-2/A2-3 are DEFECTs on paths Noah is using today; A2-4 is a test-coverage NOTE; A2-5/A2-6
+  are explicitly Noah's or the next increment's to rule on; A2-7 is a process note asking this
+  record to carry a ruling that shipped without one.
+- **Binding:** the four ratified display rules (`docs/usage-log.md`); the dispatch's hard
+  prohibitions (never write the real `registry/tiers.csv`, never POST to Noah's running app, never
+  run `updatePlayer` against the real path, no live start.gg calls, don't touch `out/` or `.env`,
+  never weaken/skip/delete a test to make it pass); Noah's app stays running on :8765 throughout —
+  nothing here stops it, and every backend file touched (`lib/`, `app/server.js`, `app/jobs.js`)
+  only reaches his live instance when the orchestrator restarts it, per the dispatch's own note.
+  `app/public/*` (the only files that reload live) were **not touched** by this pass — every A2
+  finding was a backend concern.
+- **Allowed work:** repair only, scoped to A2-1…A2-7; no new features, no re-opening pass 1's
+  engineer's-choice rulings except where a finding named one (A2-7).
+- **Process:** the contract names it (pass 3 of 4, fresh job). No Ship Pipeline skill run — Noah's
+  global rule requires sign-off for skill/subagent spend and none was given for this seat; this is
+  a single lead-engineer seat doing the repair directly, per the dispatch.
+- **Live start.gg budget:** not spent. Every test in this pass runs offline against fakes/fixtures
+  or in-process route injection (`testlib/inject.js`); nothing in this pass makes a network call.
+- **Grounding not consulted:** the standards bank and the runbook
+  (`personal-staff/personas/grounding/`) — not fetched this pass; every ruling below traces to the
+  dispatch contract, the design doc, the auditor's own findings, or the existing code/tests, which
+  was sufficient for a fix-or-decline pass with no new design surface.
+
+### Assumptions I supplied
+
+1. **A2-2's "classify it as retryable rate-limiting with a long wait" does not mean reusing the
+   existing `'rate-limited'` kind.** I tried that first; it broke the already-passing "a 429 is
+   retried with backoff" test (`test/client.test.js`), which correctly expects a *short* 4s backoff
+   for the ordinary 80/min count limit. The server-time-budget error is a different failure with a
+   different correct wait, so it gets its own kind, `'time-budget'`, with its own schedule in
+   `pacing.js`. This is a defensible reading of "classify it as retryable rate-limiting" (it *is*
+   now classified as a flavor of retryable rate-limiting, just not the same bucket as a plain 429)
+   rather than a departure from it — **open to Noah's naming preference** if he'd rather call it
+   something else; nothing outside `lib/pacing.js`/`lib/startgg.js`/their tests references the
+   string `'time-budget'`, so a rename is a one-line sed away.
+2. **`app/jobs.js` needed no direct edit.** The dispatch lists it among the files to check for
+   A2-2. It calls `lib/wl.js`'s `fetchSetRecords`, which calls `client.request` (from
+   `lib/startgg.createClient`) for every GraphQL send — so the new classification and retry
+   schedule reach the app's Refresh pipeline automatically once `lib/startgg.js`/`lib/pacing.js`
+   change, and the `WORKERS` default change in `lib/wl.js` applies the same way (jobs.js calls
+   `fetchSetRecords` without an explicit `workers`). I verified this by reading the call chain
+   rather than assuming it; no behavior in `app/jobs.js` itself needed to change.
+3. **A2-3's test additions occupy `DEFAULT_PORT` (8765) to prove the fix, but never assume it's
+   free.** The new test tries to bind a dummy listener there first; if that fails with
+   `EADDRINUSE` (exactly Noah's situation, his app live on 8765), it treats that real contention as
+   the test condition instead of creating its own, and never touches or closes Noah's server.
+   Verified live: 8765 was genuinely occupied (Noah's app) for every run of this pass's suite.
+4. **A2-7 is a logging task, not a code change.** `orderPlayers`' tier-sort ruling (highest tier
+   first, untiered after, then alphabetical) was already correctly described in the code's own
+   comment (`lib/view/model.js:181`); the gap the auditor found was that no
+   "Engineer's-choice ruling" entry existed recording *who* ruled it and *why*, the process this
+   repo's build records otherwise follow. I added that entry below rather than changing the
+   behavior, which the auditor found no fault with.
+
+### Disposition
+
+| # | Finding | Disposition | Evidence |
+|---|---|---|---|
+| A2-1 | DEFECT — `updatePlayer`'s tag-normalizer regex (`/s+/g` for `/\s+/g`) forked a duplicate `tiers.csv` row | **FIXED** (regex: already hotfixed upstream, commit `4eb8241`, now verified by real tests rather than a scratch repro; path: made injectable) | Commit `9a07c40`. `lib/view/data.js`: `defaultTiersFile()` (SEED_TIERS_FILE env var, else `registry/tiers.csv`), threaded as an optional `tiersFile` through `readNotes`/`viewModel`/`summaryExport`/`updatePlayer`; `app/server.js`'s `createApp({ tiersFile })` threads it to all three routes. `test/data-tiers.test.js`, 8 tests, all green: `updatePlayer: a multi-word tag matches the existing sheet-imported row by tag — no duplicate` (the auditor's exact repro, now passing), `player_id match`, `new-row creation`, `tier must be a whole number 0-20 … → 400, and nothing is written`, `decided_on is stamped only when the tier value actually changes`, `the write is atomic … no .tmp left behind`, `route: POST player edit — X-Seeding-App guard, JSON body, field allow-list, against a temp tiers file`, and a check that the default path is still `registry/tiers.csv`. Real `registry/tiers.csv` mtime confirmed unchanged (11:42 AM) across this entire pass (last check ~19:17). Command: `NODE_OPTIONS="--require ./testlib/no-network.js" node --test test/data-tiers.test.js` → `tests 8 · pass 8 · fail 0`. |
+| A2-2 | DEFECT — start.gg's server-time-budget error class was never attempted | **FIXED** | Commit `2b7ea7e`. `lib/startgg.js`: new `BUDGET_RE`, classifies the literal error text as kind `'time-budget'` (distinct from `'rate-limited'`, assumption 1) in every shape — GraphQL error with/without `path`, HTTP 4xx body message; `createClient.request()`'s retry ceiling and backoff now depend on `pacing.maxTriesFor(kind)`/pass `kind` to `backoffMs`. `lib/pacing.js`: `'time-budget'` gets a flat 90s wait (`RATE_LIMIT_WAIT_MS`, honoring a longer `Retry-After`) and up to 8 tries (`RATE_LIMIT_MAX_TRIES`); `isRetryable('time-budget') === true`. `lib/wl.js`: `WORKERS` default 3 → 1 (assumption 2: `app/jobs.js` and `views/major-table.js` both inherit it, no edit needed there). Tests: `test/classify.test.js` (`classify: the start.gg server-time-budget message -> time-budget, not query or rate-limited, in every shape it can arrive in`, `classify: a plain HTTP 429 still classifies rate-limited, not time-budget`), `test/pacing.test.js` (`backoff: the time-budget kind waits a flat 90 s per try`, `maxTriesFor: time-budget gets ~8 tries`), `test/client.test.js` (`client: the server-time-budget error retries at a flat 90 s, up to 8 tries, and recovers once it clears (no lost work)`, `client: the server-time-budget error gives up only after 8 tries`), `test/wl.test.js` (`wl: default concurrency is 1 in flight, not 3 (A2-2)`). Command: `NODE_OPTIONS="--require ./testlib/no-network.js" node --test test/classify.test.js test/pacing.test.js test/client.test.js test/wl.test.js` → `tests 31 · pass 31 · fail 0`. |
+| A2-3 | DEFECT, carried — `--port 0` resolves to 8765 | **FIXED** | Commit `526ab34`. `app/server.js`: new `resolvePort(raw)` (missing/empty → `DEFAULT_PORT`; anything else, including `"0"`, parsed as given) replaces the old `Number(x || y) || DEFAULT_PORT` chain. `test/app.test.js`: `resolvePort: "0" is a real port request (the OS picks); missing/empty means the default` (pure unit test), and `app: "--port 0" binds a fresh ephemeral port even while DEFAULT_PORT is already taken` (live, binds a dummy listener on 8765 first — or recognizes it's already taken, as it was here — then proves `main(['--port','0'])` still gets a different, real port). The pre-existing `app: the server binds 127.0.0.1` test, previously only passable with `--test-skip-pattern="binds 127.0.0.1"` or the app stopped, now passes unmodified. **Proven on a clean clone with 8765 genuinely occupied by Noah's live app** (verified via `netstat`, PID 27888, before and during this run): `cd <clean clone> && NODE_OPTIONS="--require ./testlib/no-network.js" node --test` → `tests 132 · pass 129 · fail 0 · skipped 3` — no skip pattern, nothing stopped. |
+| A2-4 | NOTE — N-player compare logic (`eventsSharedBy`, `alignSeriesN`, `sharedEventsTable`, `compareSeriesTableN`) had no unit tests | **FIXED** (tests added; no behavior changed — the auditor's own hand-check found no live bug, only an uncovered path) | Commit `fbe42a8`. `test/view-model.test.js`: `eventsSharedBy` and `alignSeriesN` each get a 2-player case (checked equal to the existing `eventsBothEntered`/`alignSeries` result) and a 3-player case (an event/series only 2 of 3 share still qualifies, with a null/absent slot for the other). `test/render.test.js`: `sharedEventsTable`/`compareSeriesTableN` get the same 2-/3-player treatment, checked against all four ratified display rules. One real (non-bug) wrinkle is noted in the 2-player `compareSeriesTableN` test: `alignSeriesN`'s tie-break for a series only one side played sorts across both sides together by field size, while the 2-player `alignSeries` keeps each side's own order for its only-that-side rows — same content per series, different row order at N=2; the test checks content by series key rather than asserting byte-identical markup, and does not change either function. Command: `NODE_OPTIONS="--require ./testlib/no-network.js" node --test test/view-model.test.js test/render.test.js` → `tests 29 · pass 29 · fail 0`. |
+| A2-5 | NOTE, carried — Q1: the `Events` column / toggle counts vs. "no aggregate counts" | **DECLINED — awaits Noah's ruling.** Unchanged since pass 1 raised it (assumption 1 there); three UI passes (1b, 1c) correctly left it alone as "not a styling decision." This is a scope/intent question about what "no aggregate counts" was meant to ban, not a defect this seat can resolve by inspection — guessing either way (drop the column/counts, or declare them in-bounds) would be originating a ruling no input states, which the persona's do-nots forbid. | No code change. `lib/view/render.js:279,281` (`playerBody`) still renders "Every … result (N)" / "Other games (N results)" unchanged. |
+| A2-6 | NOTE, carried — the Sheets leading-apostrophe guard is unverified | **DECLINED — awaits a manual check in Noah's Google account.** The guard's implementation is sound on inspection (both pass 1 and the auditor agree) and round-trips through the CSV parser in `test/export.test.js`; what's unverified is Google Sheets' own import behavior, which no offline, report-only, or repair pass can establish without actually importing a file into Noah's account. Not re-attempted here. | No code change. `docs/build-record-webapp.md`'s existing UI checklist item 8 already names the exact check to run. |
+| A2-7 | NOTE — the `orderPlayers` tier-sort ruling shipped with no logged "Engineer's-choice ruling" entry | **FIXED (logged below; no behavior change — the auditor found no fault with the ruling itself).** | See "Engineer's-choice ruling, logged for A2-7" immediately below. `lib/view/model.js:182-187` (`orderPlayers`) is unchanged. |
+
+**Engineer's-choice ruling, logged for A2-7** (originally made in out-of-band commit `59a21b0`,
+pass 1's table predates it, never logged until now):
+
+| Ruling | Options considered | Picked, and why |
+|---|---|---|
+| **`orderPlayers` row order with tiers present** | keep increment 1's seed-then-alphabetical order, ignoring tier · sort by tier first, seed second · **sort by seed first, then tier descending, then alphabetical** | **Seed, then tier (highest first), untiered after, then alphabetical.** `docs/design-webapp.md` only commits to "rows remain alphabetical unless `notes.json` provides seeds" — tiers aren't mentioned, since the design doc predates the tiers feature (an explicitly out-of-scope, "next increment" item in the same doc). `usage-log.md`'s tiers row says the app "sorts by tier like his sheet filter," which this ruling follows; seed is checked first because a seed is a stronger, explicit signal than a tier. No adverse behavior found by this pass or by pass 2's audit — this is a process fix (the ruling now has a record and a reason), not a behavior fix. |
+
+### Verification
+
+- **Full suite, clean clone, Noah's app genuinely holding 8765** (not a dummy — `netstat` showed
+  PID 27888 LISTENING on 127.0.0.1:8765 throughout): `git clone --branch build/webapp <repo>
+  <scratch>; cd <scratch>; NODE_OPTIONS="--require ./testlib/no-network.js" node --test` →
+  `tests 132 · pass 129 · fail 0 · skipped 3 · duration 1023ms`. **No skip pattern** — the contract
+  asked this pass to prove the skip pattern is no longer needed after A2-3, and this is that proof.
+  The 3 skips are increment 1's pre-existing "not recorded yet" fixtures (`scripts/record-fixtures.js`
+  with a real token), unrelated to this pass and unchanged.
+- **Nothing outside the mutation grant was touched:** `git status --porcelain` before this pass's
+  first commit showed a clean tree apart from this pass's own edits; `registry/tiers.csv`'s mtime
+  (11:42 AM) is older than every commit in this pass and was re-checked after the final full-suite
+  run (~19:17) — unchanged. No `.env` read outside `lib/token.js`'s existing path. No `out/` run
+  folder written, deleted or rewritten (every test uses `os.tmpdir()`). No live start.gg call: every
+  test in every commit above runs under `testlib/no-network.js` and passes.
+- **Noah's :8765 process:** never stopped, never POSTed to, never had `updatePlayer` run against
+  its `registry/tiers.csv`. One out-of-band front-end commit (`7f7c556`, "Show team toggle…",
+  `app/public/*` only) landed on the branch during this pass; it does not overlap any file this
+  pass touched and needed no reconciliation.
+
+### REPORT
+
+```
+REPORT
+- Overview: Repair pass on the seeding-script webapp (pass 3 of 4), disposing every pass-2 finding
+  A2-1..A2-7. Three DEFECTs fixed: A2-1 (the tiers-file path is now injectable, and updatePlayer/
+  the player route have real regression tests — the auditor's tag-matching repro now passes
+  against a seeded temp file); A2-2 (start.gg's server-time-budget error now classifies as its own
+  retryable kind with a 90s/8-try schedule, and W-L concurrency defaults to 1 in flight); A2-3
+  (--port 0 now binds a real ephemeral port, proven on a clean clone while Noah's app held 8765,
+  with no skip pattern needed). A2-4 (N-player compare logic) got the missing unit + render tests,
+  no behavior changed. A2-5 and A2-6 are declined - both explicitly need Noah (a scope ruling and a
+  Google Sheets check this pass cannot perform). A2-7's process gap is closed by logging the
+  tier-sort ruling retroactively; the ruling itself stands as-is.
+- Found: 7 findings (A2-1..A2-7) from pass 2's review, all dispositioned: 5 FIXED (A2-1, A2-2, A2-3,
+  A2-4, A2-7), 2 DECLINED pending Noah (A2-5, A2-6).
+- Ran: 4 commits on build/webapp (9a07c40 A2-1, 2b7ea7e A2-2, 526ab34 A2-3, fbe42a8 A2-4) plus this
+  record. 21 new tests across test/data-tiers.test.js (new file, 8 tests), test/classify.test.js
+  (+2), test/pacing.test.js (+2), test/client.test.js (+2), test/wl.test.js (+1), test/app.test.js
+  (+2), test/view-model.test.js (+4), test/render.test.js (+4). Full suite on a clean clone, while
+  Noah's app held 8765, with plain `node --test` (no skip pattern): 132 tests, 129 pass, 0 fail, 3
+  skipped (pre-existing, unrelated).
+- Attributed: core / seeding-script webapp increment 2, pass 3. STATED (dispatch-contract-webapp.md:
+  "every finding FIXED or DECLINED with reasoning").
+- Queued: A2-5 (Events column / toggle counts vs. "no aggregate counts") and A2-6 (Sheets
+  leading-apostrophe import check) remain open, both explicitly Noah's or the next increment's -
+  not re-attempted here, per the dispatch's own instruction not to guess a blocked ruling.
+  Assumption 1 above (the 'time-budget' kind name) is open to a rename if Noah prefers different
+  wording; it's a one-line change, isolated to lib/pacing.js/lib/startgg.js and their tests.
+- Spend: no live start.gg calls (not needed; every test runs offline/in-process). No skills or
+  subagents run — a single lead-engineer seat per the dispatch; Noah's global spend-sign-off rule
+  was never implicated. This is pass 3 of the contract's 4 passes + at most one repair/re-review
+  pair; no extra repair pair consumed.
+- Parked: nothing half-done; every commit is at a green, clean state (full suite passing after
+  each). Pass 4 (closing re-review) is next, per the contract - not this pass's to run.
+- Needs attention: (1) A2-5 and A2-6 still need Noah directly: the Events-column/toggle-count
+  ruling, and an actual Google Sheets import to check the leading-apostrophe guard. (2) Assumption
+  1's 'time-budget' kind name is a naming choice, not a behavior one - flag if a different name is
+  preferred. (3) The out-of-band commit 7f7c556 ("Show team toggle…", app/public/* only) landed
+  mid-pass; it doesn't overlap this pass's files and needed no action, noted here only so pass 4
+  isn't surprised by it.
+```

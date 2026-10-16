@@ -215,7 +215,10 @@ test('render: compareSeriesTableN — 3 players: one stat group per player; a se
 
 test('render: the app row adds a pin button and data-pid; the CLI row does not', () => {
   const { ctx, players } = fixture();
-  const app = R.summaryRow(players[0], ctx, { app: true });
+  // The real app (app.js hydrate()) always sets ctx.app alongside the { app: true } row option —
+  // that's what keeps the Tier column showing (A4-1) even before any registrant has one. The CLI
+  // (views/major-table.js) never sets either.
+  const app = R.summaryRow(players[0], { ...ctx, app: true }, { app: true });
   const cli = R.summaryRow(players[0], ctx);
   assert.match(app, /^<tr data-pid="1">/);
   assert.match(app, /<button class="pin"/);
@@ -229,6 +232,43 @@ test('render: the app row adds a pin button and data-pid; the CLI row does not',
   const lazy = R.playerBody(players[0], ctx, { lazy: true });
   assert.match(lazy, /data-lazy="game"/);
   assert.ok(tables(lazy).length < tables(R.playerBody(players[0], ctx)).length);
+});
+
+// A4-1 (build-record-webapp.md, pass 4): summaryHeadRow's Tier <th> and summaryRow's Tier <td>
+// used to come from two different predicates (header: ctx.hasTiers || ctx.app; row: ctx.hasTiers
+// || opts.app), so a context with ctx.app true but no opts.app -- exactly the compare panel's call
+// (R.summaryRow(p, ctx), no opts, on the same ctx the main table already set .app on) -- got a
+// header with one more <th> than every row has <td>s whenever no registrant had a tier yet. Both
+// now read ctx.hasTiers || ctx.app (one source of truth, no opts fallback). This pins header cell
+// count == row cell count for every context the app renders, with and without tiers.
+function cellCounts({ ctx, players }) {
+  // Strip nested tables (the "Other games" cell embeds its own <table class="mini"> of series
+  // rows, per-player) before counting, so only the row's OWN top-level <td>s are counted.
+  const topLevel = (html) => html.replace(/<table[\s\S]*?<\/table>/g, '');
+  const headCount = (headHtml) => (topLevel(headHtml).match(/<th\b/g) || []).length;
+  const rowCount = (rowHtml) => (topLevel(rowHtml).match(/<td\b/g) || []).length;
+  return {
+    cli: { head: headCount(R.summaryHeadRow(ctx)), row: rowCount(R.summaryRow(players[0], ctx)) },
+    app: { head: headCount(R.summaryHeadRow({ ...ctx, app: true }, { app: true })), row: rowCount(R.summaryRow(players[0], { ...ctx, app: true }, { app: true })) },
+    // The compare panel: ctx.app true (set once, by app.js's hydrate()), but no opts on either call
+    // -- the exact shape of app.js's R.summaryHeadRow(ctx) / R.summaryRow(p, ctx) in the compare panel.
+    compare: { head: headCount(R.summaryHeadRow({ ...ctx, app: true })), row: rowCount(R.summaryRow(players[0], { ...ctx, app: true })) },
+  };
+}
+test('render: A4-1 — summary header and row cell counts always agree (app row, CLI row, compare row), with and without tiers', () => {
+  const f = fixture(); // notes: {} -> ctx.hasTiers is false
+  for (const [name, c] of Object.entries(cellCounts(f))) assert.strictEqual(c.row, c.head, `${name}: row cells vs header cells, no tiers yet`);
+
+  // With a tier on one player (ctx.hasTiers true), every context must still agree -- and the CLI
+  // and app contexts must now show the SAME columns as each other too (hasTiers alone is enough).
+  const { ctx, players, rows, records } = f;
+  const notes = { [players[0].player_id]: { tier: 5 } };
+  const index = M.buildSeriesIndex(rows);
+  const columns = M.chooseColumns(players, rows.filter(M.isGame), index);
+  const tieredCtx = R.summaryContext({ meta: ctx.meta, players, rows, records, notes, columns, index });
+  const withTiers = cellCounts({ ctx: tieredCtx, players });
+  for (const [name, c] of Object.entries(withTiers)) assert.strictEqual(c.row, c.head, `${name}: row cells vs header cells, with a tier present`);
+  assert.strictEqual(withTiers.cli.head, withTiers.app.head, 'the Tier column is the same column once a tier exists, app or not');
 });
 
 test('render: summary text table (Sheets export) — same columns plus Prefix and player id, one line per cell, same rules', () => {

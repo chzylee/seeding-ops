@@ -144,6 +144,75 @@ test('render rule 3: every series row = best placement (with W-L), best W-L, ave
   assert.strictEqual(bodyRows(cs).filter((tr) => tr.includes('>Blood Moon<')).length, 1);
 });
 
+// A2-4 (build-record-webapp.md, pass 2): sharedEventsTable and compareSeriesTableN — the N-player
+// compare's rendering (acceptance 7/8, "Compare up to 3", built out-of-band in bc93955) — had no
+// render-level tests either, so the ratified display rules were never checked against them the
+// way bothEnteredTable/compareSeriesTable are above.
+test('render: sharedEventsTable — 2 players renders the same rows as bothEnteredTable, same ratified columns', () => {
+  const { ctx, players } = fixture();
+  const [A, B] = players;
+  const two = tables(R.bothEnteredTable(A, B, ctx))[0];
+  const nway = tables(R.sharedEventsTable([A, B], ctx))[0];
+  assert.deepStrictEqual(headers(nway), ['Event', `${A.gamer_tag}: placement · W-L`, `${B.gamer_tag}: placement · W-L`, 'Date']);
+  assert.deepStrictEqual(bodyRows(nway).map(cells), bodyRows(two).map(cells));
+});
+
+test('render: sharedEventsTable — 3 players: an event only 2 of 3 entered still shows, with a dash for the missing side; no bullets, no counts', () => {
+  const { ctx, players } = fixture();
+  const [A, B, C] = players; // C (player 3) shares no event_id with A or B in the fixture
+  const html = R.sharedEventsTable([A, B, C], ctx);
+  const t = tables(html)[0];
+  assert.deepStrictEqual(headers(t), ['Event', `${A.gamer_tag}: placement · W-L`, `${B.gamer_tag}: placement · W-L`, `${C.gamer_tag}: placement · W-L`, 'Date']);
+  const rows = bodyRows(t);
+  assert.strictEqual(rows.length, 1, 'only the Blood Moon LX bracket (event_id 9001), shared by A and B, qualifies (n >= 2)');
+  const [name, a, b, c, date] = cells(rows[0]);
+  assert.match(name, /Blood Moon LX/);
+  assert.match(a, PLACE);
+  assert.match(b, PLACE);
+  assert.strictEqual(c, '—', 'the 3rd player has no row at this event');
+  assert.match(date, /^\d{4}-\d{2}-\d{2}$/);
+  assert.ok(!/<(ul|ol|li)\b/i.test(html), 'rule 4: tables, not bullets');
+  assert.ok(!/\b(total|wins|results?)\b/i.test(html), 'rule 2: no aggregate counts');
+});
+
+test('render: compareSeriesTableN — 2 players covers the same series with the same per-cell content as compareSeriesTable (row order can differ: alignSeriesN tie-breaks only-one-side rows by field size across both sides together, not per-side)', () => {
+  const { ctx, players } = fixture();
+  const [A, B] = players;
+  const two = tables(R.compareSeriesTable(A, B, ctx))[0];
+  const nway = tables(R.compareSeriesTableN([A, B], ctx))[0];
+  assert.deepStrictEqual(headers(nway), headers(two));
+  const byKey = (t) => Object.fromEntries(bodyRows(t).map((tr) => cells(tr)).map((c) => [c[0], c]));
+  assert.deepStrictEqual(byKey(nway), byKey(two), 'same series, same stat cells per series, regardless of row order');
+});
+
+test('render: compareSeriesTableN — 3 players: one stat group per player; a series only one of them played still appears, blank for the others', () => {
+  const { ctx, players } = fixture();
+  const [A, B, C] = players;
+  const html = R.compareSeriesTableN([A, B, C], ctx);
+  const t = tables(html)[0];
+  const head = headers(t);
+  assert.strictEqual(head[0], 'Series');
+  assert.deepStrictEqual(head.slice(1), [A.gamer_tag, B.gamer_tag, C.gamer_tag, ...Array(3).fill(['Best placement', 'Best W-L', 'Average W-L']).flat()]);
+  const rows = bodyRows(t).map(cells);
+  // "Lunar Exam" is only player A's; its B and C stat groups are present but empty.
+  const lunar = rows.find((c) => c[0].startsWith('Lunar Exam'));
+  assert.ok(lunar, 'a series only one player has still gets a row');
+  assert.notStrictEqual(lunar[1], '', 'A\'s best-placement cell is filled');
+  assert.strictEqual(lunar[4], '', 'B has no data for this series');
+  assert.strictEqual(lunar[7], '', 'C has no data for this series');
+  // "Melty Sweep" is only player B's.
+  const melty = rows.find((c) => c[0].startsWith('Melty Sweep'));
+  assert.ok(melty);
+  assert.strictEqual(melty[1], '', 'A has no data for this series');
+  assert.notStrictEqual(melty[4], '');
+  // Blood Moon is shared by all three (rule 3's average-only-for-2+ still applies per side).
+  const bm = rows.find((c) => c[0].startsWith('Blood Moon'));
+  assert.ok(bm);
+  for (const i of [1, 4, 7]) assert.notStrictEqual(bm[i], '', `Blood Moon best placement filled for player at cell ${i}`);
+  assert.ok(!/<(ul|ol|li)\b/i.test(html));
+  assert.ok(!/\b(total|wins|top[- ]?\d+|results?)\b/i.test(html.replace(/Best W-L|Average W-L/gi, '')));
+});
+
 test('render: the app row adds a pin button and data-pid; the CLI row does not', () => {
   const { ctx, players } = fixture();
   const app = R.summaryRow(players[0], ctx, { app: true });

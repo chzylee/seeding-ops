@@ -158,6 +158,69 @@ test('model: compare series — a series both played is one row; shared first, t
     ['blood moon', true, true], ['melty sweep', true, true], ['only a cup', true, false], ['only b cup', false, true]]);
 });
 
+// A2-4 (build-record-webapp.md, pass 2): eventsSharedBy and alignSeriesN — the N-player compare's
+// pure logic (acceptance 7/8, "Compare up to 3", built out-of-band in bc93955) — shipped with zero
+// unit tests even though their 2-player predecessors just above are directly tested. These mirror
+// those tests, 2- and 3-player, including the display rules (no totals, average only for 2+,
+// shared-first ordering).
+test('model: eventsSharedBy — 2 players reduces to eventsBothEntered\'s result (same join, same order)', () => {
+  const shared1 = row(1, 'Melty Sweep 87', { event_id: '500', event_date: '2026-05-01' });
+  const shared2 = row(1, 'Blood Moon LX', { event_id: '600', event_date: '2026-06-01' });
+  const sideA = row(1, 'Frosty Faustings XVIII 2026', { event_id: '701', event_name: 'Main' });
+  const b1 = row(2, 'Melty Sweep 87', { event_id: '500', event_date: '2026-05-01', placement: '1' });
+  const b2 = row(2, 'Blood Moon LX', { event_id: '600', event_date: '2026-06-01', placement: '9' });
+  const sideB = row(2, 'Frosty Faustings XVIII 2026', { event_id: '702', event_name: 'Side' });
+
+  const pairs = M.eventsBothEntered([shared1, shared2, sideA], [b1, b2, sideB]);
+  const shared = M.eventsSharedBy([[shared1, shared2, sideA], [b1, b2, sideB]]);
+  assert.deepStrictEqual(shared.map((s) => s.n), [2, 2], 'only the 2 jointly-entered events qualify, not the side brackets');
+  assert.deepStrictEqual(shared.map((s) => s.rows[0].event_id), pairs.map((p) => p.a.event_id));
+  assert.deepStrictEqual(shared.map((s) => s.rows[1].event_id), pairs.map((p) => p.b.event_id));
+});
+
+test('model: eventsSharedBy — 3 players: an event only 2 of them entered still qualifies (n >= 2), with the 3rd slot null', () => {
+  const a = row(1, 'Lunar Exam #3', { event_id: '900', event_date: '2026-07-01' });
+  const b = row(2, 'Lunar Exam #3', { event_id: '900', event_date: '2026-07-01', placement: '2' });
+  const abc = row(1, 'Blood Moon LX', { event_id: '600', event_date: '2026-06-01' });
+  const abc2 = row(2, 'Blood Moon LX', { event_id: '600', event_date: '2026-06-01', placement: '4' });
+  const abc3 = row(3, 'Blood Moon LX', { event_id: '600', event_date: '2026-06-01', placement: '7' });
+  const onlyC = row(3, 'Only C Cup', { event_id: '950' });
+
+  const shared = M.eventsSharedBy([[a, abc], [b, abc2], [abc3, onlyC]]);
+  // Newest first: Lunar Exam (07-01) before Blood Moon (06-01).
+  assert.deepStrictEqual(shared.map((s) => s.n), [2, 3]);
+  assert.deepStrictEqual(shared.map((s) => s.rows[2]), [null, abc3]);
+  assert.strictEqual(M.eventsSharedBy([[a], [], []]).length, 0, 'no event with 2+ entrants qualifies');
+});
+
+test('model: alignSeriesN — 2 players reduces to alignSeries\'s result (shared first, then A-only, then B-only)', () => {
+  const rec = {};
+  const A = [row(1, 'Melty Sweep 1', { num_entrants: '20' }), row(1, 'Blood Moon X', { num_entrants: '40' }), row(1, 'Only A Cup', { num_entrants: '99' })];
+  const B = [row(2, 'Melty Sweep 2', { num_entrants: '20' }), row(2, 'Blood Moon XI', { num_entrants: '45' }), row(2, 'Only B Cup', { num_entrants: '5' })];
+  const idx = M.buildSeriesIndex([...A, ...B]);
+  const two = M.alignSeries(M.sortedSeries(A, rec, idx), M.sortedSeries(B, rec, idx));
+  const n = M.alignSeriesN([M.sortedSeries(A, rec, idx), M.sortedSeries(B, rec, idx)]);
+  assert.deepStrictEqual(n.map((x) => x.key), two.map((x) => x.key));
+  assert.deepStrictEqual(n.map((x) => x.n), two.map((x) => (x.a && x.b ? 2 : 1)));
+});
+
+test('model: alignSeriesN — 3 players: series more of them share sort first; a series only one played still appears', () => {
+  const rec = {};
+  const A = [row(1, 'Melty Sweep 1', { num_entrants: '20' }), row(1, 'Only A Cup', { num_entrants: '8' })];
+  const B = [row(2, 'Melty Sweep 2', { num_entrants: '22' })];
+  const C = [row(3, 'Melty Sweep 3', { num_entrants: '18' }), row(3, 'Blood Moon X', { num_entrants: '40' })];
+  const idx = M.buildSeriesIndex([...A, ...B, ...C]);
+  const lists = [M.sortedSeries(A, rec, idx), M.sortedSeries(B, rec, idx), M.sortedSeries(C, rec, idx)];
+  const n = M.alignSeriesN(lists);
+  // Melty Sweep: all 3 (n=3) sorts before Blood Moon / Only A Cup (n=1 each, alphabetical tiebreak).
+  assert.strictEqual(n[0].key, 'melty sweep');
+  assert.strictEqual(n[0].n, 3);
+  assert.deepStrictEqual(n[0].sides.map(Boolean), [true, true, true]);
+  const rest = n.slice(1).sort((a, b) => a.label.localeCompare(b.label));
+  assert.deepStrictEqual(rest.map((x) => x.label), ['Blood Moon', 'Only A Cup']);
+  assert.ok(rest.every((x) => x.n === 1));
+});
+
 test('model: indexFromKeys rebuilds the run-wide index from per-row keys (what the browser gets)', () => {
   const rows = [row(1, 'Bracket About Nothing UNI 2 Open'), row(2, 'Bracket About Nothing #3')];
   const idx = M.buildSeriesIndex(rows);

@@ -315,3 +315,18 @@ test('notes: always a Notes column; other games grouped game > series with best 
   assert.match(R.otherGamesCell(players[3], c2), /—/);
   assert.match(R.notesCell(players[3], c2), /—/);
 });
+
+test('other series (this game): own column before Other games; excludes majors and shared-series columns', () => {
+  const { ctx, players } = fixture();
+  const keys = R.summaryColumns(ctx).map((c) => c.key);
+  assert.strictEqual(keys.indexOf('more'), keys.indexOf('other') - 1, 'Other series sits right before Other games');
+  const shown = new Set([...ctx.majors.map((m) => m.label), ...ctx.shared.map((s) => s.key)]);
+  for (const p of players) {
+    for (const s of R.otherSeriesOf(p, ctx)) assert.ok(!shown.has(s.key), `${s.label} is already a column`);
+    const all = M.sortedSeries(ctx.gameBy[p.player_id] || [], ctx.records, ctx.index);
+    assert.strictEqual(R.otherSeriesOf(p, ctx).length, all.filter((s) => !shown.has(s.key)).length, 'every other series of this game is listed');
+  }
+  const html = R.otherSeriesCell(players[1], ctx);
+  assert.doesNotMatch(html, /<ul|<li/, 'no bullets');
+  if (R.otherSeriesOf(players[1], ctx).length) assert.match(html, /<table class="mini">/);
+});

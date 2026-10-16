@@ -193,7 +193,13 @@ test('model: eventsSharedBy — 3 players: an event only 2 of them entered still
   assert.strictEqual(M.eventsSharedBy([[a], [], []]).length, 0, 'no event with 2+ entrants qualifies');
 });
 
-test('model: alignSeriesN — 2 players reduces to alignSeries\'s result (shared first, then A-only, then B-only)', () => {
+// A4-5 (build-record-webapp.md, pass 4): this test's name used to say alignSeriesN "reduces to
+// alignSeries's result" at 2 players — that overclaims what's checked below (series keys and
+// shared/only-side counts, in order), not full row-for-row equivalence. render.test.js's
+// compareSeriesTableN test found the actual gap: alignSeriesN tie-breaks only-one-side rows by
+// field size across both sides together, so row order inside an only-one-side group can differ
+// from alignSeries at N=2, even though the same series appear with the same stats.
+test('model: alignSeriesN — 2 players covers the same series, in the same order, as alignSeries (by key and shared/only-side count; row order within an only-one-side group can differ)', () => {
   const rec = {};
   const A = [row(1, 'Melty Sweep 1', { num_entrants: '20' }), row(1, 'Blood Moon X', { num_entrants: '40' }), row(1, 'Only A Cup', { num_entrants: '99' })];
   const B = [row(2, 'Melty Sweep 2', { num_entrants: '20' }), row(2, 'Blood Moon XI', { num_entrants: '45' }), row(2, 'Only B Cup', { num_entrants: '5' })];

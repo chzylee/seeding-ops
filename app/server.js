@@ -13,7 +13,8 @@
 //   GET  /api/e/<t>/<e>/export.csv  the summary table as a CSV for Google Sheets (lib/view/export.js)
 //   GET  /static/<file>             the page's JS/CSS (a fixed list; nothing else is served)
 // Env: SEED_APP_MAX_PER_MIN caps the app's start.gg requests per rolling 60 s (default 75, the
-// pull's own pace). PORT overrides the port.
+// pull's own pace). PORT overrides the port. SEED_TIERS_FILE overrides registry/tiers.csv (the
+// tier/notes editor's write path, lib/view/data.js) — mainly so tests never touch the real file.
 
 const http = require('node:http');
 const fs = require('node:fs');
@@ -74,6 +75,7 @@ function trustedHost(req) {
 
 function createApp(opts = {}) {
   const outRoot = opts.outRoot || path.join(ROOT, 'out');
+  const tiersFile = opts.tiersFile; // undefined => data.js's own default (SEED_TIERS_FILE or registry/tiers.csv)
   const jobs = new Jobs({
     outRoot,
     getToken: opts.getToken || (() => loadToken({ envFile: path.join(ROOT, '.env') }).token),
@@ -121,7 +123,7 @@ function createApp(opts = {}) {
         let fields;
         try { fields = JSON.parse(body || '{}'); } catch { return json(res, 400, { error: 'Body must be JSON.' }); }
         const allowed = Object.fromEntries(Object.entries(fields).filter(([k]) => ['tier', 'justification', 'notes'].includes(k)));
-        try { return json(res, 200, data.updatePlayer(latest.dir, pid, allowed)); }
+        try { return json(res, 200, data.updatePlayer(latest.dir, pid, allowed, { tiersFile })); }
         catch (err) { return json(res, err.status || 500, { error: err.message }); }
       }
 
@@ -133,14 +135,14 @@ function createApp(opts = {}) {
         if (what === 'data' && method === 'GET') {
           const latest = data.latestFinished(outRoot, t, e);
           if (!latest) return json(res, 404, { error: 'No finished pull for this event yet.', status: jobs.status(t, e) });
-          const vm = data.viewModel(latest.dir, { records: jobs.liveRecords(latest.dir) });
+          const vm = data.viewModel(latest.dir, { records: jobs.liveRecords(latest.dir), tiersFile });
           vm.status = jobs.status(t, e);
           return json(res, 200, vm);
         }
         if (what === 'export.csv' && method === 'GET') {
           const latest = data.latestFinished(outRoot, t, e);
           if (!latest) return notFound(res);
-          const { filename, csv } = data.summaryExport(latest.dir, { records: jobs.liveRecords(latest.dir) });
+          const { filename, csv } = data.summaryExport(latest.dir, { records: jobs.liveRecords(latest.dir), tiersFile });
           return send(res, 200, csv, 'text/csv; charset=utf-8', { 'Content-Disposition': `attachment; filename="${filename}"` });
         }
         if (what === 'refresh' && method === 'POST') {
@@ -164,9 +166,20 @@ function openBrowser(url) {
   else spawn('xdg-open', [url], { detached: true, stdio: 'ignore' }).unref();
 }
 
+// A2-3: `Number(x || DEFAULT)` can't tell a literal `--port 0` (let the OS pick an ephemeral
+// port — what the "server binds 127.0.0.1" test asks for) apart from an absent/empty one (use
+// DEFAULT_PORT): both are falsy. Resolve explicitly instead: missing or empty means "use the
+// default"; anything else, including "0", is parsed as the port the caller asked for.
+function resolvePort(raw) {
+  if (raw == null || raw === '') return DEFAULT_PORT;
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : DEFAULT_PORT;
+}
+
 function main(argv = process.argv.slice(2)) {
   const arg = (k) => { const i = argv.indexOf(k); return i >= 0 ? argv[i + 1] : null; };
-  const port = Number(arg('--port') || process.env.PORT) || DEFAULT_PORT;
+  const portArg = arg('--port');
+  const port = resolvePort(portArg != null ? portArg : process.env.PORT);
   const outRoot = arg('--out') ? path.resolve(arg('--out')) : path.join(ROOT, 'out');
   const app = createApp({ outRoot });
   const server = http.createServer(app.handler);
@@ -191,4 +204,4 @@ function main(argv = process.argv.slice(2)) {
 
 if (require.main === module) main();
 
-module.exports = { createApp, main, HOST, DEFAULT_PORT, STATIC };
+module.exports = { createApp, main, HOST, DEFAULT_PORT, STATIC, resolvePort };

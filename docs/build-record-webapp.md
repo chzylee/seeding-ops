@@ -1246,3 +1246,176 @@ REPORT
   back; the new test in test/run.test.js would need its mutation-checked assertions flipped to
   match.
 ```
+
+---
+
+## Pass 6 — engineering auditor final closing re-review
+
+Seat: engineering-auditor persona v0.2.0 (`personal-staff/personas/library/engineering-auditor.md`,
+Profile block), fresh job. Model: Opus. Report-only: no source edited, nothing committed but this
+section. Reviewed at `build/webapp` HEAD `73e8072`, covering everything after pass 4 (`a352eed`): the
+orchestrator's `f9dc0ff` and pass 5's `2eafa12`, `d58c914`, `c765919`, `88cc459`, `73e8072`.
+
+### Terms as understood
+
+- **Job:** the re-review half of the contract's one extra repair/re-review pair. Re-verify pass 5's
+  dispositions of A4-1…A4-6 on the current code; re-check acceptance 1–12 plus 6b and 11b and the
+  four ratified display rules for regressions from pass 5; run the full suite on a clean clone, with
+  no skip pattern, while Noah's app holds 8765, with and without `SEED_TIERS_FILE`. Item 12 is this
+  pass's to give. If this pass does not approve, the team stops and reports to Noah. There is no
+  further repair pass.
+- **Binding:** `docs/dispatch-contract-webapp.md`, `docs/design-webapp.md` (with A1), and the
+  Ratified and Built rows of `docs/usage-log.md` → Requirements surfaced.
+- **Limits honoured:** the real `registry/tiers.csv` was never written (mtime still 2026-10-15
+  11:42:18, `git diff` clean). `updatePlayer` ran only against temp files. No POST to any server (my
+  scratch tab's network log shows GETs only). No live start.gg call. `out/` and `.env` untouched: the
+  real-data comparisons below ran on a scratch copy of `out/` and `tiers.csv`, deleted afterwards.
+  Noah's app (PID 8252, LISTENING on 127.0.0.1:8765 throughout) was never stopped or contacted. My
+  one scratch server (8796: the clone, serving a synthetic run) was stopped when done, and its
+  background browser tab was closed.
+- **Assumption I supplied:** pass 5 says its own dispatch asked it to "Decide" A4-3. That dispatch
+  isn't in the repo, so I judged A4-3 against the contract alone.
+
+### Verdict: APPROVE WITH NOTES
+
+All six A4 dispositions hold on the code. A4-1, the defect that kept pass 4 from approving, is fixed
+and I verified it in a browser under the conditions pass 4 found it in, plus Show team off, a Seed
+column and a sideways scroll. A4-2's single matcher makes the reader and writer agree in every case
+I generated. Nothing regressed: the suite is green on a clean clone with 8765 held, with and without
+`SEED_TIERS_FILE`. The CLI view output is byte-identical to pass 4's code on all six real run folders,
+and the tier display and the Sheets export are identical on real data.
+
+The notes, on the face of the verdict:
+
+1. **A4-3 is a disclosed deviation from a contract term** ("Don't change increment 1's pull
+   behavior"). I judge it defensible but not necessary (reasoning below). It doesn't block the build.
+   The ruling is Noah's: ratify it, or have it reverted (one line plus one test).
+2. **A6-1 (NOTE, latent):** two registrants with the same tag would share one unlinked tier row. No
+   real event has that today.
+3. **Unfilled legs:** in-browser performance (item 9) was not re-timed, and the live time-budget
+   retry, the Sheets import and `app.cmd` are still unverified. See "Could not verify".
+
+### Re-verification of pass 4's findings
+
+| # | Pass 5 said | Holds? | Evidence (re-runnable) |
+|---|---|---|---|
+| A4-1 | FIXED (`2eafa12`) | **Holds** | `lib/view/render.js` `summaryRow` now emits the Tier cell on `ctx.hasTiers \|\| ctx.app`, the same test `summaryColumns` uses. `opts.app` now only adds the editable attributes. **Exhaustive check** (scratch script over Seed on/off × tiers on/off × `ctx.app` on/off × `opts.app` on/off × 4 players, plus the export's text rows): 144 checks, 0 header/row count mismatches. The same script finds 16 mismatches on pass 4's code. **Browser** (scratch server on 8796 from the clone; synthetic 200×100 run with a Seed column; `SEED_TIERS_FILE` pointed at a missing file, so no tiers exist for the game, which is pass 4's trigger). I compared 3 players (one seeded) with **Show team off**. The compare header and each compare row had 17 cells (16 visible). Every visible column sat at 0 px left offset and 0 px width difference from both the compare header and the main table. `frozen-edge` was on Tier (pass 4 saw it land on CEO). The result was the same with Show team on, and with the table scrolled 900 px sideways: the compare strip followed (`scrollLeft` 900), and frozen Seed/Player/Region/Tier sat at 0/66/264/392 px in both tables. **Mutation:** with the predicate set back to `opts.app`, the new render test fails; restored, it passes. The new test checks one player and no Seed column, but the exhaustive check covers the rest. |
+| A4-2 | FIXED (`d58c914`) | **Holds** | One `indexTierRows`/`matchTierRow` pair is used by both `readNotes` and `updatePlayer`: match by `player_id` first, else by tag among unlinked rows only. **Randomized agreement check** (temp files only): 300 scenarios, 1,068 player cases, with whitespace, case and team-prefix variants, linked rows, and rows for another game. For each player I compared the row a reload displays with the row an edit writes. 0 disagreements. The same script on pass 4's code: 136. **Real data** (scratch copies): notes and Sheets export are identical between pass 4's code and the current code on all six run folders (Eclipse: 123 tiered players). Residue: A6-1. |
+| A4-3 | DECIDED: KEEP, with a pinning test (`c765919`) | **Holds as a disclosure; the ruling is still Noah's** | With `'time-budget'` added to `lib/run.js`'s `RUN_FATAL_KINDS`, exactly the new `run.test.js` test fails (14 pass, 1 fail). Removed again, it passes. Judgment below. |
+| A4-4 | FIXED (`d58c914`) | **Holds** | Full suite with `SEED_TIERS_FILE` → a missing temp path: 135 / 132 pass / 0 fail / 3 skipped, and the path was never created. With it pointed at a temp copy of `tiers.csv`: the same result, and the copy's sha1 is unchanged. Control: pass 4's code with the variable set fails "route and unit path both resolve to the SAME default…". The test still asserts the true default is `registry/tiers.csv`; only the env handling around that one assertion changed. |
+| A4-5 | FIXED (`88cc459`) | **Holds** | (a) Pass 3's A2-3 row credits `resolvePort` to `9a07c40`. (b) Pass 3's REPORT says 25; `^test(` count 135 = pass 4's 132 + pass 5's 3. (c) `lib/startgg.js` comment now says `'time-budget'`. (d) The test was renamed and no assertion changed. Its new name ("…in the same order… row order within an only-one-side group can differ") is clumsy but no longer overclaims. |
+| A4-6 | Closed by `f9dc0ff`; standing rules declined to Noah | **Holds** | `docs/usage-log.md` has a Show team row citing `7f7c556`. `git log a352eed..73e8072`: no out-of-band code commit since pass 4 (only `f9dc0ff`, docs, and pass 5's commits). So there is no third occurrence. The two candidate standing rules still need Noah. |
+
+### A4-3: the judgment asked for
+
+- **What changed.** Before A2-2, the CLI pull treated start.gg's "over the threshold for recent request
+  time" error as a malformed query (`'query'`) and stopped the whole run, resumable. Now it waits 90 s
+  and tries up to 8 times. If the error never clears, that one player is marked failed and the run
+  goes on; `--resume` retries failed players (README, "…`--resume` retries these players"). The CSV
+  schema is unchanged. Cost if the budget never clears: each affected player takes up to ~10.5 min
+  before failing, so a pull runs long instead of stopping.
+- **Is it inside the prohibition?** Yes, literally. The client in `lib/startgg.js` and `lib/pacing.js`
+  is the pull's client, so its error handling is part of "increment 1's pull behavior".
+- **Was it a necessary consequence of A2-2?** No. The requirement row scopes the fix to "`lib/wl.js` /
+  the app's refresh". The refresh runs the pull through `lib/run.js`, so the refresh needed it. But the
+  CLI pull could have kept its old behavior if the app had passed an option the CLI doesn't. Pass 5's
+  reason (its dispatch told it to decide) explains why a seat made the call. It doesn't amend the
+  contract, and I couldn't read that dispatch.
+- **Is it defensible?** Yes. The analog is increment 1's own handling of `'server'` and `'network'`
+  errors: retry, fail one player, let `--resume` pick it up. The new kind joins that class. The old
+  behavior labelled a throttle as a query error, which was the wrong message. Reverting is one line in
+  `lib/run.js` plus flipping the pinned test.
+- **Why it doesn't block approval:** it's disclosed, pinned by a test, cheap to undo, and does no harm
+  on the user-impact lens. It is still a contract-term change, so it goes to Noah below instead of
+  being settled here. Increment 1's passes 2–4 are still open. Whoever runs them should know the
+  shared client changed under them.
+
+### Acceptance re-check at `73e8072`
+
+| # | Holds? | Evidence |
+|---|---|---|
+| 1 | **Yes** | Clean clone (`git clone C:\Users\iknow\repos\seeding-script <scratch>`, branch `build/webapp`, HEAD `73e8072`). With Noah's app LISTENING on 127.0.0.1:8765 (PID 8252), `NODE_OPTIONS="--require ./testlib/no-network.js" node --test`, with no skip pattern → `tests 135 · pass 132 · fail 0 · skipped 3`, ~1.4 s. The same with `SEED_TIERS_FILE` set (both variants above). The 3 skips are increment 1's "recorded: … not recorded yet" fixtures. Removed test lines since pass 4: two. Both were re-scoped, not weakened (the app-row fixture now sets `ctx.app` as `app.js` does; the default-path assertion is unchanged inside an env save/restore). |
+| 2 | Yes | The named model tests pass. Pass 5 didn't touch `lib/view/model.js`. |
+| 3 | Yes (`app.cmd` by inspection) | `resolvePort` is unchanged since pass 4. "Two folders → the newer wins" passes. My scratch server served the index and the stable event URL. |
+| 4, 5 | Yes (offline) | Refresh/409/merge/summary-first and partial-W-L tests pass. No live refresh this pass; pass 1's stands. |
+| 6 | Yes | Scratch browser: a pinned row has 17 cells, at 0 px offset in every visible column under the header. Unpin emptied the pinned block. |
+| 6b | Yes | Frozen columns are at the same offsets in the main table and the compare strip, scrolled and unscrolled, with Team hidden or shown. |
+| 7 | **Yes** | A4-1 is closed (above). The events-both-entered and series tables' tests pass. |
+| 8 | Yes | Render rule tests pass for every table. Pass 5 changed only whether the Tier cell is present; it added no count cells. CLI output on all six real runs is byte-identical to pass 4's code (rendered on scratch copies with `--no-fetch`). |
+| 9 | Not re-measured | Pass 1's figures stand. Pass 5 adds one cell per compare row on events with no tiers and nothing else on the paint path. |
+| 10 | Yes | Path-probe and foreign-Host tests pass. |
+| 11 | Yes | `README.md` unchanged since pass 4. |
+| 11b | Yes (Sheets import unverified, A2-6) | Export tests pass. The export is identical on real data between pass 4's code and now. It is built by iterating `summaryColumns`, so it couldn't drift the way A4-1 did. |
+| 12 | **Given** | This verdict. |
+
+### New findings
+
+**A6-1 — NOTE, latent — two registrants with the same tag would share one unlinked tier row, and the
+first edit takes it from the other.** `matchTierRow` (`lib/view/data.js`) falls back to tag among
+unlinked rows. It doesn't know another registrant in the same event matches the same row. Reader and
+writer agree for each player, which was A4-2's point. But in my randomized check, 54 of 300 scenarios
+showed one row under two players. Editing either player links the row to that player, and the
+other's Tier goes to "needs tier". Real reach today: none. No run folder in `out/` has two registrants
+with the same normalized tag (counted read-only across all six). It's the same tag-fallback design
+pass 1 built, not a pass-5 regression, and needs no action for this build. It's worth a line if the
+tiers table grows beyond one event's players.
+
+### Could not verify
+
+- **Pass 5's own dispatch text**, which pass 5 cites for A4-3. It isn't in the repo.
+- **The live start.gg behaviour of the time-budget retry.** No live calls; tested against fakes.
+- **Google Sheets' handling of the apostrophe** (A2-6). It needs Noah's account.
+- **`app.cmd` end to end.** It opens the desktop browser.
+- **In-browser performance (acceptance 9).** Not re-timed.
+- **Noah's live :8765 page.** Not opened. His process started at 19:33:52, after pass 5's last code
+  commit (19:31:02), so it is running the repaired code.
+
+### Open items that belong to Noah
+
+1. **A4-3:** ratify the CLI pull's new time-budget handling as an amendment to "Don't change increment
+   1's pull behavior", or ask for the revert (add `'time-budget'` to `RUN_FATAL_KINDS` in `lib/run.js`
+   and flip the pinned test).
+2. **A2-5:** keep or drop the per-series Events column and the "(N)" toggle counts under "no
+   aggregate counts".
+3. **A2-6:** import one export into Google Sheets and check that a cell starting with `=`, `-`, `+` or
+   `@` shows as text without a visible apostrophe.
+4. **A4-6:** ratify or reject the two candidate standing rules.
+5. **Increment 1's passes 2–4** are still open, and the client they would review changed in this
+   build (A2-2/A4-3).
+
+### REPORT
+
+```
+REPORT
+- Overview: Final closing re-review of the seeding-script webapp at build/webapp 73e8072.
+  Verdict: APPROVE WITH NOTES. Acceptance item 12 is given. All six pass-4 findings hold as pass 5
+  dispositioned them. A4-1 (compare rows misaligned when a game has no tiers) is fixed and
+  verified in a browser, including Show team off, a Seed column and sideways scroll. A4-2's shared
+  matcher agrees reader-to-writer in 1,068 generated cases (pass 4's code: 136 disagreements).
+  Suite on a clean clone, 8765 held, no skip pattern: 135 tests, 132 pass, 0 fail, 3 skipped;
+  identical with SEED_TIERS_FILE set. No regressions found.
+- Found: A4-1..A4-6 all hold. A4-3 holds as a disclosure only: it deviates from the contract's
+  "don't change increment 1's pull" term. Defensible but not necessary; Noah's ruling. New: A6-1
+  NOTE (latent: one unlinked tier row can show under two same-tag registrants; no real event has
+  that today).
+- Ran: clean clone + full offline suite three ways (plain; SEED_TIERS_FILE to a missing path; to a
+  temp copy, whose hash didn't change); mutation checks on A4-1 and A4-3, plus the A4-4 control on
+  pass 4's code; an exhaustive header/row parity script (144 checks, 0 mismatches; 16 on pass 4's
+  code); a randomized reader/writer agreement script on temp files; old-vs-new notes, export and
+  CLI output on scratch copies of all six real run folders (identical); a scratch server on 8796
+  with a synthetic 200x100 run driven in a background browser tab (compare, Show team, freeze,
+  pin/unpin), GETs only, then stopped and the tab closed.
+- Attributed: core / seeding-script webapp increment 2, pass 6 (closing re-review of the extra
+  pair). STATED (dispatch-contract-webapp.md: "4 passes + at most ONE extra repair/re-review pair",
+  acceptance 12).
+- Queued: A4-3's ruling (impact: changes increment 1's CLI pull; uncertainty: pass 5's dispatch
+  unread). A2-5, A2-6 and A4-6's standing rules stay with Noah. A6-1 needs no action now.
+- Spend: no live start.gg calls; no skills or subagents; one scratch server (8796), stopped; one
+  commit (this section). Contract: 4 passes plus the one extra pair, all spent; this closes it.
+- Parked: nothing half-done. The scratch clone, synthetic run and scripts are in this session's
+  scratchpad. The real-data copies were deleted.
+- Needs attention: (1) A4-3: ratify the CLI pull change or revert it (one line + one test).
+  (2) A2-5: rule on the Events column and "(N)" toggle counts. (3) A2-6: import one export into
+  Sheets. (4) A4-6: ratify or reject the two standing rules. (5) Increment 1's passes 2-4 are still
+  open, and its shared client changed in this build.
+```

@@ -874,3 +874,187 @@ REPORT
   mid-pass; it doesn't overlap this pass's files and needed no action, noted here only so pass 4
   isn't surprised by it.
 ```
+
+---
+
+## Pass 4 — engineering auditor closing re-review
+
+Seat: engineering-auditor persona v0.2.0 (`personal-staff/personas/library/engineering-auditor.md`,
+Profile block), fresh job. Model: Opus. Report-only: no source edited, nothing committed but this
+section. Reviewed at `build/webapp` HEAD `4d123fd`, covering everything after pass 2: hotfix
+`4eb8241`, pass 3's `9a07c40`, `2b7ea7e`, `526ab34`, `fbe42a8` and the out-of-band `7f7c556`.
+
+### Terms as understood
+
+- **Job:** re-verify every pass-2 finding (A2-1…A2-7) against the current code; re-check
+  acceptance 1–12 plus 6b and 11b and the four ratified display rules, including everything that
+  landed after pass 2; look for regressions the repairs introduced; run the full suite on a clean
+  clone with no skip pattern while Noah's app holds 8765. Verdict: APPROVE, APPROVE WITH NOTES or
+  NOT APPROVED. The build is not complete until this pass approves.
+- **Binding:** `docs/dispatch-contract-webapp.md`, `docs/design-webapp.md` (with A1), the
+  Ratified and Built rows of `docs/usage-log.md` → Requirements surfaced.
+- **Limits honoured:** the real `registry/tiers.csv` was never written (mtime still
+  2026-10-15 11:42:18, `source=app` rows: 0). `updatePlayer` ran only against temp files in a clone.
+  No POST to any server. No live start.gg call. `out/` and `.env` untouched. Noah's app on 8765
+  (PID 28352) was never stopped. My one scratch server (8797, a clone serving a synthetic run in
+  scratch) was stopped when done; its browser tab only sent `GET …/data`.
+- **Assumption I supplied:** the contract's "4 passes + at most ONE extra repair/re-review pair"
+  means a NOT APPROVED here routes to that one extra pair, if the caller spends it. That is the
+  caller's call, not mine.
+
+### Verdict: NOT APPROVED
+
+One new DEFECT (A4-1). On any event whose game has no tiered registrant, the compare panel's
+summary rows drop the Tier cell, so every value from Tier rightward sits one column to the left,
+under the wrong header. Today that covers 2 of Noah's 3 real events (Allegro MBTL, Andante UNI2).
+`registry/tiers.csv` holds only MBAACC rows, so only Eclipse is unaffected. This misses acceptance
+7 ("aligned summary rows"), and someone comparing two MBTL players would read a CEO placement as a
+Tier. The repairs did not cause it. It came in with out-of-band `59a21b0` before pass 2, and pass
+2's structural spot-check missed it. The fix is narrow and needs no product ruling.
+
+Everything else holds. A2-1…A2-4 and A2-7 are genuinely fixed, and I mutation-checked them.
+A2-5 and A2-6 are correctly Noah's. The suite is green on a clean clone with 8765 held, and the
+repairs regress nothing I could find. If A4-1 is fixed with a test, the rest would be APPROVE WITH
+NOTES.
+
+### Re-verification of pass 2's findings
+
+| # | Pass 3 said | Holds? | Evidence (re-runnable) |
+|---|---|---|---|
+| A2-1 | FIXED (regex hotfix `4eb8241` + injectable path `9a07c40`) | **Holds** | `lib/view/data.js` `updatePlayer` now uses `/\s+/g`. Mutation check in a clone: put `/s+/g` back in `updatePlayer` only, then `node --test test/data-tiers.test.js` → `pass 7 · fail 1` (the "multi-word tag … no duplicate" test). Restored → 8/8. The test seeds the reverse of pass 2's repro (stored double space, player single). Both directions reduce to the same `\s+` collapse. The path is injectable: `tiersFile` is threaded through `readNotes`/`viewModel`/`summaryExport`/`updatePlayer` and `createApp({ tiersFile })`. `defaultTiersFile()` resolves to `registry/tiers.csv` when `SEED_TIERS_FILE` is unset. Full suite run with `SEED_TIERS_FILE` pointed at a non-existent scratch path: the file was never created, so no test writes through the default path. The root cause pass 2 named (two copies of the matching rule) is still there: see A4-2. |
+| A2-2 | FIXED (`2b7ea7e`) | **Holds** | `BUDGET_RE = /over the threshold for (recent )?request time/i` is checked first, for both `body.message` and every GraphQL error message, so the 429 check can't catch it first. `'time-budget'` is retryable, waits a flat 90 s (or longer if Retry-After says so) and gets 8 tries. Other kinds are unchanged. Retry loop: `attempt >= maxTriesFor(out.kind)`, so a mix of kinds still stops at 8 at most, with no unbounded loop. Mutation checks: (a) neuter `BUDGET_RE` → 3 tests fail (classify + 2 client); (b) `maxTriesFor` ignores kind → 2 fail; (c) `WORKERS = 3` → the wl default test fails. `RUN_FATAL_KINDS` (`lib/run.js:23`) doesn't include it, so an exhausted time-budget fails that one player and the run goes on. Before this, the error read as `'query'`, which stopped the run. W-L concurrency 1 is not a throughput loss on the recorded evidence: usage-log's Allegro entry has 1 in flight with batches of 4 at ≈70 events/min, against ≈52/min with 3 in flight. *Observation, not a finding:* while a time-budget retry waits, the status line doesn't say so. A Refresh that hits it looks stalled for up to ~10.5 min. |
+| A2-3 | FIXED (`526ab34`) | **Holds** | `resolvePort`: missing or empty → 8765; `"0"` → 0; anything not a number → 8765. With 8765 held by Noah's app, putting back the old `Number(x \|\| env) \|\| DEFAULT_PORT` chain gives `node --test --test-timeout=15000 test/app.test.js` → both port tests fail (one times out at 15 s). Restored, they pass. `npm run app` with no flag still gets 8765. One correction to the record: the `resolvePort` code is in commit `9a07c40`, not `526ab34`, which only adds tests (`git show --stat 526ab34`). See A4-5. |
+| A2-4 | FIXED (`fbe42a8`, tests only) | **Holds** | 8 new tests pass: `eventsSharedBy`, `alignSeriesN`, `sharedEventsTable` and `compareSeriesTableN`, at 2 and 3 players, checked against the rules. One small overstatement: the model test's name says `alignSeriesN` "reduces to alignSeries's result" at N=2. That only holds for its fixture, and the render test (with pass 3's record) says the row order can differ. See A4-5. |
+| A2-5 | DECLINED, awaits Noah | **Holds: genuinely Noah's** | The question is what Noah's ratified rule "no aggregate counts" was meant to ban. Only its author can say. `docs/usage-log.md` still has no ruling on it (grep: only the rule's own row). `lib/view/render.js` `playerBody` is unchanged. |
+| A2-6 | DECLINED, awaits a Sheets import | **Holds: genuinely Noah's** | This needs a real import into Noah's Google account. No offline or report-only pass can do it. `test/export.test.js` guard + round-trip tests pass. UI checklist item 8 names the check. |
+| A2-7 | FIXED (logged) | **Holds** | A ruling table row now exists in pass 3. `orderPlayers` is unchanged. A second out-of-band change has also shipped without a record: see A4-6. |
+
+### Acceptance re-check at `4d123fd`
+
+| # | Holds? | Evidence |
+|---|---|---|
+| 1 | **Yes** | Clean clone (`git clone C:\Users\iknow\repos\seeding-script <scratch>`, branch `build/webapp`, HEAD `4d123fd`). With Noah's app LISTENING on 127.0.0.1:8765 (PID 28352), `NODE_OPTIONS="--require ./testlib/no-network.js" node --test` with no skip pattern → `tests 132 · pass 129 · fail 0 · skipped 3`, ~1 s. The 3 skips are increment 1's "not recorded yet" fixtures. |
+| 2 | Yes | The named model tests pass: Blood Moon LX merge, `<…>` stripping, run-wide key consistency, largest field, DQ rule. |
+| 3 | Yes (`app.cmd` by inspection) | `package.json` `"app": "node app/server.js"`; `app.cmd` runs `node app\server.js --open`; `resolvePort` defaults to 8765. Test "two folders → the newer wins" passes. |
+| 4, 5 | Yes (offline) | Refresh/409/merge/summary-first and partial-W-L tests pass. No live refresh this pass (not needed; pass 1 recorded one). |
+| 6 | Yes | Synthetic run in a scratch browser tab, with Show team toggled off: a pinned row's cells line up with the header (0 px offset per column). Frozen offsets were recomputed (Player at 66 px after Seed). Unpin emptied the pinned block. |
+| 6b | Yes | Same check. Frozen columns stay aligned with Team hidden. |
+| 7 | **No: A4-1** | The compare summary rows drop a column when the event's game has no tiered registrant. The events-both-entered and series tables are fine (tests pass). |
+| 8 | Yes, except where A4-1 shifts compare cells | Render rule tests pass for every table. A4-1 puts the right cells under the wrong headers. |
+| 9 | Not re-measured | Pass 1's figures stand. Since then: `7f7c556` adds a `getComputedStyle` per header cell when compare opens, and W-L concurrency changed (fetch speed, not paint). Neither is a likely paint regression, but I didn't re-time them. |
+| 10 | Yes | 23 path probes → 404, foreign Host → 403 (test). |
+| 11 | Yes | `README.md` → Quick start → "App: the seeding table in your browser". |
+| 11b | Yes (Sheets itself unverified, A2-6) | Export tests pass. |
+| 12 | Not given | This verdict. |
+
+`7f7c556` (Show team): checked in the browser. With 2 players compared on the synthetic run,
+turning Show team off and on keeps every visible compare column at 0 px offset and 0 px width
+difference from the main table. `seeding:showTeam` is stored per viewer. The Team cells hide in
+the main table, pinned rows and the compare panel. That check is how A4-1 came to light: the
+compare panel had 17 header cells over 16-cell rows.
+
+### New findings
+
+**A4-1 — DEFECT — the compare panel's summary rows lose the Tier cell when no registrant in the
+event's game has a tier.** `app/public/app.js:54` sets `ctx.app = true`. `lib/view/render.js:180`
+(`summaryColumns`) shows Tier when `ctx.hasTiers || ctx.app`, but `render.js:211` (`summaryRow`)
+emits the Tier cell only when `ctx.hasTiers || opts.app`. The main table passes `{ app: true }`
+(`app.js:111`). The compare panel calls `R.summaryRow(p, ctx)` with no opts (`app.js:404`). So
+when `hasTiers` is false, the compare header has 17 cells and each row has 16. Seen in the DOM on
+a synthetic run (no tiers file): compare header `tier` is over "78th / 320 · 0-2 '25", which is the
+player's CEO cell in the main table; `major:CEO` is over the Evo value; `other` is over the Notes
+text; `notes` has no cell. Frozen styling follows the shifted cells (the CEO cell gets
+`frozen-edge`). Control: I added one tiered row for that game to a scratch tiers file
+(`SEED_TIERS_FILE`) and reloaded. Rows went to 17 cells, aligned. Real reach (read-only):
+`registry/tiers.csv` has 653 rows, all game 22407 (MBAACC). `out/` holds Allegro (game 36865,
+MBTL) and Andante (game 50203, UNI2), and both trigger it. Introduced in `59a21b0`. No test renders
+the compare summary under the app context. For pass 3b to fix; no ruling needed. Make the row
+and its header agree, and add a test that renders the compare summary with `ctx.app` set and
+`hasTiers` false, asserting header and row cell counts match.
+
+**A4-2 — NOTE — the tier reader and writer still use two copies of the matching rule, and they
+differ on linked rows.** `readNotes` (`lib/view/data.js:146`) tag-matches any row, even one
+already linked to another `player_id`. `updatePlayer` (`data.js:222`) tag-matches only unlinked rows
+(`!r.player_id`). Repro (temp files only): tiers row linked to player 500, tag "Foo", tier 5;
+event player 600, also "Foo". Before any edit, player 600 shows player 500's tier, justification
+and notes. Editing only 600's notes creates a new row, and the displayed tier drops to empty.
+Latent today: the real `tiers.csv` has 3 tag keys shared by more than one row, all same-person
+duplicates that both functions resolve to the same row. No cross-player collision exists yet. Pass
+2 named this duplication as the cause of A2-1. The repair fixed the character, not the
+duplication.
+
+**A4-3 — NOTE — A2-2's fix also changes increment 1's CLI pull, and the record doesn't say so.**
+`lib/run.js` uses the same `createClient`. A time-budget error used to classify as `'query'`
+(run-fatal: stop, resume later). Now it retries 8 times at 90 s per request, then fails that
+player and moves on. That's defensible: the Refresh's pull goes through the same client, and the
+requirement row asks for it. But the contract says "Don't change increment 1's pull behavior",
+and pass 3 didn't flag the reach. No change recommended; it's here so Noah knows.
+
+**A4-4 — NOTE — the default-path test fails when `SEED_TIERS_FILE` is set.** That is the override
+pass 3 added "so tests never touch the real file". `SEED_TIERS_FILE=<scratch> node --test` →
+`pass 128 · fail 1` ("route and unit path both resolve to the SAME default …"). It holds for a
+plain `node --test`, so acceptance 1 is unaffected. But anyone who sets the variable as a safety
+habit gets a red suite.
+
+**A4-5 — NOTE — record and naming accuracy.** (a) Pass 3's table credits the `resolvePort` code to
+`526ab34`, but it is in `9a07c40`. (b) Pass 3's REPORT says "21 new tests", but its own breakdown
+lists 25 (`^test(` count 107 → 132). (c) The comment at `lib/startgg.js:245` calls the new kind
+`'rate-limited'`; it is `'time-budget'`. (d) The model test name "alignSeriesN — 2 players reduces
+to alignSeries's result" claims more than the function guarantees (see A2-4).
+
+**A4-6 — NOTE, second occurrence, so it escalates (directive 9) — out-of-band changes ship with no
+record.** `7f7c556` (Show team) has no usage-log row and no build-record entry, the same shape as
+A2-7. A4-1 and A4-2 also share a shape: one rule written twice that drifted (header vs row
+predicate; reader vs writer matcher). **Candidate standing rules for Noah to ratify:** (1) every
+out-of-band commit on a build branch gets a usage-log Requirements row or a build-record line
+before the next pass; (2) where two pieces of code must agree (a header and its rows, a reader and
+its writer), build both from one source, or pin them together with a test.
+
+### Could not verify
+
+- **The live start.gg behaviour of the time-budget retry.** No live calls this pass. The 90 s and
+  8 tries come from the orchestrator's recorded workaround, exercised against fakes.
+- **Google Sheets' handling of the apostrophe** (A2-6). It needs Noah's account.
+- **`app.cmd` end to end.** It opens the desktop browser.
+- **In-browser performance (acceptance 9).** Not re-timed.
+- **Noah's live :8765 page.** Not opened or clicked: it's his instance. Its process started at
+  19:08:56, after every pass-3 commit (the latest at 19:08:28), so it is running the repaired
+  backend. A4-1 reproduces there on Allegro or Andante by code path; I didn't observe it on his
+  page.
+
+### REPORT
+
+```
+REPORT
+- Overview: Closing re-review of the seeding-script webapp at build/webapp 4d123fd. Verdict:
+  NOT APPROVED, on one new DEFECT (A4-1). When an event's game has no tiered registrant, the
+  compare panel's summary rows drop the Tier cell, so every value shows one column left, under
+  the wrong header. That is 2 of Noah's 3 real events today (Allegro, Andante); Eclipse is fine.
+  It pre-dates pass 2 (59a21b0) and the repairs didn't cause it. All seven pass-2 findings hold
+  as dispositioned. The suite on a clean clone, with 8765 held and no skip pattern: 132 tests,
+  129 pass, 0 fail, 3 skipped.
+- Found: A4-1 DEFECT (compare summary misaligned without tiers); A4-2 NOTE (tier reader/writer
+  match rules still duplicated and differ on linked rows; latent); A4-3 NOTE (A2-2 also changed
+  the CLI pull's handling of that error; undisclosed); A4-4 NOTE (default-path test fails when
+  SEED_TIERS_FILE is set); A4-5 NOTE (record/comment/test-name inaccuracies); A4-6 NOTE, second
+  occurrence (out-of-band changes without records; two candidate standing rules).
+- Ran: clean clone + full offline suite; 5 mutation checks (updatePlayer regex, BUDGET_RE,
+  maxTriesFor, WORKERS, old port chain), each caught by its named test and then restored; suite
+  with SEED_TIERS_FILE set; an A4-2 repro on temp files; read-only counts over registry/tiers.csv
+  and out/*/meta.json; a scratch server on 8797 (clone, synthetic 200x100 run, scratch tiers
+  file) driven in a background browser tab (compare alignment with Show team on/off, pinned
+  alignment, unpin, the A4-1 control), then stopped.
+- Attributed: core / seeding-script webapp increment 2, pass 4. STATED (dispatch-contract-webapp.md).
+- Queued: A4-1 needs a repair pass, which is the contract's one extra repair/re-review pair
+  (caller's call to spend). A2-5 and A2-6 stay with Noah. A4-2 to A4-5 are notes the repair may
+  take or decline. A4-6's two standing rules await Noah's ratification.
+- Spend: no live start.gg calls; no skills or subagents; one scratch server (8797), stopped; one
+  commit (this section). Contract: 4 of 4 passes used; the one extra repair/re-review pair is
+  unspent.
+- Parked: nothing half-done. Scratch clone, synthetic run and scratch tiers file sit in this
+  session's scratchpad only.
+- Needs attention: (1) Spend the extra repair pair on A4-1? It's a narrow fix plus a test. Until
+  then, don't trust the compare panel's summary rows on Allegro/Andante; Eclipse is fine. (2)
+  A2-5: rule on the Events column and the "(N)" toggle counts. (3) A2-6: import one export into
+  Sheets. (4) Ratify or reject A4-6's two standing rules.
+```

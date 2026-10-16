@@ -1059,3 +1059,190 @@ REPORT
   A2-5: rule on the Events column and the "(N)" toggle counts. (3) A2-6: import one export into
   Sheets. (4) Ratify or reject A4-6's two standing rules.
 ```
+
+---
+
+## Pass 5 — repair (lead engineer, fresh, contract's extra pair)
+
+Seat: Lead engineer (builds & updates) persona v0.4.0
+(`personal-staff/personas/library/lead-engineer.md`, Profile block, fresh job — no memory of
+passes 1–4 beyond what this record and the contract state). Model: Sonnet. Branch `build/webapp`,
+four commits on top of pass 4's HEAD (`2eafa12`, `d58c914`, `c765919`, `88cc459`), local only, plus
+this record's commit. Reviewed-at HEAD when this pass started: `f9dc0ff` (the orchestrator's
+usage-log entry closing A4-6's record gap, landed between pass 4 and this pass; no overlap with
+anything below).
+
+### Terms as understood
+
+- **Scope:** this is the dispatch contract's **one extra repair/re-review pair** ("4 passes + at
+  most ONE extra repair/re-review pair") — pass 4's closing re-review returned NOT APPROVED on one
+  new DEFECT (A4-1), so Noah/the orchestrator spent that one extra pair on this repair. Disposition
+  every one of pass 4's findings A4-1 through A4-6 — FIXED (with re-runnable evidence) or DECLINED
+  (with reasoning), per the contract's pass-3-shaped clause applied to this pair and the
+  lead-engineer persona's directive 9 (fix only what's in-window; report and queue the rest). After
+  this pass, the build returns to pass 4's seat (or a fresh engineering-auditor re-review) to close;
+  that closing approval is explicitly not this pass's to give (contract acceptance item 12).
+- **Binding:** the four ratified display rules (`docs/usage-log.md` → Requirements surfaced,
+  Ratified/Built rows); the dispatch's hard prohibitions (never write the real
+  `registry/tiers.csv`, never POST to Noah's running app, no live start.gg calls, don't touch
+  `out/` or `.env`, never weaken/skip/delete a test to make it pass); Noah's app stays running on
+  **:8765 throughout** — confirmed listening (PID 28352, unchanged) before, during and after this
+  pass's work; nothing here stops it or writes to a path it serves. `app/public/*` was **not
+  touched** by this pass — every A4 finding was a backend (`lib/`) or test/record concern, so the
+  front-end-reloads-live constraint never applied here.
+- **Allowed work:** repair only, scoped to A4-1…A4-6; no new features, no re-opening pass
+  1/2/3's engineer's-choice rulings except where a finding named one.
+- **Process:** the contract names this pass explicitly (lead-engineer, fresh, the contract's extra
+  repair pair). No Ship Pipeline skill, subagent, or other spend-multiplying workflow was run —
+  Noah's global rule requires sign-off for that and none was sought or needed; this is a single
+  seat doing the repair directly, exactly as pass 3 did.
+- **Live start.gg budget:** not spent. Every test in this pass runs offline against fakes/fixtures
+  or in-process; nothing here makes a network call.
+- **Grounding not consulted:** the standards bank and the runbook
+  (`personal-staff/personas/grounding/`) — not fetched. Every ruling below traces to the dispatch
+  contract, the design doc, pass 4's own findings, or the existing code/tests, which was sufficient
+  for a fix-or-decline pass with no new design surface (same call pass 3 made, for the same reason).
+
+### Assumptions I supplied
+
+1. **A4-1's fix is the "one shared predicate" option, not the "iterate summaryColumns in
+   summaryRow" option.** Both were offered by the finding. A full column-driven rewrite of
+   `summaryRow` would close the *class* of bug permanently, but it touches markup several
+   passing tests pin byte-for-byte (`test/render.test.js`'s rule tests, the Sheets export) and the
+   dispatch's own "keep cell content, column order … unchanged" instruction favors the narrower
+   change. Aligning the row's predicate to the header's (`ctx.hasTiers || ctx.app`, dropping the
+   `opts.app` fallback) is a one-line fix, requires no markup change anywhere else, and the new test
+   (below) pins header/row cell-count parity across every context the app actually renders — which
+   is the property the finding asked for, however it's achieved. **Open to a future pass preferring
+   the column-driven rewrite** if more columns make hand-paired predicates risky again.
+2. **The pre-existing "app row" render test's fixture was itself out of date, not a oracle to
+   preserve as-is.** It called `R.summaryRow(p, ctx, { app: true })` without ever setting
+   `ctx.app` — a shape that never occurs in production (app.js's `hydrate()` always sets `ctx.app =
+   true` together with passing `{ app: true }`), and predates the tiers feature that introduced
+   `ctx.app` at all. Fixing it to set `ctx.app` too is correcting the oracle to match what the app
+   actually does, not weakening the assertions it makes (all of which still run, unchanged).
+3. **A4-2's fix also silently closes an unflagged first-wins/last-wins inconsistency** between the
+   old reader's `byPid` Map (last duplicate wins) and the old writer's `.find()` (first match
+   wins). Pass 4 didn't name this, but leaving it in place while unifying everything else into one
+   shared index would have been a half-measure — the shared index uses first-wins throughout,
+   matching the writer's prior behavior. No real `tiers.csv` row triggers this today (no duplicate
+   `player_id` exists), so there's no behavior change on real data, only a closed latent gap.
+4. **A4-3 is a decision this pass makes, not escalates — because the dispatch handed it to this
+   pass as one.** The general persona rule is to surface/queue a ruling outside the ratified
+   increment rather than self-rule it (directive 9), and the dispatch's own prohibition says "don't
+   change increment 1's pull behavior." Read narrowly, A2-2's reach into `lib/run.js` already
+   crossed that line before this pass started. But this pass's own dispatch explicitly names the
+   choice ("Decide: either keep … or restore … Record the decision") rather than asking this seat
+   to queue it — that's Noah/the orchestrator pre-authorizing this specific call, the same way a
+   caller can narrow or widen what a seat may rule on. I made the call (KEEP; full reasoning in the
+   disposition table and the commit message) and recorded it with a re-runnable test, which is what
+   "record the decision" asks for even when no code changes.
+5. **A4-4's fix is "clear/restore the env var inside the test," not "stop testing the real default
+   path at all."** The alternative — deleting the second assertion, or only asserting
+   `defaultTiersFile() === TIERS_FILE` — would have weakened what the test proves (that the
+   *actual* fallback, with nothing overriding it, is `registry/tiers.csv`). Scoping the
+   save/clear/restore to just that one assertion keeps the full original claim while making it true
+   regardless of how the suite was invoked.
+6. **A4-6 needed no action from this pass.** Its record gap was already closed by the orchestrator
+   (`f9dc0ff`, before this pass started) and its two candidate standing rules are explicitly Noah's
+   to ratify, not a repair-pass decision — declining them here is not a cop-out, it's what the
+   finding itself asked for ("await Noah").
+
+### Disposition
+
+| # | Finding | Disposition | Evidence |
+|---|---|---|---|
+| A4-1 | DEFECT — compare panel's summary rows drop the Tier `<td>` when no registrant in the event's game has a tier yet, because `summaryRow` tested `ctx.hasTiers \|\| opts.app` while `summaryColumns` (the header) tested `ctx.hasTiers \|\| ctx.app` | **FIXED** | Commit `2eafa12`. `lib/view/render.js`: `summaryRow`'s Tier-cell predicate now reads `ctx.hasTiers \|\| ctx.app`, the same test `summaryColumns` uses — one source of truth; `opts.app` still only gates the cell's editable affordance (tabindex/data-edit), correctly absent on the compare panel's read-only rows. Column order, cell content and `data-v` sort keys unchanged (no markup touched outside this one condition). `test/render.test.js`: new test `render: A4-1 — summary header and row cell counts always agree (app row, CLI row, compare row), with and without tiers` strips nested tables (the "Other games" cell's own `<table>`) before counting top-level `<th>`/`<td>` tags, and checks all three contexts both with `ctx.hasTiers` false (no tier anywhere yet) and true. **Mutation-checked:** reverting the predicate to `opts.app` makes this new test fail on the `compare` case (`actual: 7, expected: 8`-shaped header/row mismatch); restoring it passes. The pre-existing `render: the app row adds a pin button and data-pid; the CLI row does not` test's fixture now also sets `ctx.app` for its "app row" call, matching what `app.js`'s `hydrate()` actually does (assumption 2) — no assertion in it was changed. Command: `NODE_OPTIONS="--require ./testlib/no-network.js" node --test test/render.test.js` → `tests 12 · pass 12 · fail 0`. |
+| A4-2 | NOTE — the tier reader (`readNotes`) and writer (`updatePlayer`) tag-matched by two different rules; the reader could match a row already linked to a DIFFERENT player, misattributing that player's tier | **FIXED** | Commit `d58c914`. `lib/view/data.js`: new shared `indexTierRows`/`matchTierRow`, used by both `readNotes` and `updatePlayer` — match by `player_id` first, else by tag only among rows not yet linked to ANY player. `test/data-tiers.test.js`: new test `A4-2: reader and writer pick the same row for the same player — a tag collision with a row already linked to a DIFFERENT player never leaks that player's tier, in either direction` — seeds a row linked to player 500 ("Foo") plus a second player 600 sharing the tag; confirms `readNotes` shows no tier for 600, then confirms `updatePlayer`'s edit for 600 creates 600's own row without touching 500's. **Mutation-checked:** reverting `readNotes` to its old byTag-over-all-rows logic makes this test fail; restoring it passes. Also closes an unflagged first-wins/last-wins inconsistency between the old reader and writer (assumption 3) — no behavior change on the real `registry/tiers.csv` (no duplicate `player_id` exists there today). Command: `NODE_OPTIONS="--require ./testlib/no-network.js" node --test test/data-tiers.test.js` → `tests 9 · pass 9 · fail 0`. |
+| A4-3 | NOTE — A2-2's fix also changed increment 1's CLI pull: a time-budget error now retries 8× at 90s then fails just that player, instead of stopping the whole run resumably | **DECIDED: KEEP** (deliberate, disclosed — see reasoning in assumption 4 and the commit message) | Commit `c765919` (test only; no behavior change). `testlib/fake-api.js`: new `opts.timeBudgetPlayer`. `test/run.test.js`: new test `run: a time-budget error retries the full 8-try/90s schedule, then fails just that ONE player — the run continues and completes (A4-3: kept for the CLI, deliberately — see docs/build-record-webapp.md Pass 5)` — one player always hits the error; asserts 8 retries (the time-budget schedule, not the general 5), that player alone fails, the run reaches `Done:` with the other 14 complete/limited. **Mutation-checked:** adding `'time-budget'` to `lib/run.js`'s `RUN_FATAL_KINDS` (restoring the old whole-run stop) makes this test fail; removing it again passes — so a future change to that set is now a visible, named test failure, not a silent behavior change. Command: `NODE_OPTIONS="--require ./testlib/no-network.js" node --test test/run.test.js` → `tests 15 · pass 15 · fail 0`. |
+| A4-4 | NOTE — "route and unit path both resolve to the SAME default" fails when `SEED_TIERS_FILE` is set for the whole suite | **FIXED** | Commit `d58c914`. `test/data-tiers.test.js`: the test now saves, clears and restores `process.env.SEED_TIERS_FILE` around just the assertion that needs the *true* default (no override) — the back-compat `defaultTiersFile() === TIERS_FILE` check runs under the ambient env unchanged (it always held; both sides read the same env at the same moment). Verified both ways: `NODE_OPTIONS="--require ./testlib/no-network.js" node --test` → `tests 135 · pass 132 · fail 0 · skipped 3`, and the same command with `SEED_TIERS_FILE=<scratch-path-that-does-not-exist>` → identical `135 · 132 · 0 · 3`; the scratch path was never created (confirmed with `ls`) and the real `registry/tiers.csv` mtime stayed `11:42` throughout (confirmed with `ls -la`, checked again after every run in this pass). |
+| A4-5 | NOTE — record/comment/test-name inaccuracies from pass 3 | **FIXED** | Commit `88cc459`. `lib/startgg.js:245` comment corrected from `'rate-limited'` to `'time-budget'`. `test/view-model.test.js`: `alignSeriesN`'s 2-player test renamed to say what it actually checks (series keys and shared/only-side counts; row order within an only-one-side group can differ, per A2-4's render-level finding) rather than claiming full equivalence to `alignSeries`'s result — no assertions changed. `docs/build-record-webapp.md`: pass 3's own A2-3 table row now credits `resolvePort` to `9a07c40` (not `526ab34`, which only adds its tests) — pass 4 had already caught and annotated this at its own A2-3 row; this fixes the original. Pass 3's REPORT "21 new tests" corrected to 25 (its own breakdown already summed to 25: 8+2+2+2+1+2+4+4). |
+| A4-6 | NOTE, second occurrence — out-of-band changes ship with no record; two candidate standing rules | **ALREADY CLOSED / DECLINED — Noah's to ratify** | The record gap itself: already closed before this pass started, by the orchestrator's `f9dc0ff` ("Usage log: record the Show team toggle (7f7c556), closing pass 4's A4-6 record gap") — `docs/usage-log.md`'s "Show team" row now carries the `7f7c556` citation. The two candidate standing rules A4-6 proposed (every out-of-band commit gets a usage-log/build-record line before the next pass; code that must agree — a header and its rows, a reader and its writer — gets built from one source or pinned together by a test) are **declined for this pass to adopt unilaterally** — they're standing-rule proposals for Noah to ratify, not a defect in this build, and A4-1/A4-2 above already apply the second rule's substance to the two places this pass touched, which is as far as a repair pass can go without Noah ruling on the rule itself. |
+
+A2-5 (the Events column / toggle counts vs. "no aggregate counts") and A2-6 (the Sheets
+leading-apostrophe import check) remain Noah's and the next increment's, per pass 3 and pass 4's
+own dispositions — untouched by this pass, consistent with the dispatch's instruction not to guess
+a blocked ruling.
+
+### Verification
+
+- **Full suite, clean working tree, Noah's app genuinely holding 8765** (not a dummy — `netstat`
+  showed PID `28352` LISTENING on `127.0.0.1:8765` before, during and after every command below):
+  `NODE_OPTIONS="--require ./testlib/no-network.js" node --test` → `tests 135 · pass 132 · fail 0 ·
+  skipped 3`. (132, not pass 4's 129: this pass added exactly 3 new tests — one each for A4-1,
+  A4-2, A4-3 — and changed no existing assertion's pass/fail outcome.) The 3 skips are increment 1's
+  pre-existing "not recorded yet" fixtures, unrelated to this pass.
+- **Same command, once with `SEED_TIERS_FILE` set to a scratch path that does not exist**
+  (`SEED_TIERS_FILE=<scratch>/tiers-record-*.csv NODE_OPTIONS="--require ./testlib/no-network.js"
+  node --test`) → identical `tests 135 · pass 132 · fail 0 · skipped 3` (A4-4's fix verified). The
+  scratch path was never created; confirmed with `ls` immediately after.
+- **Nothing outside the mutation grant was touched:** `git status --porcelain` showed only this
+  pass's own file edits throughout. `registry/tiers.csv`'s mtime (`11:42`, the same stamp pass 3
+  and pass 4 both checked) was re-checked after the final run above — unchanged. No `.env` read
+  outside its existing path. No `out/` run folder written, deleted or rewritten — every test here
+  runs against `os.tmpdir()` scratch folders or in-memory fakes. No live start.gg call: every test
+  in every commit above runs under `testlib/no-network.js` and passes.
+- **Noah's :8765 process:** never stopped, never POSTed to, never had `updatePlayer` or any route
+  run against its real `registry/tiers.csv`. `app/public/*` was not touched by this pass, so there
+  is nothing for his live page to pick up until the orchestrator restarts the server for the
+  backend changes (A4-1, A4-2) — per the dispatch's own note on how backend edits reach him.
+- **Mutation checks, each applied then reverted, confirmed to leave the tree byte-identical to
+  before** (`git diff` empty on the file after each revert): the A4-1 predicate reverted to
+  `opts.app`; `readNotes`'s matcher reverted to its old byTag-over-all-rows form; `lib/run.js`'s
+  `RUN_FATAL_KINDS` with `'time-budget'` added. Each made exactly the test named above fail, and
+  only that test.
+
+### REPORT
+
+```
+REPORT
+- Overview: Repair pass on the seeding-script webapp -- the dispatch contract's one extra
+  repair/re-review pair, spent because pass 4's closing re-review returned NOT APPROVED on one
+  new DEFECT (A4-1). All six of pass 4's findings (A4-1..A4-6) are dispositioned: four FIXED
+  (A4-1 compare-panel column misalignment, A4-2 reader/writer tier-matcher unification, A4-4
+  the SEED_TIERS_FILE-dependent test, A4-5 record/comment/test-name accuracy), one DECIDED-KEEP
+  with a disclosed reason and a pinning test (A4-3, the CLI's time-budget retry behavior), and
+  one already closed before this pass started / correctly left to Noah (A4-6). Four commits on
+  build/webapp (2eafa12, d58c914, c765919, 88cc459) plus this record. Full offline suite on the
+  working tree, with Noah's app genuinely holding 8765 throughout (PID 28352, confirmed
+  unchanged): 135 tests, 132 pass, 0 fail, 3 skipped (pre-existing, unrelated) -- run both with
+  and without SEED_TIERS_FILE set, identical result either way.
+- Found: 6 findings (A4-1..A4-6) from pass 4's closing re-review, all dispositioned: 4 FIXED
+  (A4-1, A4-2, A4-4, A4-5), 1 DECIDED-KEEP with reasoning and a test (A4-3), 1 already
+  closed/correctly declined to Noah (A4-6).
+- Ran: 4 commits (2eafa12 A4-1, d58c914 A4-2+A4-4, c765919 A4-3, 88cc459 A4-5) plus this
+  record. 3 new tests (one per A4-1/A4-2/A4-3), each mutation-checked against the exact prior
+  behavior it guards and confirmed to fail only on that mutation. No source behavior changed for
+  A4-3, A4-4, A4-5, or A4-6 -- A4-4 and A4-5 are test/record corrections, A4-3 is a disclosed
+  decision to keep existing behavior, A4-6 needed no action.
+- Attributed: core / seeding-script webapp increment 2, the contract's extra repair pair.
+  STATED (dispatch-contract-webapp.md: "4 passes + at most ONE extra repair/re-review pair");
+  this pass's own dispatch named A4-1..A4-6 and the A4-3 decision explicitly.
+- Queued: A2-5 (Events column / toggle counts vs. "no aggregate counts") and A2-6 (Sheets
+  leading-apostrophe import check) remain open, both explicitly Noah's or the next increment's
+  -- carried forward unchanged by passes 3 and 4 and by this pass, per the dispatch's own
+  instruction not to guess a blocked ruling. A4-6's two candidate standing rules (out-of-band
+  commits get a record; code that must agree is built from one source or pinned by a test)
+  await Noah's ratification -- this pass applied the second rule's substance to A4-1/A4-2 but
+  did not adopt either rule as binding, which isn't this seat's call to make.
+- Spend: no live start.gg calls (not needed; every test runs offline/in-process). No skills,
+  subagents, or other spend-multiplying workflow run -- a single lead-engineer seat per the
+  dispatch, consistent with Noah's global spend-sign-off rule (nothing here implicated it).
+  This pass IS the contract's one extra repair/re-review pair; it is now spent. The next step
+  is a re-review (pass 4's seat, or a fresh one) to close -- this pass cannot give that
+  approval itself (acceptance item 12).
+- Parked: nothing half-done; every commit is at a green, clean state (full suite passing after
+  each, verified again at the end). Noah's :8765 server was never stopped and never served a
+  half-edited file (app/public/* untouched). Scratch clones, scratch tiers files and the
+  synthetic run from earlier passes are not reused or left behind by this one.
+- Needs attention: (1) This pass closes the contract's extra repair pair -- the next step is a
+  closing re-review (pass 4's seat or fresh), which this pass cannot self-grant (item 12). (2)
+  A2-5 and A2-6 still need Noah directly, unchanged from passes 1, 3 and 4. (3) A4-6's two
+  candidate standing rules await Noah's ratification, unchanged from pass 4. (4) A4-1's fix took
+  the "align the predicate" route, not the "iterate summaryColumns in summaryRow" route (assumption
+  1) -- flag if a future pass should still do the fuller rewrite as more columns get added. (5)
+  A4-3's decision to keep the CLI's new retry-then-continue behavior is reversible in one line
+  (add 'time-budget' to lib/run.js's RUN_FATAL_KINDS) if Noah would rather the old whole-run stop
+  back; the new test in test/run.test.js would need its mutation-checked assertions flipped to
+  match.
+```

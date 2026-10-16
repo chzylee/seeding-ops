@@ -90,6 +90,48 @@ test('updatePlayer: player_id match — once a row is linked, a second edit matc
   assert.strictEqual(rows[0].tier, '3', 'tier untouched by a notes-only edit');
 });
 
+// A4-2 (build-record-webapp.md, pass 4): readNotes (the reader, what the page displays) and
+// updatePlayer (the writer, what an edit saves) used to tag-match by two different rules --
+// readNotes would match ANY row by tag, even one already linked to a different player_id;
+// updatePlayer only ever matched UNLINKED rows by tag. So a tag collision between two real
+// registrants (ordinary: tags aren't unique, only player_id is) could show one player's tier
+// under a different player's name, and editing that second player would silently fork a new,
+// emptier row instead of ever touching the one the page had just displayed. Both now call the
+// same matchTierRow/indexTierRows (lib/view/data.js), which never lets a tag match reach past a
+// row already linked to someone else.
+test('A4-2: reader and writer pick the same row for the same player -- a tag collision with a row already linked to a DIFFERENT player never leaks that player\'s tier, in either direction', () => {
+  const outRoot = tmpDir('seeding-tiers-collision-');
+  const tiersFile = path.join(outRoot, 'registry', 'tiers.csv');
+  const dir = makeRun(outRoot, { players: [player(500, 'Foo'), player(600, 'Foo')] });
+  // Player 500's row is already linked (an earlier edit). Player 600 is a different real person
+  // who happens to share the tag "Foo" -- tags collide; player_id is the only unique key.
+  seedTiers(tiersFile, [{ game_id: '1', game_name: 'MBTL', player_id: '500', startgg_tag: 'Foo', sheet_tag: 'Foo', tier: '5', justification: 'linked to 500', notes: '', decided_on: '2026-09-01', source: 'app', sheet_region: '', sheet_placements: '', sheet_notes: '' }]);
+
+  // The reader: 500 reads its own linked row; 600 must NOT inherit it through the shared tag.
+  const run = data.loadRun(dir);
+  const notesBefore = data.readNotes(dir, run.players, '1', tiersFile);
+  assert.strictEqual(notesBefore['500'].tier, 5, 'player 500 reads its own linked row');
+  assert.ok(!('600' in notesBefore), 'player 600 has no notes entry at all -- it must not inherit player 500\'s tier through the shared tag');
+
+  // The writer independently reaches the same conclusion: editing 600 creates 600's OWN row
+  // rather than touching 500's (matching the reader's refusal to match a linked row by tag).
+  const result = data.updatePlayer(dir, '600', { notes: 'scouting note' }, { tiersFile });
+  const rows = readTiersFile(tiersFile);
+  assert.strictEqual(rows.length, 2, 'a new row was created for 600; 500\'s row is untouched');
+  const five = rows.find((r) => r.player_id === '500');
+  assert.strictEqual(five.tier, '5', '500\'s row is unchanged by 600\'s edit');
+  assert.strictEqual(five.notes, '', '500\'s row did not pick up 600\'s note either');
+  const six = rows.find((r) => r.player_id === '600');
+  assert.strictEqual(six.notes, 'scouting note');
+  assert.strictEqual(six.tier, '', '600 never had a tier -- the edit did not inherit 500\'s');
+  assert.strictEqual(result.tier, null);
+
+  // Reading again after the edit: still consistent -- 500 unchanged, 600 still shows no tier.
+  const notesAfter = data.readNotes(dir, run.players, '1', tiersFile);
+  assert.strictEqual(notesAfter['500'].tier, 5);
+  assert.strictEqual(notesAfter['600']?.tier, undefined);
+});
+
 test('updatePlayer: a player with no tiers row at all gets a new one created, linked by player_id', () => {
   const outRoot = tmpDir('seeding-tiers-new-');
   const tiersFile = path.join(outRoot, 'registry', 'tiers.csv');
@@ -222,6 +264,21 @@ test('route and unit path both resolve to the SAME default (registry/tiers.csv) 
   // defaultTiersFile() must point at the real repo path by default (the contract: "defaulting to
   // registry/tiers.csv"), and nothing in this file calls updatePlayer without an explicit
   // tiersFile override, so the real file is never written by this suite.
+  //
+  // data.TIERS_FILE is a back-compat constant captured once at require time, under whatever env
+  // this process started with -- comparing it to a fresh defaultTiersFile() call (same, unchanged
+  // env) just proves the two stay in sync; that holds regardless of SEED_TIERS_FILE.
   assert.strictEqual(data.defaultTiersFile(), data.TIERS_FILE);
-  assert.match(data.defaultTiersFile().replace(/\\/g, '/'), /registry\/tiers\.csv$/);
+  // A4-4 (build-record-webapp.md, pass 4): the actual "is the TRUE default registry/tiers.csv"
+  // check must not depend on whether SEED_TIERS_FILE happens to be set in the ambient
+  // environment this suite was invoked with (pass 3 added that override "so tests never touch the
+  // real file" as a safety habit, and setting it for an outer, whole-suite run broke this
+  // assertion). Clear it for just this computation, then restore exactly what was there.
+  const saved = process.env.SEED_TIERS_FILE;
+  delete process.env.SEED_TIERS_FILE;
+  try {
+    assert.match(data.defaultTiersFile().replace(/\\/g, '/'), /registry\/tiers\.csv$/);
+  } finally {
+    if (saved === undefined) delete process.env.SEED_TIERS_FILE; else process.env.SEED_TIERS_FILE = saved;
+  }
 });

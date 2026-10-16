@@ -271,3 +271,12 @@ body.hide-team .cmp-sum-wrap th[data-col="team"], body.hide-team .cmp-sum-wrap t
 /* Other series (this game) — same treatment as Other games */
 table.summary td.more { min-width: 240px; max-width: 520px; }
 table.summary td.more details[open] { min-width: 520px; }
+
+/* Seeded: leftmost ✓ column; a seeded row turns green (frozen cells included) */
+table.summary td.seeded { text-align: center; width: 1%; white-space: nowrap; }
+button.seed-btn { width: 24px; height: 24px; padding: 0; border: 1px solid var(--line-strong); border-radius: 50%;
+  background: #fff; color: var(--dim); font-size: 13px; line-height: 1; cursor: pointer; }
+button.seed-btn:hover { border-color: #2e8b57; color: #2e8b57; }
+button.seed-btn[aria-pressed="true"] { background: #2e8b57; border-color: #2e8b57; color: #fff; }
+#summary > tbody > tr.seeded-row > td { background: #e3f4e8; }
+#summary > tbody > tr.seeded-row:hover > td { background: #d3edda; }

@@ -118,6 +118,27 @@
     applyFreeze();
     layoutPins();
     syncSel();
+    applySeeded();
+  }
+
+  // ---- Seeded: a ✓ per row marks the player as seeded (green row). Per event, per viewer. --------
+  const SEEDED_KEY = `seeding:seeded:${SLUG}`;
+  let seeded = new Set((store.get(SEEDED_KEY, []) || []).map(String));
+  function applySeeded() {
+    for (const tr of table.querySelectorAll(':scope > tbody > tr[data-pid]')) {
+      const on = seeded.has(tr.dataset.pid);
+      tr.classList.toggle('seeded-row', on);
+      const td = tr.querySelector(':scope > td.seeded');
+      if (td) td.dataset.v = on ? '1' : '0';
+      const b = tr.querySelector('button.seed-btn');
+      if (b) { b.setAttribute('aria-pressed', String(on)); b.title = on ? 'Seeded — click to unmark' : 'Mark as seeded'; }
+    }
+  }
+  function toggleSeeded(pid) {
+    if (!pid) return;
+    if (seeded.has(pid)) seeded.delete(pid); else seeded.add(pid);
+    store.set(SEEDED_KEY, [...seeded]);
+    applySeeded();
   }
 
   // ---- Freeze columns --------------------------------------------------------------------------
@@ -125,7 +146,7 @@
   // it stays put while the others scroll under it. The same offsets go on the pinned block (same
   // table) and on the compare panel's summary rows (same columns, same widths).
   const colKeys = () => [...thead.rows[0].cells].map((th) => th.dataset.col);
-  const isFrozen = (k) => k === 'player' || frozen.has(k);
+  const isFrozen = (k) => k === 'player' || k === 'seeded' || frozen.has(k);
   function freezeOffsets() {
     const ths = [...thead.rows[0].cells];
     let x = 0;
@@ -304,6 +325,8 @@
 
   // ---- Sorting (any table.sortable, including ones rendered later) ------------------------------
   document.addEventListener('click', (ev) => {
+    const seedBtn = ev.target.closest('button.seed-btn');
+    if (seedBtn) { toggleSeeded(seedBtn.closest('tr').dataset.pid); return; }
     const pinBtn = ev.target.closest('button.pin');
     if (pinBtn) { togglePin(pinBtn.closest('tr')); return; }
     const fzBtn = ev.target.closest('button.freeze');
@@ -606,6 +629,7 @@
     applyFreeze();
     layoutPins();
     syncSel();
+    applySeeded();
     if (cmp.on && cmp.ids.includes(String(pid))) renderCompare();
   }
   table.addEventListener('dblclick', (ev) => {

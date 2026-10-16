@@ -268,7 +268,14 @@ test('render: A4-1 — summary header and row cell counts always agree (app row,
   const tieredCtx = R.summaryContext({ meta: ctx.meta, players, rows, records, notes, columns, index });
   const withTiers = cellCounts({ ctx: tieredCtx, players });
   for (const [name, c] of Object.entries(withTiers)) assert.strictEqual(c.row, c.head, `${name}: row cells vs header cells, with a tier present`);
-  assert.strictEqual(withTiers.cli.head, withTiers.app.head, 'the Tier column is the same column once a tier exists, app or not');
+  // Same columns, by key, in app and CLI once a tier exists. The only app-only column is "Seeded"
+  // (Noah, 2026-10-16: the leftmost mark-as-seeded button), which must come first and never appear in the CLI.
+  const cliKeys = R.summaryColumns(tieredCtx).map((c) => c.key);
+  const appKeys = R.summaryColumns({ ...tieredCtx, app: true }).map((c) => c.key);
+  assert.strictEqual(appKeys[0], 'seeded', 'Seeded is the leftmost column in the app');
+  assert.ok(!cliKeys.includes('seeded'), 'no Seeded column outside the app');
+  assert.deepStrictEqual(appKeys.slice(1), cliKeys, 'the Tier column (and every other column) is the same once a tier exists, app or not');
+  assert.strictEqual(withTiers.app.head, withTiers.cli.head + 1, 'the app header has exactly one extra cell: Seeded');
 });
 
 test('render: summary text table (Sheets export) — same columns plus Prefix and player id, one line per cell, same rules', () => {

@@ -45,7 +45,28 @@ test('classify: event:null at 200 -> event-not-found (ported SG-4)', () => {
   assert.strictEqual(classifyError({ httpStatus: 200, eventNull: true }), 'event-not-found');
 });
 
-test('retry rule: only rate-limited, server and network are retried', () => {
-  for (const k of ['rate-limited', 'server', 'network']) assert.ok(isRetryable(k), k);
+test('retry rule: only rate-limited, server, network and time-budget are retried', () => {
+  for (const k of ['rate-limited', 'server', 'network', 'time-budget']) assert.ok(isRetryable(k), k);
   for (const k of ['bad-token', 'query', 'event-not-found', 'missing']) assert.ok(!isRetryable(k), k);
+});
+
+// A2-2 (usage-log.md 2026-10-15, "Handle start.gg's server-time budget"): the live error text,
+// "You have gone over the threshold for recent request time. Please wait before sending another
+// request.", must classify as the retryable 'time-budget' kind (not 'query', not folded into the
+// plain-429 'rate-limited' kind, which keeps its own short backoff — see pacing.test.js) in every
+// shape start.gg is likely to send it, matching the auditor's A2-2 simulation exactly.
+const BUDGET_TEXT = 'You have gone over the threshold for recent request time. Please wait before sending another request.';
+
+test('classify: the start.gg server-time-budget message -> time-budget, not query or rate-limited, in every shape it can arrive in', () => {
+  // A pre-execution GraphQL error with no `path` (validation/budget errors have none).
+  assert.strictEqual(classifyError({ httpStatus: 200, graphqlErrors: [{ message: BUDGET_TEXT }] }), 'time-budget');
+  // An HTTP 4xx body message (no GraphQL envelope at all).
+  assert.strictEqual(classifyError({ httpStatus: 400, body: { message: BUDGET_TEXT } }), 'time-budget');
+  // A GraphQL error that does carry a `path` (would otherwise read as 'server').
+  assert.strictEqual(classifyError({ httpStatus: 200, graphqlErrors: [{ message: BUDGET_TEXT, path: ['event'] }] }), 'time-budget');
+  assert.ok(isRetryable('time-budget'));
+});
+
+test('classify: a plain HTTP 429 still classifies rate-limited, not time-budget (the two stay distinct kinds)', () => {
+  assert.strictEqual(classifyError({ httpStatus: 429, body: { message: 'Rate limit exceeded - api-token' } }), 'rate-limited');
 });

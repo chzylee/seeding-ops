@@ -31,6 +31,14 @@ async function fakeRun() {
 }
 const userOf = (world, playerId) => world.players.find((p) => String(p.id) === String(playerId)).user;
 
+// A2-2 (usage-log.md 2026-10-15): the live server-time-budget error showed up at 3-in-flight
+// batched fetching; the workaround that cleared it was 1 request in flight. WORKERS (and
+// fetchSetRecords' default when no `workers` option is passed — exactly how app/jobs.js and
+// views/major-table.js call it) must default to 1, not the old 3.
+test('wl: default concurrency is 1 in flight, not 3 (A2-2)', () => {
+  assert.strictEqual(wl.WORKERS, 1);
+});
+
 test('wl: every fetchable row gets the record its sets tally to; DQs and byes excluded; long brackets paged alone', async () => {
   const { world, players, results } = await fakeRun();
   const clock = virtualClock(START);

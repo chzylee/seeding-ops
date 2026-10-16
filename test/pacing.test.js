@@ -46,3 +46,19 @@ test('backoff: exponential 4, 8, 16, 32 s over 5 tries, honoring Retry-After', (
   assert.strictEqual(p.MAX_TRIES, 5);
   assert.strictEqual(p.MAX_REQUESTS, 75);
 });
+
+// A2-2: the start.gg server-time-budget error ('time-budget', lib/startgg.js classifyError) gets
+// its own schedule — a flat 90 s wait, not the exponential one, and up to 8 tries instead of 5 —
+// because 5 short retries (topping out at 32 s) never cleared it live (usage-log.md 2026-10-15).
+test('backoff: the time-budget kind waits a flat 90 s per try (not exponential), honoring a larger Retry-After', () => {
+  for (const n of [2, 3, 4, 8]) assert.strictEqual(p.backoffMs(n, 0, 'time-budget'), 90_000);
+  assert.strictEqual(p.backoffMs(2, 120_000, 'time-budget'), 120_000, 'a longer server hint still wins');
+  assert.strictEqual(p.backoffMs(2, 20_000, 'time-budget'), 90_000, 'a shorter server hint does not shrink the floor');
+  assert.strictEqual(p.RATE_LIMIT_WAIT_MS, 90_000);
+});
+
+test('maxTriesFor: time-budget gets ~8 tries; every other kind keeps the general 5', () => {
+  assert.strictEqual(p.maxTriesFor('time-budget'), 8);
+  assert.strictEqual(p.RATE_LIMIT_MAX_TRIES, 8);
+  for (const k of ['rate-limited', 'server', 'network', undefined]) assert.strictEqual(p.maxTriesFor(k), 5);
+});

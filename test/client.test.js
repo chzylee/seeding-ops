@@ -40,6 +40,41 @@ test('client: a 429 is retried with backoff, then succeeds (backoff exercised)',
   assert.strictEqual(c.stats.complexityMax, 351);
 });
 
+// A2-2 (usage-log.md 2026-10-15): start.gg's server-time-budget error, hit live under heavy
+// batched fetching, needed a long wait and more tries than the general schedule gives 5xx/network
+// failures. classifyError gives it its own kind, 'time-budget' (test/classify.test.js), and this
+// checks the client actually paces and retries it that way end to end: a flat 90 s wait per try,
+// up to 8 tries, and recovery (no lost work) once start.gg stops objecting.
+const BUDGET_TEXT = 'You have gone over the threshold for recent request time. Please wait before sending another request.';
+const BUDGET_GQL_ERROR = { status: 200, body: { errors: [{ message: BUDGET_TEXT }] } };
+
+test('client: the server-time-budget error retries at a flat 90 s, up to 8 tries, and recovers once it clears (no lost work)', async () => {
+  const clock = virtualClock(0);
+  const slept = [];
+  const log = [];
+  // Fails with the live budget error 3 times, then succeeds — well under the 8-try ceiling.
+  const f = scripted([BUDGET_GQL_ERROR, BUDGET_GQL_ERROR, BUDGET_GQL_ERROR, OK]);
+  const c = sgg.createClient({ token: TOKEN, fetchImpl: f, now: clock.now, sleep: async (ms) => { slept.push(ms); await clock.sleep(ms); }, onRequest: (r) => log.push(r) });
+  const data = await c.request('Op', 'query Op { x }', {});
+  assert.deepStrictEqual(data, { ok: 1 });
+  assert.strictEqual(f.calls.length, 4);
+  assert.deepStrictEqual(slept, [90_000, 90_000, 90_000], 'a flat 90 s wait each retry, not exponential');
+  assert.ok(log.slice(0, 3).every((r) => r.kind === 'time-budget'));
+  assert.strictEqual(c.stats.retries, 3);
+});
+
+test('client: the server-time-budget error gives up only after 8 tries (never fewer, matching the live workaround)', async () => {
+  const clock = virtualClock(0);
+  const slept = [];
+  const f = scripted([BUDGET_GQL_ERROR]); // every attempt repeats the same budget error
+  const c = sgg.createClient({ token: TOKEN, fetchImpl: f, now: clock.now, sleep: async (ms) => { slept.push(ms); await clock.sleep(ms); } });
+  await assert.rejects(c.request('Op', 'q', {}), (e) => e instanceof sgg.StartggError && e.kind === 'time-budget' && e.exhausted === true
+    && /gave up after 8 tries/.test(e.message));
+  assert.strictEqual(f.calls.length, 8, 'the full ~8-try ceiling, not the general 5');
+  assert.strictEqual(slept.length, 7, 'one 90 s wait between each of the 8 tries');
+  assert.ok(slept.every((ms) => ms === 90_000));
+});
+
 test('client: 5xx and thrown requests retry up to 5 tries, then give up as exhausted', async () => {
   const clock = virtualClock(0);
   const f = scripted([{ status: 503, body: {} }, 'throw', { status: 502, body: {} }, { status: 500, body: {} }, { status: 503, body: {} }]);

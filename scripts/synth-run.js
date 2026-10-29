@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 'use strict';
-// scripts/synth-run.js — writes a synthetic finished run folder for load-testing the app.
+// scripts/synth-run.js — writes a synthetic tournament pool for load-testing the app.
 //   node scripts/synth-run.js <outRoot> [--players 200] [--results 100] [--seed 1]
-// Same files and schema as a real pull (lib/output.js), plus views/set-records.json (W-L for ~90%
-// of this game's results) and views/notes.json (seeds for 16 players). Deterministic per --seed.
+// Same files and schema as a real pull (lib/output.js), plus set-records.json (W-L for ~90% of this
+// game's results). Deterministic per --seed.
 // Never point it at out/: the app's index would list the synthetic event.
 
 const fs = require('node:fs');
@@ -72,18 +72,14 @@ for (let i = 0; i < NP; i++) {
   if (i < 16) notes[pid] = { seed: i + 1, notes: `Synthetic note for seed ${i + 1}.` };
 }
 
-const name = out.runFolderName('tournament/synthetic-major/event/synthetic-200', RUN_AT);
-const dir = out.createRunFolder(path.resolve(outRoot), name);
-fs.mkdirSync(path.join(dir, 'views'), { recursive: true });
-const meta = {
-  input_url: 'synthetic', event: { id: '1', slug: 'tournament/synthetic-major/event/synthetic-200', name: `Synthetic ${NP} x ${NR}`, tournament_name: 'Synthetic Major', start_at: null, num_entrants: NP },
-  game: GAME, run_at: new Date(RUN_AT).toISOString(),
-  window: { start: new Date(RUN_AT - 730 * DAY).toISOString(), end: new Date(RUN_AT).toISOString(), days: 730 },
-  registrant_count: NP, result_count: results.length, history_status: { complete: NP, limited: 0, failed: 0 },
-};
-fs.writeFileSync(path.join(dir, 'players.csv'), out.toCsv(out.PLAYER_COLUMNS, players));
-fs.writeFileSync(path.join(dir, 'results.csv'), out.toCsv(out.RESULT_COLUMNS, results));
-fs.writeFileSync(path.join(dir, 'views', 'set-records.json'), JSON.stringify(records));
-fs.writeFileSync(path.join(dir, 'views', 'notes.json'), JSON.stringify(notes));
-fs.writeFileSync(path.join(dir, 'meta.json'), JSON.stringify(meta, null, 2));
-console.log(`${dir}\n${NP} players, ${results.length} results, ${Object.keys(records).length} W-L records`);
+// A tournament pool (docs/design-tool.md T2), the shape the app reads: out/synthetic-major/ with
+// state.json, one pull, current, and the shared W-L cache. (Increment 1's per-event folder is retired.)
+const { makePool } = require('../testlib/pool-fixture');
+const { tDir, dir } = makePool(path.resolve(outRoot), {
+  t: 'synthetic-major', name: 'Synthetic Major', runAt: new Date(RUN_AT).toISOString(), pull: out.pullFolderName(RUN_AT),
+  events: [{ slug: 'synthetic-200', name: `Synthetic ${NP} x ${NR}`, game: GAME }], players, results,
+});
+fs.writeFileSync(path.join(tDir, 'set-records.json'), JSON.stringify(records));
+void notes; // seeds came from views/notes.json in increment 2; a pool keeps notes in registry/tiers.csv
+console.log(`${dir}
+${NP} players, ${results.length} results, ${Object.keys(records).length} W-L records`);

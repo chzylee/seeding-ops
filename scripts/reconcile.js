@@ -106,15 +106,23 @@ async function liveParticipantCount(eventId) {
 async function main() {
   const args = process.argv.slice(2);
   const runDir = args.find((a) => !a.startsWith('--'));
-  if (!runDir) { console.error('Usage: node scripts/reconcile.js <run folder> [--live]'); return 2; }
+  if (!runDir) { console.error("Usage: node scripts/reconcile.js <pull folder> [--live]"); return 2; }
   const res = reconcile(runDir);
   if (args.includes('--live') && res.meta) {
-    const live = await liveParticipantCount(res.meta.event.id);
+    // A pool: every seeded event's participants, summed (meta.json seeded_events).
+    const live = { count: 0, requests: 0 };
+    for (const e of res.meta.seeded_events || []) {
+      const one = await liveParticipantCount(e.id);
+      live.count += one.count;
+      live.requests += one.requests;
+    }
+    const a = res.meta.registrant_anomalies;
     res.checks.push({ name: 'API participant count (fresh query) = meta.registrant_anomalies.api_participants',
-      ok: live.count === res.meta.registrant_anomalies.api_participants,
-      detail: `${live.count} vs ${res.meta.registrant_anomalies.api_participants} (${live.requests} requests)` });
-    res.checks.push({ name: 'players.csv rows = API participant count (fresh query)',
-      ok: live.count === res.players.length, detail: `${res.players.length} vs ${live.count}` });
+      ok: live.count === a.api_participants,
+      detail: `${live.count} vs ${a.api_participants} (${live.requests} requests)` });
+    const expected = live.count - (a.duplicate_player || 0) - (a.no_player || 0) - (a.cross_event_repeats || 0);
+    res.checks.push({ name: 'players.csv rows = API participant count (fresh query) - duplicates - no-player - cross-event repeats',
+      ok: expected === res.players.length, detail: `${res.players.length} vs ${expected}` });
   }
   for (const c of res.checks) console.log(`${c.ok ? 'PASS' : 'FAIL'}  ${c.name}${c.detail ? '  (' + c.detail + ')' : ''}`);
   const failed = res.checks.filter((c) => !c.ok).length;

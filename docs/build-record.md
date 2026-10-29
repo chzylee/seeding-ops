@@ -455,3 +455,45 @@ cannot claim yet is the independent live evidence increment 1's contract asked f
 needs a small live allowance, which is the caller's to grant. C2-7 is the one code defect, shared with
 build B as D2-2. It covers the code, tests, scripts and the live artifacts on disk. It could not judge
 start.gg's live behavior for the parked checks.
+
+---
+
+## Pass 3 — lead engineer (increment 1's live legs, run with build B)
+
+Seat: lead-engineer persona v0.4.0, run inside increment 3 build B's pass 3 (repair). That pass's full
+record, with the dispositions of C2-1..C2-8 next to D2-1..D2-13, is `docs/build-record-tool.md` §"Build B
+— Pass 3 — lead engineer (repair)". Date 2026-10-29. Branch `build/tool-b`.
+
+**Allowance used** (the orchestrator's ruling for build B pass 3): at most 20 read-only start.gg requests,
+never more than 10 in any rolling 60 s, one client in one process, against
+`crescendo-of-night-3-episode-0` and GeneralMidwest (`user/14364d39`). **Used: 16 requests, all HTTP 200,
+max 10 in any rolling 60 s**, 2026-10-29 16:19:27Z–16:20:29Z. Every send is logged (time, operation,
+variables, status) in the session scratchpad's `p3/live-sends-pass3.jsonl`. The harness
+(`p3/live-pass3.js`) refused any mutation, stopped at 20 and was dry-run first against the fake. The token
+was loaded by `lib/token` inside the process and never printed.
+
+**Instruments** (commit `0bbe247`): `scripts/record-fixtures.js`, `scripts/ground-truth.js` and
+`scripts/reconcile.js`'s `--live` checks now take one client, so one process runs them all.
+`scripts/token-absent.js` (new) is the by-value token check. Each is tested offline in
+`test/live-instruments.test.js`, against the fake start.gg answering their own queries.
+
+| id | leg (increment 1's acceptance) | result | evidence |
+|---|---|---|---|
+| **C3-1** | 1, the recorded fixtures (C2-1) | **Met.** 4 requests: `event.json`, `entrants-page.json` (CoN3 Ep0 `allegro-mbtl-pc`, 10 of 21 entrants), `user-events-page.json` (GeneralMidwest, 10 of 428 events), `recent-standings.json` (CoN3 entrant player 2282067, MBTL). `test/recorded-shape.test.js`: **3 run, 3 pass, 0 skipped** (they had been skipped since 2026-10-12). | commit `a8c1422`; files in `test/fixtures/recorded/` |
+| **C3-2** | determinism of C3-1 | **Met.** Each file keeps only `data`, the query variables, `_recorded_on` and `extensions.queryComplexity`. The test anchors its two-year window to `_recorded_on`, so its result does not depend on the day the suite runs. Re-recording changes the files (the players' histories move), which is expected. | `0bbe247` (writer and test), `a8c1422` |
+| **C3-3** | 5, ground truth: the independent count (C2-2) | **PASS.** GeneralMidwest (user 302490, player 433798): 428 lifetime events. The pull's own per-player code (`lib/history.collectUserHistory`, perPage 120, 4 pages) kept **334** in the window 2024-10-29..2026-10-29 and skipped 94 out of it. The independent loop (`scripts/ground-truth.js`, its own query, perPage 100, 5 pages) counted **334**, the same event ids. GeneralMidwest is in no pool, so the comparison ran on a one-player run folder written from the pull's per-player code, not on a `lib/run.js` pool. | `p3/live-pass3-result.json`; 5 + 4 requests |
+| **C3-4** | 5, ground truth: 3 random rows re-fetched | **Not run.** Each re-fetch is rooted at `event(id:)` of another tournament, outside the allowance's two targets, and the ruling names only "the ground-truth count". The instrument is tested offline: it catches a changed placement and a missing row. | `test/live-instruments.test.js` |
+| **C3-5** | 4, the live reconcile `--live` (C2-2) | **PASS, 20 of 20** on build B pass 1's live CoN3 Ep0 pool (`pull-20261029-103426`, a scratch copy). A fresh participant count of both seeded events gives 24 = `api_participants` 24, and players.csv's 24 rows = 24 − 0 − 0 − 0. C2-4 still applies: the subtractions come from the pull's own meta.json (here all 0). | 2 requests |
+| **C3-6** | 2, no token in outputs or history, by value (C2-2) | **Met.** `node scripts/token-absent.js` over `out/` (the six old run folders), `test/fixtures/recorded/`, the session scratchpad (the live pool, the live logs, this pass's work) and `git log -p --all`: **987 files, 0 contain the token; 0 hits in history.** | 0 requests |
+| **C3-7** | 7, resume after a live kill | **Fake only, as ruled.** "a crash mid-pull leaves the old pull live …" (`test/pool.test.js`, real SIGKILL, `refetched = []`) and "kill + resume" (`test/run.test.js`) pass in the offline suite. | `node --test` 223/223/0/0 |
+| **C3-8** | C2-7 (= D2-2): skips of carried players | **Fixed** in build B pass 3 (`b107de8`). An incremental or retry pull's `meta.json` counts every carried player's skips: "Nothing is dropped without being counted" holds again. | tests "D2-2 / D2-13 …", "D2-2: a retry pull …" |
+
+**Not run, still open:** `scripts/schema-check.js` (C2-3, E8). It is not in the allowance's purpose, so
+`ALL_GAMES_FALLBACK` stays off and every user is still paged to the end (the design's default). The C2-5
+note (request-log stamps before an outer limiter's wait) is unchanged. C2-4, C2-6 and C2-8 are recorded,
+with no action, per the ruling.
+
+**Increment 1's acceptance after this pass:** 1 met (offline, and the recorded leg now runs); 2 met
+(including the by-value check); 3 superseded by the pool (build B pass 1's live pull); 4 met, live
+included; 5 count met, rows not run (C3-4); 6 met; 7 met offline, live leg fake-only by ruling; 8–11 met;
+12 is build B's pass 4.

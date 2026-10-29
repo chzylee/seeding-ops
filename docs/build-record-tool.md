@@ -1632,3 +1632,220 @@ where it is a product choice. The repair pass builds to these, not to its own re
 
 Before 2026-11-02 (pass 2's needs-attention 5): the app lists only the new layout, so the next event's
 tournament must be added and pulled in the app. The orchestrator will do that with Noah's go.
+
+---
+
+## Build B — Pass 3 — lead engineer (repair)
+
+Seat: lead-engineer persona v0.4.0 (`personal-staff/personas/library/lead-engineer.md`, Profile block,
+loaded in-seat). Model: Opus. A fresh job: I did not build pass 1 and treated its code as a working
+system to modify, with the before-state recorded first. Branch `build/tool-b`, started at `5ecc770` with a
+clean tree. Code and test commits `8a371b7`, `b107de8`, `f6db706`, `0e21a4a`, `bfb7287`, `0bbe247`,
+`a8c1422`, `7b3bfa9`, plus this record's commit. Local only: no push, no remote, nothing amended. No
+skills, subagents or workflows.
+
+### Terms as understood
+
+- **Scope:** the "Orchestrator rulings for build B pass 3" table above, one disposition per row: D2-1..D2-13,
+  and C2-1/C2-2 from `docs/build-record.md` §"Pass 2 — engineering auditor (increment 1's audit …)".
+  The rulings are binding and were not re-decided here. Where a ruling offered a choice (D2-2's method,
+  D2-12's two routes) the pick and the reason are in the table.
+- **Binding:** `docs/dispatch-contract-tool-b.md` (Mutation grants, Prohibitions; Acceptance 1–13 must still
+  hold), `docs/design-tool.md`, and `docs/design.md` for the pull as amended by §T2. Build A's ✓ semantics
+  (option (a) with the in-page restore) and majors per game were not touched: no file under `lib/view/` and
+  no build A test changed.
+- **Allowed work types:** repair, plus the tests and tooling each repair needs (the contract's "additive /
+  repair / preparatory").
+- **Live allowance (the orchestrator's amendment):** at most 20 read-only start.gg requests in total, never
+  more than 10 in any rolling 60 s, one client in one process, against `crescendo-of-night-3-episode-0` and
+  GeneralMidwest (`user/14364d39`) only, for C2-1 and C2-2. Used: **16 requests, max 10 in any rolling
+  60 s** (below). I read "against" as: a query keyed by that tournament's event or entrants, or by
+  GeneralMidwest's user id. On that reading the ground truth's 3 random-row re-fetches (each rooted at
+  `event(id:)` of some other tournament) fall outside the two targets, and the ruling names only "the
+  ground-truth count", so they were **not run** (Could not verify).
+- **Prohibitions held:** nothing was posted to start.gg (the live harness refused any `mutation` before
+  sending). I never read or printed the token: lib/token loaded it inside the live script, and
+  `scripts/token-absent.js` matched it inside its own process, printing only counts. `out/` was never
+  written: 56 of 56 files are byte-identical to the before-state. `registry/tiers.csv` is unchanged
+  (`ffb8898…`); the browser check used a scratch copy through `SEED_TIERS_FILE`. No protected doc changed
+  (`git diff ca107e8 HEAD` over usage-log, the three designs, the four contracts and
+  `build-record-webapp.md` is empty). The two build records were only appended to, as this job asked.
+- **Before-state** (recorded at `5ecc770` before the first edit): `node --test` gave **207 / 204 / 0 / 3**,
+  matching the brief. Sorted test names saved; `out/` sha1 list (56 files); tiers sha1.
+- **Grounding not consulted** (standards bank, runbook): the rulings fix the work. Each choice below
+  traces to a ruling, the spec, or the existing code.
+- **Provenance:** the persona came from the library file named above. I did not author the design docs.
+
+### Dispositions
+
+| finding | disposition | commit | test that pins it | note |
+|---|---|---|---|---|
+| D2-1 | **FIXED** | `0e21a4a` | `test/pool.test.js` "D2-1: ticking a new event while a job runs saves the tick, queues the incremental pull behind the job and says so …" | `app/jobs.js` keeps a waiting list: `queuePull` starts the pull or queues it behind any running pull, W-L or archive, with one entry per tournament (a full pull outranks an incremental one). When the running job ends, the next pull starts by itself. `status()` reports `queued`. `/events` returns `queued` and `addedNames`, and the page's status line reads "Melee Singles ticked; pulling its players after the current job." It keeps polling and reloads into the new tab. Also run in the app (UI checklist; DOM-verified). |
+| D2-2 / C2-7 | **FIXED** | `b107de8` | "D2-2 / D2-13: an incremental pull reports the same skip and request counts as a fresh pull …"; "D2-2: a retry pull … reports the same skips as a fresh pull …" | Of the ruling's two methods, I picked **carry each player's checkpoint counts forward**. Recomputing from merged results cannot recover skips, which have no rows. `outcomesOf` reads `skipped` and a new per-player `requests` from the source pull's checkpoint; an older checkpoint without `requests` is counted from its request log. `request_count` now covers carried players, and the new `requests_this_pull` is the pull's own sends (equal for a full pull). Incremental equals a fresh pull on skips, request_count, rows and statuses. A **retry reuses the registrant list**, so its request_count is the players' requests only, which is the fresh count minus the 3 registrant requests (asserted). That is the one place the two counts differ by design. |
+| D2-3 | **FIXED** | `8a371b7` | `test/client.test.js` "D2-3: through the app queue, the timeout starts at the send …" and "D2-3: without a queue the client arms the timeout itself …" | A fetch that may hold a call declares `timeoutAtSend` (`app/queue.js`, `app/limit-fetch.js`). The client then passes `timeoutMs`, and limit-fetch arms `AbortSignal.timeout` when it sends. The fake used here honors `AbortSignal` like real fetch, with real timers and a 200 ms timeout. Three queued requests are each sent once with no retry, and a hung send still times out. Under the old arming the same test sends 6 times (verified). |
+| D2-4 | **ACKNOWLEDGED** (ruling: keep, amendable) | — | the existing lifecycle test | No change. The orchestrator adds the usage-log candidate row after pass 4. |
+| D2-5 | **FIXED** | `f6db706` | `test/pool.test.js` "D2-5: the CLI's tick merges into state.json as it is at write time …" | `pull.js` creates `state.json` only when none exists. Otherwise it merges through `pool.updateState`, which re-reads the file at write time, and touches only the catalog and `ticked`. In the test the app writes `marked_done`, `linked` and `pushes` while the CLI's catalog request is out. Under the old code all three were wiped (`[null, [], []]`, verified); now they survive. The README keeps "The pull never writes it" and adds what `pull.js` does. |
+| D2-6 | **ACKNOWLEDGED, documented** (ruling: keep, amendable, Noah's) | `f6db706` | `test/outputs.test.js` "README (build B pass 3) …" pins the sentence | README: the incremental pull "keeps the pool's two-year window where it is … press **Refresh** to move the window to today for everyone". `lib/run.js`'s header says the same. |
+| D2-7 | **FIXED** | `b107de8`, `7b3bfa9` | "D2-7: if the old pull folder cannot be deleted after the swap, the pull still counts as done, the W-L runs …"; "D2-7 (Windows partial delete, observed in pass 3) …" | `swapIn` catches a failed delete after `current` has moved and reports it as `leftover`. The job runs the W-L and its message names the folder; the next swap's sweep deletes it. **Pass 3 also found and fixed P3-1** (below): a real Windows lock leaves a half-deleted, resumable leftover. |
+| D2-8 | **FIXED** | `b107de8` | `test/cli.test.js` "D2-8: --resume on an increment 1 per-event run folder refuses in one line, exit 2, and writes nothing" | A name containing `__` gets the ruling's one line and exit 2, before any file is opened. The folder stays byte-identical. Anything that is neither a `pull-…` nor a tournament folder is refused too. |
+| D2-9 | **FIXED** | `f6db706` (with `run()`'s `client`/`apiT`/`records` options from `b107de8`) | `test/pool.test.js` "D2-9: a CLI pull uses one client (one limiter) …" | `pull.js` makes one client. `tickFromUrls` uses it for the catalog request and hands the response to `run()`, which reuses the client (its records go to the pull's request log). `createClient` is called once and TournamentEvents is requested once, with or without a known catalog. `request_count` now counts the catalog request. README: "Don't run a command-line pull while the app is pulling or fetching W-L." |
+| D2-10 | **FIXED** (tests; the behavior was already right) | `bfb7287` | `test/outputs.test.js` "D2-10: the post's retry rule, every case …" | Sent once, with the status-line kind asserted: a GraphQL refusal (other), started bracket and locked phase (locked), non-admin by GraphQL message or HTTP 400 body (not-admin), 503, network error, timeout. Retried then posted: 429 and the time-budget error. The test fails with the post's `{ retry: false }` removed (verified). |
+| D2-11 | **ACKNOWLEDGED** (ruling) | — | — | Pass 1's one-over breach stands as recorded. D2-9 removes the CLI's second limiter. This pass's own live run was one process, one client and one limiter at 10/60 s: max 10. |
+| D2-12 | **FIXED** (README route) | `f6db706` | "README (build B pass 3) …" checks every row of the `out/<t>/` table | I picked the README route because it is the smaller change. Stopping the files would mean changing `views/major-table.js` and `seed.js` (the CLI view's output location and the launcher's prompt file), plus their tests and the README's "Hand this to Claude" step. Listing them is two table rows. |
+| D2-13 | **FIXED** | `b107de8` | "D2-2 / D2-13 …" | An incremental pull asks a carried `limited` player about the newly seeded game only. The games already asked are those of the events in the old `players.csv` `events`. Rows are merged by event id, skips and requests summed. The top-up is kept in `_work/run.json`, so a resume finishes it. In the test there is exactly one RecentStandings call (player 104, Melee), and 104's rows equal a fresh pull's. |
+| C2-1 | **FIXED** (live, 4 requests) | `0bbe247`, `a8c1422` | `test/recorded-shape.test.js`: 3 run, 3 pass, **0 skipped** (skipped since 2026-10-12) | Recorded from CoN3 Ep0 `allegro-mbtl-pc` and GeneralMidwest. **Deterministic:** each file keeps only `data`, the variables, `_recorded_on` and `extensions.queryComplexity`, and the test anchors its window to `_recorded_on`. Details in `docs/build-record.md` C3-1. |
+| C2-2 | **DONE** for the legs the allowance names (live, 12 requests) | `0bbe247` (instruments) | `test/live-instruments.test.js` (the instruments, offline) | Ground-truth count **PASS 334 = 334**; live reconcile **20/20 PASS**; token-absence **0 hits**. The kill-and-resume stays fake-only, as ruled. The 3 random-row re-fetches were not run (Terms). Details in `docs/build-record.md` C3-2..C3-5. |
+| C2-3..C2-6, C2-8 | **ACKNOWLEDGED** (ruling: recorded, no action) | — | — | C2-3 (`schema-check.js`) was not run: it is not in the allowance's purpose. |
+
+**Found in this pass:**
+
+- **P3-1 — FIXED in `7b3bfa9` (part of D2-7's leftover surface).** Seen in the browser check under a real
+  Windows lock (PowerShell holding the live `players.csv` with `FileShare None`). The recursive delete of
+  the replaced pull stopped partway, taking `meta.json` and leaving `_work/run.json`. The leftover then
+  read as an unfinished, resumable pull. Reproduced offline on a copy: `node pull.js --resume out/<t>`
+  finished the leftover and **swapped it in over the newer live pull**, deleting the newer one (`current`
+  went from `pull-20261029-112329` to `pull-20261029-112224`). The app's Refresh was never exposed: it
+  resumes only pulls newer than `current`. The fix: `swapIn` removes the resume marker first; a resume of a
+  tournament folder takes only a pull newer than `current`; a named pull older than `current` is refused
+  in one line, exit 2. Test: "D2-7 (Windows partial delete …)", verified failing without the guards. The
+  same copy afterwards: both resume forms refuse, and `current` stays.
+- **P3-2 — NOT FIXED, queued (outside the rulings).** On a new tournament (no pool yet), pressing **Pull**
+  while another tournament's job runs gets a 409 from `/refresh`. The page's handler treats 409 as fine and
+  says "Pulling…". It polls until the other job ends and then reloads into the same setup page, with nothing
+  pulled and nothing said. This is D2-1's failure class on the first-Pull path. The D2-1 ruling covers the
+  tick with a pool present, so the two-key rule (repair permitted AND inside the ruled increment) keeps it
+  out of this pass. A likely fix: `/refresh` from the first Pull goes through `jobs.queuePull` (a few
+  lines). Evidence: reading `app/public/tournament.js` (`pullFirst`) and `app/server.js` (`/refresh`);
+  **not run** (7–8).
+
+### Changed tests
+
+Two existing tests changed, and no assertion was weakened, skipped or deleted. Test names before → after:
+0 removed, 15 added (207 → 222, then 223 with P3-1's test).
+
+| file | test | change | why |
+|---|---|---|---|
+| `test/tournament.test.js` | "add a tournament: an event URL makes ONE synchronous events request …" | the expected `/events` response gains `addedNames` and `queued: false` | Correcting the oracle: the D2-1 ruling redefines the response ("the status line says so" needs the added names and the queued flag). The test now asserts more fields. |
+| `test/recorded-shape.test.js` | the three `recorded:` tests | the window is anchored to the fixture's `_recorded_on` instead of `Date.now()`; same assertions | Determinism, as the job asked: the result no longer depends on the day the suite runs. |
+
+Tooling changed beside the tests: `testlib/fake-api.js` answers the instruments' queries (GTUser,
+GTUserEvents, GTEvent, ReconcileCount), and `testlib/fake-global-fetch.js` takes `FAKE_DELAY_MS` (for the
+UI checklist).
+
+### Verification
+
+| what | command | result |
+|---|---|---|
+| suite, before (`5ecc770`) | `node --test` | 207 / 204 / 0 / 3 |
+| suite, working tree (`7b3bfa9`) | `node --test` | **223 / 223 / 0 / 0** |
+| suite, clean clone, offline | `git clone --branch build/tool-b` into scratch (no `.env`), `NODE_OPTIONS="--require ./testlib/no-network.js" node --test` at `7b3bfa9` | **223 / 223 / 0 / 0** (also 222/222/0/0 at `a8c1422`) |
+| each new test fails on the old code | old files restored one at a time, the new tests run | D2-1, D2-2 (x2), D2-3, D2-5, D2-7 (x2), D2-8, D2-9, D2-10 all fail before the repair and pass after |
+| `out/` untouched | sha1 of all 56 files vs the before list | identical |
+| `registry/tiers.csv` | sha1 | `ffb8898…`, unchanged |
+| token, by value | `node scripts/token-absent.js out test/fixtures/recorded <scratch> <scratch>/live-out` | 987 files, 0 contain it; `git log -p --all` 0 hits |
+| live legs | scratch `p3/live-pass3.js` (one process, one client, limiter 10/60 s, hard stop at 20, mutations refused), dry-run first against the fake (`--fake`: 11 sends, all PASS) | below and in `docs/build-record.md` C3-n |
+| the running app, offline | `node app/server.js` with the fake preloads, `FAKE_DELAY_MS=120`, a scratch `out/` and tiers copy, driven in the browser pane through the DOM | D2-1 and D2-7 as in the UI checklist; P3-1 found here |
+
+### Live requests
+
+Log: `<session scratchpad>/p3/live-sends-pass3.jsonl`, one line per send (time, step, operation,
+variables, status). Result summary: `p3/live-pass3-result.json`. **16 requests, all HTTP 200, all
+read-only. Max in any rolling 60 s: 10** (sends 1–10, 16:19:27.220Z–16:19:38.580Z; the limiter held send 11
+until 16:20:27.231Z). Span 61.9 s. Stop at 20: not reached.
+
+| # | step | operation | target |
+|---|---|---|---|
+| 1 | resolve user | GTUser | `user/14364d39` → user 302490, player 433798 (GeneralMidwest) |
+| 2–5 | record fixtures | ResolveEvent, EventEntrants (10 of 21), UserEvents (perPage 10), RecentStandings | CoN3 Ep0 `allegro-mbtl-pc` (event 1721814); GeneralMidwest; one CoN3 entrant (player 2282067, MBTL 36865) |
+| 6–9 | the pull's per-player code | UserEvents ×4 (perPage 120) | GeneralMidwest |
+| 10–14 | ground-truth count | GTUserEvents ×5 (perPage 100) | GeneralMidwest |
+| 15–16 | live reconcile | ReconcileCount ×2 | CoN3 Ep0 events 1721812 and 1721814 |
+
+### Could not verify
+
+- **Ground truth's 3 random-row re-fetches** (increment 1's acceptance 5, second half): not run, because
+  their target is outside the allowance's two (Terms). The instrument itself is tested offline: it catches
+  a changed placement.
+- **`scripts/schema-check.js`** (C2-3): not in the allowance's purpose; still open.
+- **The live kill-and-resume**: fake-only, as ruled. Covered by "a crash mid-pull …" (real SIGKILL) and
+  `run.test.js` "kill + resume".
+- **D2-3 against real start.gg timing:** pinned with a fake that honors `AbortSignal` the way the platform
+  `fetch` does. That a real queued request now survives a long queue wait is a strong pattern match, not a
+  live observation (7–8).
+- **Which Windows programs lock this way:** verified with a `FileShare None` handle from PowerShell. That
+  Excel's open-file lock behaves the same is model knowledge, unverified.
+- **Visual rendering:** the browser pane never drew (screenshot timeouts, as in pass 1). Every UI check was
+  a DOM click and a DOM read.
+- **P3-2** is by code reading only.
+- Two processes on one token (the CLI beside the app) is documented, not prevented.
+
+### UI checklist for the orchestrator
+
+Both checks run **offline against the fake start.gg: no live calls**. From the repo, in PowerShell:
+
+```powershell
+$env:NODE_OPTIONS = "--require ./testlib/no-network.js --require ./testlib/fake-global-fetch.js"
+$env:FAKE_DELAY_MS = "120"            # slows the fake so you can click mid-job
+$env:STARTGG_TOKEN = "FAKE-SENTINEL"  # the environment wins over .env: the real token is never loaded
+Copy-Item registry\tiers.csv $env:TEMP\ui-tiers.csv; $env:SEED_TIERS_FILE = "$env:TEMP\ui-tiers.csv"
+node app/server.js --port 8798 --out $env:TEMP\ui-out
+```
+
+**D2-1 (a tick while a job runs):**
+1. Open `http://127.0.0.1:8798/` and add
+   `https://www.start.gg/tournament/combo-breaker-2026/event/melty-blood-actress-again-current-code`. The
+   MBAACC event is pre-ticked. Press **Pull** and wait for the tabs.
+2. On the MBAACC tab press **Refresh data**. Within about 2 s open *Seeded events*, tick **Melee Singles**
+   and press **Save events**.
+3. Expect the header line: **"Melee Singles ticked; pulling its players after the current job."** Nothing
+   else to click.
+4. When both jobs finish, the page reloads with a **Super Smash Bros. Melee** tab of 3 players (GeneralMidwest,
+   Player8, MeleeOnly).
+
+**D2-7 (the old pull folder is locked):**
+1. With the tournament pulled, read `$env:TEMP\ui-out\combo-breaker-2026\current` and lock that pull's
+   `players.csv` in a second PowerShell window:
+   `$f = [IO.File]::Open("$env:TEMP\ui-out\combo-breaker-2026\<current>\players.csv", 'Open', 'Read', 'None')`
+2. Press **Refresh data**. Expect "Refreshed. Done: … the old pull folder pull-… could not be deleted yet
+   (the next pull deletes it)". The table shows the new pull.
+3. (P3-1) In a third window with the same `$env:` settings, run
+   `node pull.js --resume $env:TEMP\ui-out\combo-breaker-2026`. Expect "Nothing to resume … no unfinished
+   pull." (exit 2), with `current` unchanged.
+4. `$f.Close()`, press **Refresh data** again, and the leftover folder is gone (one `pull-…` folder left).
+
+### REPORT
+
+```
+REPORT
+- Overview: Build B pass 3 (repair) dispositioned every row of the orchestrator's rulings: D2-1,
+  D2-2/C2-7, D2-3, D2-5, D2-7, D2-8, D2-9, D2-10, D2-12, D2-13 FIXED with tests (each verified failing
+  on the old code); D2-4, D2-6, D2-11 acknowledged per ruling (D2-6 documented); C2-1 recorded live
+  (the 3 recorded tests now run); C2-2's ground-truth count, live reconcile and token check PASS.
+  node --test 223/223/0/0 on the working tree and on a clean clone offline (before 207/204/0/3).
+  16 live requests, max 10 in any 60 s, read-only; nothing posted.
+- Found: all ruled items doable in-window and done. New: P3-1 (a Windows-locked leftover pull was
+  resumable and could be swapped in over the live pull by pull.js --resume) FIXED in 7b3bfa9 as
+  part of D2-7; P3-2 (first Pull while another tournament's job runs silently does nothing)
+  queued, outside the rulings.
+- Ran: 8a371b7 D2-3 · b107de8 D2-2/D2-13/D2-7/D2-8 · f6db706 D2-5/D2-9 + README (D2-6, D2-12) ·
+  0e21a4a D2-1 · bfb7287 D2-10 · 0bbe247 live instruments (one client, deterministic fixtures,
+  token-absent, offline tests) · a8c1422 C2-1 fixtures · 7b3bfa9 P3-1, plus the record commit.
+  Live: scratchpad p3/live-pass3.js, log p3/live-sends-pass3.jsonl. App: offline against the
+  fake in the browser pane, DOM-driven (the pane never drew).
+- Attributed: core / seeding-ops increment 3 build B, pass 3, and increment 1's live legs.
+  STATED: docs/build-record-tool.md "Orchestrator rulings for build B pass 3";
+  dispatch-contract-tool-b.md.
+- Queued: P3-2 (needs a ruling: it is outside D2-1's text). The ground truth's 3 random-row
+  re-fetches and schema-check.js (C2-3): their targets or purpose are outside the live allowance.
+- Spend: term = 4 passes + at most 1 repair pair; consumed pass 3 of 4. Live allowance 20
+  requests / 10 per 60 s: used 16 / max 10. No skills, subagents or workflows. Token never read
+  or printed by me.
+- Parked: none. The tree is clean at the record commit.
+- Needs attention:
+  1. P3-2: route the first Pull through the same queue as D2-1 (a few lines), or leave it.
+  2. D2-2's semantics: request_count now includes carried players' earlier requests;
+     requests_this_pull is the pull's own. A retry's request_count leaves out the registrant
+     requests it reused. Amendable.
+  3. The orchestrator's usage-log row for "Mark live again" (D2-4), after pass 4.
+  4. Pass 4: re-review, including the UI checklist above (offline, no live calls).
+```

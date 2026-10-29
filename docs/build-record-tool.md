@@ -2274,3 +2274,18 @@ a bare folder without `app/server.js` it starts in embedded mode against the fil
 probes. `node:util.parseEnv` works under Bun, so `.env` loading does. **Not verified:** the Rust shell
 itself (no Rust toolchain here; CI builds it, as for the stream app), the NSIS resources list, the
 workflow end to end (the repo has no remote yet).
+
+---
+
+## Out-of-band: light/dark theme switch (orchestrating session, 2026-10-29)
+
+Noah: *"light and dark mode toggle that's persistently visible like a switch would be good."* Recorded per
+standing rule (a). `app/public/theme.js` (served on every page, loaded in `<head>` so the theme applies
+before first paint) renders a fixed top-right switch; the choice is per browser in
+`localStorage['seeding:theme']`; with nothing saved the OS preference applies. `app/public/app.css`: the
+34 hardcoded colors moved onto variables (none left), a dark block overrides the same variables under
+`html[data-theme="dark"]` and under `prefers-color-scheme: dark` when no choice is saved. Verified in the
+browser pane: OS-dark applied with nothing saved; the click saved `light`, applied it, and it held on
+another page; the switch is present on the index, the not-added page and the tournament page. Not
+checked by eye: the seeding table's dark colors on real data (no tournament is in the new layout yet).
+Suite 223/223/0/0.

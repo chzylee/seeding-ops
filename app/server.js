@@ -67,6 +67,7 @@ const STATIC = {
   'schedule.js': [path.join(APP_DIR, 'public', 'schedule.js'), JS],
   'index.js': [path.join(APP_DIR, 'public', 'index.js'), JS],
   'app.css': [path.join(APP_DIR, 'public', 'app.css'), 'text/css; charset=utf-8'],
+  'theme.js': [path.join(APP_DIR, 'public', 'theme.js'), JS],
 };
 const PAGE = path.join(APP_DIR, 'public', 'tournament.html');
 
@@ -93,7 +94,7 @@ function indexPage(outRoot, jobs, nowMs) {
     return `<li class="st-${x.status}"><a href="/t/${esc(x.t)}">${esc(name)}</a> <span class="pill st-${x.status}">${STATUS_LABEL[x.status]}</span>${busy}<div class="dim">${sub}</div></li>`;
   }).join('');
   return `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Seeding tournaments</title><link rel="stylesheet" href="/static/app.css">
+<title>Seeding tournaments</title><link rel="stylesheet" href="/static/app.css"><script src="/static/theme.js"></script>
 <body class="index"><main><h1>Tournaments</h1>
 <form id="add" class="add-t"><label for="addUrl">Add a tournament</label>
 <input id="addUrl" name="url" placeholder="start.gg tournament or event link" autocomplete="off" spellcheck="false" required>
@@ -104,7 +105,7 @@ function indexPage(outRoot, jobs, nowMs) {
 }
 
 function notAddedPage(t) {
-  return `<!doctype html><html lang="en"><meta charset="utf-8"><title>Not added</title><link rel="stylesheet" href="/static/app.css">
+  return `<!doctype html><html lang="en"><meta charset="utf-8"><title>Not added</title><link rel="stylesheet" href="/static/app.css"><script src="/static/theme.js"></script>
 <body class="index"><main><h1>Not added yet</h1><p>There is no data for <code>${esc(t)}</code>. Pull data happens per tournament now.
 <a href="/?add=${encodeURIComponent(t)}">Add the tournament</a> to seed it.</p></main></body></html>`;
 }

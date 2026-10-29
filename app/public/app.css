@@ -16,6 +16,14 @@
   --ctl-h: 30px; --radius: 6px; --radius-sm: 4px;
   --z-cell: 1; --z-pinned: 2; --z-head: 3; --z-pinned-frozen: 4; --z-head-frozen: 5; --z-bar: 6; --z-editing: 30; --z-popover: 40;
   --ease: cubic-bezier(.22, 1, .36, 1);
+  /* theme-dependent accents; the dark block at the end of this file overrides them */
+  --on-accent: #fff; --tag-bg: #eceef8; --tag-fg: #3f4566; --both-hover: #dde8f8; --flash: #fff1a8;
+  --ok: #2e8b57; --reviewed-row: #e3f4e8; --reviewed-row-hover: #d3edda;
+  --rec-here-bg: #bfe3c9; --rec-here-fg: #14532d; --rec-never-bg: #e6e8ec;
+  --clash-bg: #fde4e4; --clash-hover: #fbd5d5; --clash-side-bg: #feead6; --clash-side-hover: #fddcbd; --clash-line: #e3a3a3; --clash-fg: #7a1d1d;
+  --ev0-bg: #e3ecfa; --ev0-fg: #183d73; --ev1-bg: #fde8d7; --ev1-fg: #6b3410; --ev2-bg: #e6f2e1; --ev2-fg: #24502a;
+  --ev3-bg: #f1e4f6; --ev3-fg: #55276a; --ev4-bg: #eceef1; --ev4-fg: #33363c; --ev5-bg: #fdf3c8; --ev5-fg: #5a4600;
+  color-scheme: light;
 }
 * { box-sizing: border-box; }
 [hidden] { display: none !important; } /* the toolbar's display rules must not resurrect hidden controls */
@@ -59,10 +67,10 @@ h1 { font-size: 18px; font-weight: 650; margin: 0; letter-spacing: -0.005em; lin
 }
 .bar button:hover, .bar a.button:hover, .cmp-bar button:hover { background: var(--accent-weak); border-color: var(--split); text-decoration: none; }
 .bar button:active, .bar a.button:active, .cmp-bar button:active { background: var(--accent-weak-2); }
-.bar button[aria-pressed="true"] { background: var(--accent); color: #fff; border-color: var(--accent); }
+.bar button[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
 .bar button[aria-pressed="true"]:hover { background: var(--accent-ink); border-color: var(--accent-ink); }
 .bar button:disabled, .cmp-bar button:disabled { opacity: .5; cursor: default; background: var(--cell); border-color: var(--line-strong); }
-.bar #update { background: var(--accent); color: #fff; border-color: var(--accent); }
+.bar #update { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
 .bar #update:hover { background: var(--accent-ink); }
 /* Labelled controls: the label is quiet, the control matches the buttons. */
 .freeze-ctl, .jump-ctl, .needs-ctl { display: inline-flex; align-items: center; gap: 6px; height: var(--ctl-h); font-size: 13px; color: var(--ink-2); white-space: nowrap; }
@@ -104,7 +112,7 @@ thead tr:first-child > * { border-top: 1px solid var(--line); }
 th { background: var(--head); font-weight: 600; font-size: 12.5px; color: var(--ink-2); white-space: nowrap; vertical-align: bottom; letter-spacing: .01em; }
 thead tr:last-child > * { border-bottom-color: var(--line-strong); }
 td b { font-weight: 650; }
-.tag { display: inline-block; font-size: 11px; font-weight: 500; line-height: 1.35; background: #eceef8; border-radius: var(--radius-sm); padding: 0 5px; color: #3f4566; margin-left: 4px; white-space: nowrap; vertical-align: 1px; }
+.tag { display: inline-block; font-size: 11px; font-weight: 500; line-height: 1.35; background: var(--tag-bg); border-radius: var(--radius-sm); padding: 0 5px; color: var(--tag-fg); margin-left: 4px; white-space: nowrap; vertical-align: 1px; }
 .tag.major { background: var(--warn-bg); color: var(--warn-fg); }
 details { margin-top: var(--s-2); }
 summary { cursor: pointer; color: var(--accent); user-select: none; }
@@ -185,7 +193,7 @@ section.player p.dim { margin: var(--s-1) 0; }
 .cmp-sum-wrap table.summary td.who { white-space: normal; }
 table.cmp-series th.side { text-align: center; background: var(--accent-weak); color: var(--accent-ink); font-size: 13px; }
 table.cmp-series tr.both td { background: var(--both); }
-table.cmp-series tr.both:hover td { background: #dde8f8; }
+table.cmp-series tr.both:hover td { background: var(--both-hover); }
 table.cmp-series tbody td:nth-child(5), table.cmp-series thead tr:nth-child(2) th:nth-child(4),
 table.cmp-series thead tr:first-child th:nth-child(3) { border-left: 2px solid var(--split); }
 
@@ -242,7 +250,7 @@ input.sel:disabled { opacity: .35; cursor: not-allowed; }
 #summary tbody tr.selected td { background: var(--accent-weak); }
 #summary tbody tr.selected:hover td { background: var(--accent-weak-2); }
 #summary tbody tr.flash td { animation: flash 1.6s var(--ease); }
-@keyframes flash { from { background: #fff1a8; } to { background: inherit; } }
+@keyframes flash { from { background: var(--flash); } to { background: inherit; } }
 
 /* Compare: up to 3 selected players as chips */
 .chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; min-height: var(--ctl-h); }
@@ -276,19 +284,19 @@ table.summary td.more details[open] { min-width: 520px; }
    at this page's tournament turns green (frozen cells included). Server state, the same in every browser. */
 table.summary td.seeded { text-align: center; width: 1%; white-space: nowrap; }
 button.seed-btn { width: 24px; height: 24px; padding: 0; border: 1px solid var(--line-strong); border-radius: 50%;
-  background: #fff; color: var(--dim); font-size: 13px; line-height: 1; cursor: pointer; }
-button.seed-btn:hover { border-color: #2e8b57; color: #2e8b57; }
-button.seed-btn[aria-pressed="true"] { background: #2e8b57; border-color: #2e8b57; color: #fff; }
+  background: var(--cell); color: var(--dim); font-size: 13px; line-height: 1; cursor: pointer; }
+button.seed-btn:hover { border-color: var(--ok); color: var(--ok); }
+button.seed-btn[aria-pressed="true"] { background: var(--ok); border-color: var(--ok); color: var(--on-accent); }
 td.seeded.saving button.seed-btn { opacity: .5; }
-#summary > tbody > tr.reviewed-row > td { background: #e3f4e8; }
-#summary > tbody > tr.reviewed-row:hover > td { background: #d3edda; }
+#summary > tbody > tr.reviewed-row > td { background: var(--reviewed-row); }
+#summary > tbody > tr.reviewed-row:hover > td { background: var(--reviewed-row-hover); }
 
 /* Tier recency (display rule 9; lib/view/model.js recency): reviewed at this tournament green,
    reviewed within 6 months no color, older amber, never reviewed (sheet-only tier) grey.
    Hover (title) gives the date and tournament. Wins over row, pin, hover and frozen backgrounds. */
-#summary td.tier.rec-here, table.summary td.tier.rec-here { background: #bfe3c9; color: #14532d; }
+#summary td.tier.rec-here, table.summary td.tier.rec-here { background: var(--rec-here-bg); color: var(--rec-here-fg); }
 #summary td.tier.rec-old, table.summary td.tier.rec-old { background: var(--warn-bg); color: var(--warn-fg); }
-#summary td.tier.rec-never, table.summary td.tier.rec-never { background: #e6e8ec; color: var(--ink-2); }
+#summary td.tier.rec-never, table.summary td.tier.rec-never { background: var(--rec-never-bg); color: var(--ink-2); }
 .editor-tier { min-width: 160px; }
 
 /* ---- Schedule tab (T3; moved from conflicts/public/schedule.html) ---- */
@@ -301,7 +309,7 @@ td.seeded.saving button.seed-btn { opacity: .5; }
 .s-bar { display: flex; flex-wrap: wrap; gap: var(--s-3); align-items: center; margin-top: var(--s-2); }
 .s-bar button, .s-bar select, .s-bar input { height: var(--ctl-h); border: 1px solid var(--line-strong); border-radius: var(--radius-sm);
   background: var(--cell); padding: 0 var(--s-2); font: inherit; }
-.s-bar button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+.s-bar button.primary { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
 .s-bar button:disabled { opacity: .6; cursor: default; }
 .s-status { color: var(--dim); }
 .s-status.err { color: var(--err); }
@@ -326,17 +334,17 @@ table.sched td.player .pre { color: var(--dim); }
 table.sched td.player .n { color: var(--dim); font-size: 12px; margin-left: var(--s-1); }
 table.sched tbody tr:hover td { background: var(--row-hover); }
 /* Conflicts first: red = two main-tournament pools at the same time; orange = only clashes with a side game. */
-table.sched tbody tr.clash td { background: #fde4e4; }
-table.sched tbody tr.clash:hover td { background: #fbd5d5; }
-table.sched tbody tr.clash-side td { background: #feead6; }
-table.sched tbody tr.clash-side:hover td { background: #fddcbd; }
+table.sched tbody tr.clash td { background: var(--clash-bg); }
+table.sched tbody tr.clash:hover td { background: var(--clash-hover); }
+table.sched tbody tr.clash-side td { background: var(--clash-side-bg); }
+table.sched tbody tr.clash-side:hover td { background: var(--clash-side-hover); }
 .chip .seed { opacity: .7; margin-left: 3px; }
-.chip.side { background: #fff; color: var(--ink-2); border: 1px dashed var(--line-strong); line-height: 18px; }
-#clashToggle[aria-pressed="true"] { background: #fde4e4; border-color: #e3a3a3; color: #7a1d1d; }
+.chip.side { background: var(--cell); color: var(--ink-2); border: 1px dashed var(--line-strong); line-height: 18px; }
+#clashToggle[aria-pressed="true"] { background: var(--clash-bg); border-color: var(--clash-line); color: var(--clash-fg); }
 .chip { display: inline-block; padding: 0 6px; border-radius: var(--radius-sm); margin: 1px 2px 1px 0; font-size: 13px; line-height: 20px; }
-.ev0 { background: #e3ecfa; color: #183d73; } .ev1 { background: #fde8d7; color: #6b3410; }
-.ev2 { background: #e6f2e1; color: #24502a; } .ev3 { background: #f1e4f6; color: #55276a; }
-.ev4 { background: #eceef1; color: #33363c; } .ev5 { background: #fdf3c8; color: #5a4600; }
+.ev0 { background: var(--ev0-bg); color: var(--ev0-fg); } .ev1 { background: var(--ev1-bg); color: var(--ev1-fg); }
+.ev2 { background: var(--ev2-bg); color: var(--ev2-fg); } .ev3 { background: var(--ev3-bg); color: var(--ev3-fg); }
+.ev4 { background: var(--ev4-bg); color: var(--ev4-fg); } .ev5 { background: var(--ev5-bg); color: var(--ev5-fg); }
 #sMsg:empty { display: none; }
 #sMsg { padding: var(--s-4); }
 
@@ -344,11 +352,11 @@ table.sched tbody tr.clash-side:hover td { background: #fddcbd; }
 .add-t { display: flex; flex-wrap: wrap; gap: var(--s-2); align-items: center; }
 .add-t label { font-weight: 600; }
 .add-t input { flex: 1 1 22em; height: var(--ctl-h); padding: 0 var(--s-2); font: inherit; border: 1px solid var(--line-strong); border-radius: var(--radius); }
-.add-t button { height: var(--ctl-h); padding: 0 var(--s-3); border: 1px solid var(--accent); background: var(--accent); color: #fff; border-radius: var(--radius); }
+.add-t button { height: var(--ctl-h); padding: 0 var(--s-3); border: 1px solid var(--accent); background: var(--accent); color: var(--on-accent); border-radius: var(--radius); }
 .pill { display: inline-block; font-size: 12px; font-weight: 600; border-radius: 999px; padding: 1px 8px; background: var(--head); color: var(--ink-2); vertical-align: 2px; }
-.pill.st-live { background: var(--ok-bg); color: #14532d; }
+.pill.st-live { background: var(--ok-bg); color: var(--rec-here-fg); }
 .pill.st-done { background: var(--warn-bg); color: var(--warn-fg); }
-.pill.st-archived { background: #e6e8ec; color: var(--ink-2); }
+.pill.st-archived { background: var(--rec-never-bg); color: var(--ink-2); }
 ul.events li.st-archived { opacity: .8; }
 nav.tabs { display: flex; flex-wrap: wrap; gap: 2px; margin-top: var(--s-2); border-bottom: 1px solid var(--line-strong); }
 nav.tabs[hidden] { display: none; }
@@ -360,7 +368,7 @@ nav.tabs a.on { border-color: var(--line-strong); background: var(--bg); color: 
 .picker .pick.off { color: var(--dim); }
 .setup { padding: var(--s-6) var(--s-4); }
 .setup[hidden] { display: none; }
-button.primary, .setup button.primary { height: var(--ctl-h); padding: 0 var(--s-3); border: 1px solid var(--accent); background: var(--accent); color: #fff; border-radius: var(--radius); }
+button.primary, .setup button.primary { height: var(--ctl-h); padding: 0 var(--s-3); border: 1px solid var(--accent); background: var(--accent); color: var(--on-accent); border-radius: var(--radius); }
 .bar button.danger, button.danger { border-color: var(--err); color: var(--err); }
 .bar button.danger:hover, button.danger:hover { background: var(--err-bg); }
 #push { flex: 0 0 50%; min-height: 0; overflow: auto; border-top: 2px solid var(--split); background: var(--bg); padding: 0 var(--s-4) 32px; }
@@ -371,3 +379,52 @@ table.push-diff tr.grp th { background: var(--accent-weak); color: var(--accent-
 table.push-diff tr.crosses td { background: var(--warn-bg); }
 .tag.flag, b.flag { background: var(--warn-bg); color: var(--warn-fg); }
 .s-bar.linked input { width: 26em; }
+
+/* Dark theme (theme.js). html[data-theme="dark"] is the saved choice; with no choice saved the OS
+   preference applies and html[data-theme="light"] opts out of it. Same variables, dark values. */
+:root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #15171b; --fg: #e7e9ee; --ink-2: #c3c7cf; --dim: #9aa0ab;
+    --line: #2a2e35; --line-strong: #3b414b;
+    --head: #1c1f24; --head-hover: #262a31; --cell: #1a1d22; --row-hover: #1f2733;
+    --pin: #3a3417; --pin-hover: #4a4220; --pin-edge: #c9a227;
+    --accent: #6ea0ea; --accent-ink: #9dbdf2; --accent-weak: #1f2b3f; --accent-weak-2: #27385a;
+    --split: #3f5a86; --both: #1e2a3c;
+    --warn-bg: #4a3410; --warn-fg: #f3c77a;
+    --ok-bg: #17351f; --err: #ff8a8c; --err-bg: #4a1c1c;
+    --on-accent: #0b0d11; --tag-bg: #2a2f45; --tag-fg: #c5cbee; --both-hover: #273b5e; --flash: #5a4d12;
+    --ok: #4caf7a; --reviewed-row: #16301f; --reviewed-row-hover: #1c3b27;
+    --rec-here-bg: #1f5a34; --rec-here-fg: #c7f0d4; --rec-never-bg: #2a2e35;
+    --clash-bg: #4a1f1f; --clash-hover: #5a2626; --clash-side-bg: #4a2f14; --clash-side-hover: #5a3a1a; --clash-line: #8a4b4b; --clash-fg: #f3b3b3;
+    --ev0-bg: #1e2f4d; --ev0-fg: #b9d0f5; --ev1-bg: #4a2c17; --ev1-fg: #f5c9a6; --ev2-bg: #1f3a24; --ev2-fg: #bfe6c5;
+    --ev3-bg: #3a2347; --ev3-fg: #e1c2ee; --ev4-bg: #2a2e35; --ev4-fg: #d5d8de; --ev5-bg: #4a3e0f; --ev5-fg: #f1dd8a;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #15171b; --fg: #e7e9ee; --ink-2: #c3c7cf; --dim: #9aa0ab;
+    --line: #2a2e35; --line-strong: #3b414b;
+    --head: #1c1f24; --head-hover: #262a31; --cell: #1a1d22; --row-hover: #1f2733;
+    --pin: #3a3417; --pin-hover: #4a4220; --pin-edge: #c9a227;
+    --accent: #6ea0ea; --accent-ink: #9dbdf2; --accent-weak: #1f2b3f; --accent-weak-2: #27385a;
+    --split: #3f5a86; --both: #1e2a3c;
+    --warn-bg: #4a3410; --warn-fg: #f3c77a;
+    --ok-bg: #17351f; --err: #ff8a8c; --err-bg: #4a1c1c;
+    --on-accent: #0b0d11; --tag-bg: #2a2f45; --tag-fg: #c5cbee; --both-hover: #273b5e; --flash: #5a4d12;
+    --ok: #4caf7a; --reviewed-row: #16301f; --reviewed-row-hover: #1c3b27;
+    --rec-here-bg: #1f5a34; --rec-here-fg: #c7f0d4; --rec-never-bg: #2a2e35;
+    --clash-bg: #4a1f1f; --clash-hover: #5a2626; --clash-side-bg: #4a2f14; --clash-side-hover: #5a3a1a; --clash-line: #8a4b4b; --clash-fg: #f3b3b3;
+    --ev0-bg: #1e2f4d; --ev0-fg: #b9d0f5; --ev1-bg: #4a2c17; --ev1-fg: #f5c9a6; --ev2-bg: #1f3a24; --ev2-fg: #bfe6c5;
+    --ev3-bg: #3a2347; --ev3-fg: #e1c2ee; --ev4-bg: #2a2e35; --ev4-fg: #d5d8de; --ev5-bg: #4a3e0f; --ev5-fg: #f1dd8a;
+}
+}
+
+/* The theme switch: fixed top-right, on every page (theme.js renders it). */
+.theme-switch { position: fixed; top: 10px; right: 12px; z-index: var(--z-popover); display: inline-flex; align-items: center; gap: 6px;
+  height: 26px; padding: 0 8px 0 6px; border: 1px solid var(--line-strong); border-radius: 999px; background: var(--cell); color: var(--ink-2);
+  font-size: 12px; font-weight: 600; cursor: pointer; user-select: none; }
+.theme-switch:hover { border-color: var(--accent); }
+.theme-switch .track { position: relative; width: 28px; height: 16px; border-radius: 999px; background: var(--line-strong); transition: background .15s var(--ease); }
+.theme-switch .knob { position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 50%; background: var(--cell); transition: left .15s var(--ease); }
+.theme-switch[aria-checked="true"] .track { background: var(--accent); }
+.theme-switch[aria-checked="true"] .knob { left: 14px; }

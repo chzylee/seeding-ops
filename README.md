@@ -43,9 +43,10 @@ changes in any mode.
 - **✓ (Seeded column) marks a player as reviewed at this tournament.** It writes today's date and
   this tournament to `registry/tiers.csv` (`last_reviewed_on`, `last_reviewed_tournament`), so the
   mark shows in every browser, not just this one. The row turns green when the player's last review
-  was at this page's tournament. Clicking ✓ again undoes a review made *today* here (a misclick);
-  an earlier review is never erased by a click. Clicking the Seeded header groups reviewed and
-  unreviewed rows.
+  was at this page's tournament. Clicking ✓ again the same day undoes the misclick and puts back
+  the review it replaced (the page remembers that until you reload it; after a reload the undo
+  clears today's review). On a review from an earlier day the click does nothing, and the line next
+  to Compare says why. Clicking the Seeded header groups reviewed and unreviewed rows.
 - **Tier colors** show how recently you reviewed each player: green = reviewed at this tournament,
   no color = within the last 6 months, amber = longer ago, grey = never reviewed (a tier from the
   sheet import). Hover a tier for the date and the tournament of the last review.
@@ -53,10 +54,9 @@ changes in any mode.
   event's game at that tournament's main event for the game (its largest bracket of that game that
   isn't a side, community, 2v2, teams or "Pre-" bracket), one result per year. Side brackets stay
   in the series columns. The lists live in **`config/majors.json`**, one per game, keyed by the
-  start.gg game id (it's in a run's `meta.json` under `game.id`; MBAACC is `22407`, MBTL `36865`,
-  which adds Climax of Night); `default` covers
-  games without their own list. **To add a game** copy the `default` block under the game's id and
-  add its own majors; **to add a major** add `{ "label": "Name", "pattern": "^name\\b", "kind":
+  start.gg game id (it's in a run's `meta.json` under `game.id`; MBAACC is `22407`; MBTL is `36865`,
+  which adds Climax of Night); `default` covers games without their own list. **To add a game**
+  copy the `default` block under the game's id and add its own majors; **to add a major** add `{ "label": "Name", "pattern": "^name\\b", "kind":
   "game" }` (`pattern` is a case-insensitive regular expression on the tournament name; `kind` is
   `known` for the big four, `game` for a game's own majors). Your rule for adding one: a series of
   the game whose field is at least as large as a known major's. A reload picks up the change.
@@ -226,12 +226,12 @@ The seeding view (increment 2, spec [`docs/design-webapp.md`](docs/design-webapp
   by Node and the browser, so the app and `views/major-table.js` show the same cells.
 - `lib/view/data.js`: run folders on disk → the page's JSON; the latest finished run per event;
   the tier/notes and ✓ review writes to `registry/tiers.csv`.
+- `lib/view/export.js`: the Google Sheets CSV.
 - `lib/view/majors.js`: reads `config/majors.json`, the per-game majors lists (increment 3, spec
   [`docs/design-tool.md`](docs/design-tool.md)).
 - `scripts/migrate-tiers.js`: the one-time T1 migration of `registry/tiers.csv` (drops
   `justification`, adds the two review columns, backfills Eclipse's app-set tiers). Already run;
   running it again does nothing.
-  `lib/view/export.js`: the Google Sheets CSV.
 - `lib/wl.js`: W-L (sets) for result rows through `lib/startgg`'s client, cached in
   `<run>/views/set-records.json`.
 - `app/server.js` (`npm run app`, `app.cmd`): the local server; `app/jobs.js` the refresh job;

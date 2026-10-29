@@ -168,3 +168,67 @@ test('page size: user.events perPage stays under 1000 at the probe-measured cost
   const perNode = 351 / 50;
   assert.ok(sgg.USER_EVENTS_PER_PAGE * perNode < 1000, `${sgg.USER_EVENTS_PER_PAGE * perNode}`);
 });
+
+// D2-3 (build-record-tool.md, build B pass 2): the client's timeout counts from the moment the
+// request is SENT, not from when the client asked the queue for a slot. A fake that honors
+// AbortSignal the way real fetch does (aborted before the call: refused at once; aborted during
+// the response: the body read fails), real timers, a short timeout.
+function signalFetch({ delayMs, hang = () => false }) {
+  const log = { sends: 0, refusedAborted: 0, abortedInFlight: 0 };
+  const f = (url, init) => new Promise((resolve, reject) => {
+    const sig = init.signal;
+    if (!sig) return reject(new Error('the send carried no timeout signal'));
+    if (sig.aborted) { log.refusedAborted++; return reject(sig.reason); }
+    log.sends++;
+    const timer = hang(log.sends) ? null : setTimeout(() => {
+      sig.removeEventListener('abort', onAbort);
+      const text = JSON.stringify({ data: { ok: log.sends } });
+      resolve({ status: 200, ok: true, headers: { get: () => null }, text: async () => text });
+    }, delayMs);
+    function onAbort() { if (timer) clearTimeout(timer); log.abortedInFlight++; reject(sig.reason); }
+    sig.addEventListener('abort', onAbort, { once: true });
+  });
+  f.log = log;
+  return f;
+}
+
+test('D2-3: through the app queue, the timeout starts at the send: a request queued behind slow ones is not cancelled, and a send that hangs still times out', async () => {
+  const { createQueue } = require('../app/queue');
+  // Three callers at once, each send taking 120 ms, a 200 ms timeout: the third waits 240 ms in the
+  // queue. Timed from the client's call (the old behavior) it would be refused before it was sent.
+  const fake = signalFetch({ delayMs: 120 });
+  const queue = createQueue({ fetchImpl: fake });
+  const slept = [];
+  const mk = () => sgg.createClient({ token: TOKEN, fetchImpl: queue.fetchFor(), timeoutMs: 200, sleep: async (ms) => { slept.push(ms); } });
+  const clients = [mk(), mk(), mk()];
+  const got = await Promise.all(clients.map((c) => c.request('Op', 'query Op { x }', {})));
+  assert.deepStrictEqual(got.map((d) => d.ok).sort(), [1, 2, 3]);
+  assert.deepStrictEqual(fake.log, { sends: 3, refusedAborted: 0, abortedInFlight: 0 }, 'no request was cancelled while it waited');
+  assert.deepStrictEqual(clients.map((c) => c.stats.retries), [0, 0, 0]);
+  assert.deepStrictEqual(slept, []);
+  assert.strictEqual(queue.stats.sends, 3);
+
+  // The timeout still bounds the send itself: a send that never answers is aborted after ~timeoutMs.
+  const hung = signalFetch({ delayMs: 10, hang: (n) => n === 1 });
+  const q2 = createQueue({ fetchImpl: hung });
+  const c = sgg.createClient({ token: TOKEN, fetchImpl: q2.fetchFor(), timeoutMs: 80, sleep: async () => {} });
+  const t0 = Date.now();
+  await assert.rejects(c.request('Op', 'query Op { x }', {}, {}, { retry: false }), (e) => e.kind === 'network');
+  assert.ok(Date.now() - t0 >= 70, 'aborted by the timeout, not at once');
+  assert.deepStrictEqual(hung.log, { sends: 1, refusedAborted: 0, abortedInFlight: 1 });
+});
+
+test('D2-3: without a queue the client arms the timeout itself; app/limit-fetch arms it at the send after its wait', async () => {
+  const seen = [];
+  const plain = async (u, init) => { seen.push({ signal: !!init.signal, timeoutMs: init.timeoutMs }); return { status: 200, ok: true, headers: { get: () => null }, text: async () => '{"data":{}}' }; };
+  await sgg.createClient({ token: TOKEN, fetchImpl: plain }).request('Op', 'query Op { x }', {});
+  assert.deepStrictEqual(seen.pop(), { signal: true, timeoutMs: undefined });
+  const { limitFetch } = require('../app/limit-fetch');
+  const clock = virtualClock(0);
+  const limited = limitFetch(plain, { max: 1, windowMs: 60_000, now: clock.now, sleep: clock.sleep });
+  assert.strictEqual(limited.timeoutAtSend, true);
+  const c = sgg.createClient({ token: TOKEN, fetchImpl: limited, now: clock.now, sleep: clock.sleep });
+  await c.request('Op', 'query Op { x }', {});
+  await c.request('Op', 'query Op { x }', {}); // waits 60 s (virtual) for the limiter's slot
+  assert.deepStrictEqual(seen, [{ signal: true, timeoutMs: undefined }, { signal: true, timeoutMs: undefined }], 'the send gets a signal and never the bare timeoutMs');
+});

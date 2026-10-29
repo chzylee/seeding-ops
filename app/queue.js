@@ -20,8 +20,10 @@ function createQueue({ fetchImpl, max = pacing.MAX_REQUESTS, now = Date.now, sle
   const stats = { sends: 0, inFlight: 0, maxInFlight: 0 };
   let tail = Promise.resolve();
 
+  // Every fetch the queue hands out may hold a call behind others, so it declares timeoutAtSend:
+  // lib/startgg's client then leaves the timeout to the send (limit-fetch arms it), D2-3.
   function fetchFor(onSend = () => {}) {
-    return (url, init) => {
+    const f = (url, init) => {
       const go = async () => {
         active = onSend;
         stats.inFlight++;
@@ -39,6 +41,8 @@ function createQueue({ fetchImpl, max = pacing.MAX_REQUESTS, now = Date.now, sle
       tail = p.then(() => {}, () => {});
       return p;
     };
+    f.timeoutAtSend = true;
+    return f;
   }
   return { fetchFor, fetch: fetchFor(), stats, sentAt: limited.sentAt, max };
 }

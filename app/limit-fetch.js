@@ -28,10 +28,19 @@ function limitFetch(fetchImpl, { max = pacing.MAX_REQUESTS, windowMs = pacing.WI
     gate = mine.catch(() => {});
     return mine;
   };
+  // D2-3: a caller that asks for a timeout (init.timeoutMs, lib/startgg's client) gets it armed
+  // here, at the send, after the wait for a slot; a wait never eats into the request's own time.
+  // If the fetch underneath also holds calls (timeoutAtSend), it arms the timeout itself.
+  const arm = (init) => {
+    if (!init || init.timeoutMs == null || fetchImpl.timeoutAtSend) return init;
+    const { timeoutMs, ...rest } = init;
+    return { ...rest, signal: AbortSignal.timeout(timeoutMs) };
+  };
   const limited = async (url, init) => {
     await reserve();
-    return fetchImpl(url, init);
+    return fetchImpl(url, arm(init));
   };
+  limited.timeoutAtSend = true;
   limited.sentAt = sentAt;
   return limited;
 }

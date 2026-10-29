@@ -124,23 +124,34 @@
   // per-browser seeded marks (localStorage, increment 2) are not read; their key is removed once.
   try { localStorage.removeItem(`seeding:seeded:${SLUG}`); } catch { /* per-viewer storage only */ }
   const reviewing = new Set();
+  // The review each ✓ in this page replaced, so its un-✓ can put it back (B2-1, ruled option (a)):
+  // the server restores the pair only over a review made here today. After a reload the page no
+  // longer knows it, and an un-✓ clears today's review instead.
+  const replaced = new Map();
   async function toggleReviewed(pid) {
     if (!pid || reviewing.has(pid)) return;
     const n = ctx.notes[pid] || {};
     const on = !M.reviewedHere(n, ctx.tournament);
     reviewing.add(pid);
+    showNote('');
     for (const td of table.querySelectorAll(`tbody tr[data-pid="${CSS.escape(pid)}"] > td.seeded`)) td.classList.add('saving');
+    const shown = { last_reviewed_on: n.last_reviewed_on || '', last_reviewed_tournament: n.last_reviewed_tournament || '' };
+    const payload = on ? { reviewed: true } : { reviewed: false, ...(replaced.get(pid) || {}) };
     let res, body;
     try {
-      res = await fetch(api(`player/${encodeURIComponent(pid)}/review`), { method: 'POST', headers: { 'X-Seeding-App': '1', 'Content-Type': 'application/json' }, body: JSON.stringify({ reviewed: on }) });
+      res = await fetch(api(`player/${encodeURIComponent(pid)}/review`), { method: 'POST', headers: { 'X-Seeding-App': '1', 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
       body = await res.json().catch(() => ({}));
     } catch (err) { body = { error: err.message }; res = { ok: false }; }
     reviewing.delete(pid);
     for (const td of table.querySelectorAll(`tbody tr[data-pid="${CSS.escape(pid)}"] > td.seeded`)) td.classList.remove('saving');
     if (!res.ok) { showMsg(`Not saved: ${body.error || 'error'}`); return; }
-    // An un-✓ only undoes a review made today at this tournament (T1 rules); say so when it didn't.
+    if (on && body.changed) replaced.set(pid, shown);
+    if (!on && body.changed) replaced.delete(pid);
+    // An un-✓ only undoes a review made today at this tournament (T1 rules); the status line says
+    // so when it kept a review, and when it put an earlier one back. The note stays until the next action.
     const tag = byId.get(pid) ? byId.get(pid).gamer_tag : pid;
-    showMsg(!on && !body.changed ? `${tag} was reviewed here on ${body.last_reviewed_on}; a click only undoes a review made today, so that review stays.` : '');
+    showMsg('');
+    showNote(M.reviewNote(tag, on, body, ctx.tournament));
     ctx.notes[pid] = { ...n, tier: body.tier == null ? undefined : body.tier, notes: body.notes,
       last_reviewed_on: body.last_reviewed_on, last_reviewed_tournament: body.last_reviewed_tournament };
     rerenderRow(pid, null);
@@ -488,9 +499,22 @@
     if (st.phase === 'done') return `Refreshed. ${st.message || ''}`;
     return '';
   }
-  function showStatus(st) {
+  // The status line also carries a short note from the last click (the ✓'s explanation). A note
+  // stays until the next action replaces it (another ✓, an edit, a refresh); a refresh's own
+  // progress text takes the line over while it runs.
+  let note = '', lastSt = null;
+  function showNote(s) {
+    note = s || '';
     const el = $('status');
-    el.textContent = statusText(st);
+    el.textContent = note || statusText(lastSt);
+    el.classList.toggle('err', !note && !!(lastSt && lastSt.phase === 'error'));
+  }
+  function showStatus(st) {
+    lastSt = st;
+    const el = $('status');
+    const t = statusText(st);
+    if (t) note = '';
+    el.textContent = t || note;
     el.classList.toggle('err', !!(st && st.phase === 'error'));
     $('refresh').disabled = !!(st && (st.running || st.busy));
     if (st && (st.running || st.busy)) startPolling();
@@ -595,6 +619,7 @@
     box.remove();
     td.classList.remove('editing');
     if (!save) { td.focus(); return; }
+    showNote('');
     const n = ctx.notes[pid] || {};
     const same = kind === 'tier'
       ? String(Number.isFinite(n.tier) ? n.tier : '') === fields.tier

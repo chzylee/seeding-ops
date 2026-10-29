@@ -323,3 +323,43 @@ test('route: an un-✓ body carries the earlier pair (B2-1); a bad pair is a 400
   assert.deepStrictEqual([r.json().last_reviewed_on, r.json().last_reviewed_tournament, r.json().changed], ['2026-10-16', T, true]);
   assert.strictEqual(fs.readFileSync(tiersFile, 'utf8'), before);
 });
+
+// ---- The page side of B2-1, and the status note (orchestrator item 5, 2026-10-29: the no-op
+// un-✓'s explanation went to #msg above the table, out of view when the table is scrolled, and the
+// status line the checklist pointed at stayed empty).
+test('item 5: the ✓ note text — a no-op un-✓ says the earlier review stays, a restore says which review is back, other clicks need none', () => {
+  const kept = { player_id: '1', last_reviewed_on: '2026-10-16', last_reviewed_tournament: T, changed: false };
+  assert.strictEqual(M.reviewNote('Aster Laker', false, kept, T),
+    'Aster Laker was reviewed here on 2026-10-16; a click only undoes a review made here today, so that review stays.');
+  assert.strictEqual(M.reviewNote('X', false, { ...kept, last_reviewed_tournament: 'other-event' }, T),
+    'X was reviewed at other-event on 2026-10-16; a click only undoes a review made here today, so that review stays.');
+  assert.strictEqual(M.reviewNote('X', false, { changed: true, last_reviewed_on: '2026-10-16', last_reviewed_tournament: T }, NEXT),
+    "X: today's review undone; the review of 2026-10-16 at eclipse-1st-cour is back.");
+  assert.strictEqual(M.reviewNote('X', false, { changed: false, last_reviewed_on: '', last_reviewed_tournament: '' }, T), 'X has no review to undo.');
+  assert.strictEqual(M.reviewNote('X', false, { changed: true, last_reviewed_on: '', last_reviewed_tournament: '' }, T), '', 'a plain undo needs no note');
+  assert.strictEqual(M.reviewNote('X', true, { changed: true, last_reviewed_on: '2026-11-02', last_reviewed_tournament: T }, T), '', 'a ✓ needs no note');
+  assert.strictEqual(M.reviewNote('X', true, undefined, T), '');
+});
+
+test('item 5 and B2-1, the page: the note goes to the status line and stays until the next action; an un-✓ sends the pair the ✓ replaced', () => {
+  // app/public/app.js runs in a browser; this pins its source (the orchestrator's browser check
+  // covers the behavior; see the build record's UI checklist).
+  const src = fs.readFileSync(path.join(__dirname, '..', 'app', 'public', 'app.js'), 'utf8');
+  const fn = (name) => { const i = src.indexOf(`function ${name}(`); assert.ok(i >= 0, name); return src.slice(i, src.indexOf('\n  }\n', i)); };
+  const toggle = fn('toggleReviewed'), showNote = fn('showNote'), showStatus = fn('showStatus');
+  // The note is written to #status (always in view in the header bar), not #msg above the table.
+  assert.match(toggle, /showNote\(M\.reviewNote\(tag, on, body, ctx\.tournament\)\)/);
+  assert.ok(!/showMsg\([^)]*reviewed here/.test(src), 'the explanation is no longer sent to #msg');
+  assert.match(showNote, /\$\('status'\)/);
+  // It persists: only the next action clears it (a new ✓ click, an editor save, a refresh's own
+  // status text). Nothing on a timer clears it.
+  assert.match(showStatus, /if \(t\) note = '';\s*el\.textContent = t \|\| note;/);
+  assert.match(toggle, /reviewing\.add\(pid\);\s*showNote\(''\);/);
+  assert.match(fn('closeEditor'), /showNote\(''\)/);
+  assert.ok(!/setTimeout\([^)]*showNote/.test(src));
+  // B2-1: a ✓ that changed the row remembers the pair the page showed; the un-✓ sends it back.
+  assert.match(toggle, /const shown = \{ last_reviewed_on: n\.last_reviewed_on \|\| '', last_reviewed_tournament: n\.last_reviewed_tournament \|\| '' \};/);
+  assert.match(toggle, /const payload = on \? \{ reviewed: true \} : \{ reviewed: false, \.\.\.\(replaced\.get\(pid\) \|\| \{\}\) \};/);
+  assert.match(toggle, /body: JSON\.stringify\(payload\)/);
+  assert.match(toggle, /if \(on && body\.changed\) replaced\.set\(pid, shown\);/);
+});

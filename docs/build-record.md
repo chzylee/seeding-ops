@@ -331,3 +331,127 @@ and best and average W-L, plus other results.
 checked by hand on the live run: every rendered cell was compared with `results.csv`, and the W-L
 totals are consistent with the placements (e.g. 0-2 at 17th-25th finishes; 5-0 at a 1st place).
 Pass 2 may rule on whether views need tests.
+
+---
+
+## Pass 2 — engineering auditor (increment 1's audit, run with build B)
+
+Seat: engineering-auditor persona v0.2.0 (`personal-staff/personas/library/engineering-auditor.md`,
+Profile block). Model: Opus. Date 2026-10-29. Report-only. Increment 1's passes 2–4 never ran; this pass
+is its pass 2, run inside increment 3 build B's pass 2 as `docs/dispatch-contract-tool-b.md` Acceptance
+14 requires. Build B's pass 3 repairs these findings along with build B's own, and build B's pass 4
+re-reviews them. Repo `seeding-ops` (renamed from `seeding-script`), branch `build/tool-b` at `ff56191`.
+No start.gg calls; the token was never read; `out/` was read only. The shared re-runs (suite, hashes,
+probes) are listed in `docs/build-record-tool.md` § "Build B — Pass 2 — engineering auditor" and are not
+repeated here.
+
+### Terms as understood
+
+- **Comparand:** `docs/dispatch-contract.md` Acceptance 1–12 and `docs/design.md` with its Amendment log,
+  **as amended by `docs/design-tool.md` §T2**: one pull per tournament into `out/<t>/pull-<stamp>/`, the
+  `current` pointer, `is_event_game` dropped, an `events` column, the union of registrants, the W-L
+  cache outside the pull folder, Refresh carrying it. Where the amendment makes an increment 1 item
+  meaningless (the per-event folder), I say so and do not fail it.
+- **Code reviewed:** `lib/run.js`, `lib/output.js`, `lib/history.js`, `lib/startgg.js`, `lib/pacing.js`,
+  `lib/token.js`, `lib/pool.js`, `pull.js`, `seed.js`, `scripts/reconcile.js`,
+  `scripts/check-requests.js`, `scripts/ground-truth.js`, `testlib/fake-api.js`,
+  `testlib/no-network.js`, as they stand at `8773dd1`, after increment 2's changes and build B's.
+- **Not mine to rule:** A4-3 (time-budget error fails one player vs stops the pull), which is Noah's
+  open ruling; the code keeps the default, pinned by `test/run.test.js`. A2-6 (formula characters in
+  Sheets), Noah's.
+- **Pass 1's questions for pass 2:** A1, E2, E8 and E10, the launcher (`seed.js`) and the views. Each is
+  answered below.
+
+### Acceptance (increment 1's list, under the amendment)
+
+| # | item | status | evidence |
+|---|---|---|---|
+| 1 | tests on a clean clone, offline, recorded fixtures; pure logic covered | **met offline; recorded-fixture leg open** | 207/204/0/3 offline at `ff56191`. Window, status rule, team split, CSV (BOM, quoting, `= + - @`), slug, pacing, classification all have tests (`history`, `output`, `slug`, `pacing`, `client`, `classify`). The 3 `recorded:` tests are still skipped since 2026-10-12 (C2-1) |
+| 2 | token from env/`.env`; `.env.example`; missing/bad → exit 2, no folder, no retry; no token in history or outputs | **met, value check not done** | `lib/token.js`; `.env.example` tracked; `.env` ignored and never committed; tests in `token`, `cli`, `run`. History scanned by pattern only (I did not read the token) |
+| 3 | live unattended run of Combo Breaker 2026 MBAACC into a per-event folder | **no longer meaningful as written** | the per-event folder is retired (§T2). The equivalent is build B's live pool pull of CoN3 Ep0: exit 0, 47 requests, 24 players, 2,192 rows, files per §T2; I re-ran `reconcile.js` on it (18/18). Combo Breaker 2026 itself was never pulled |
+| 4 | reconciliation by a committed script | **met offline; live leg open** | `scripts/reconcile.js`, 18 checks, retargeted to the pool; 18/18 on the live pool. `--live` never run (C2-2); its retargeted check leans on the pull's own counts (C2-4) |
+| 5 | ground truth: GeneralMidwest independent count + 3 rows | **open** | `scripts/ground-truth.js` still fits the layout (it reads `meta.window`), never run (C2-2) |
+| 6 | request log: no 60 s window over 80; backoff exercised | **met** | backoff test in `run.test.js`. `scripts/check-requests.js`, run read-only on the six old runs' pull logs, peaks at 52 per 60 s (Eclipse, 278 sends). The live pool peaks at 21 by its log and 20 by actual sends. The W-L logs are outside this script. The log's stamps are taken before an outer limiter's wait (C2-5) |
+| 7 | resume after a live kill, no refetch, matches a clean run | **met offline; live leg open** | `test/pool.test.js` "a crash mid-pull …" (real SIGKILL, `refetched = []`, swap after resume); `test/run.test.js` "kill + resume". Live kill never run (C2-2) |
+| 8 | a killed run leaves no final files | **met, and stronger now** | the crash test asserts `outputsPresent = []`. E9's residual (a kill between the three renames) no longer reaches a reader: `current` moves only to a pull with `meta.json`, and an unfinished pull is resumed and rewrites all three |
+| 9 | no-account players → `limited` | **met (fixture); live never observed** | `run.test.js` and the fake world's guest (`RecentStandings` per entered game, in build B for every game the player's events have). 0 limited players in all six old runs and the live pool. `ALL_GAMES_FALLBACK` still off (C2-3) |
+| 10 | README | **met** | rewritten in build B: setup, token, run, resume, outputs, check scripts, "Hand this to Claude" |
+| 11 | reuse review | **met** | pass 1's section; credits present in `lib/startgg.js` (`parseEventSlug` copied verbatim, `classifyError` adapted) |
+| 12 | closing approval | — | build B's pass 4 |
+
+Region (the 2026-10-12 amendment): pass 1 left open whether start.gg returns other users' locations on
+a personal token. The live pool answers it: of 24 players, 17 have a state, 22 have a country and 2 have
+neither (`meta.region_coverage`, reconciled). `city` is never requested (`Q_ENTRANTS`).
+
+### Findings
+
+**C2-1 — FINDING, routed (needs a live allowance) — the recorded fixtures were never recorded.**
+Acceptance 1 says "using recorded fixtures". `scripts/record-fixtures.js` was parked on 2026-10-12 waiting
+for the token. The token has been in use since the 2026-10-13 live runs, but the script was never run, so
+the three `recorded:` tests have been skipped through three increments. The suite's picture of start.gg
+is the hand-built fake (C2-8). **Resolves:** run `node scripts/record-fixtures.js` (a few read-only
+requests) and commit `test/fixtures/recorded/`. This needs a live allowance, which build B's contract
+gave only to pass 1, so it goes to the caller.
+
+**C2-2 — FINDING, routed (needs a live allowance) — increment 1's live acceptance legs were never
+closed.** Pass 1 parked them with exact commands, and nobody resumed them: Acceptance 5 (ground truth),
+4's `--live` leg, 7's live kill-and-resume, and 2's value grep of the outputs. They are cheap: about 15
+read-only requests against a past tournament and GeneralMidwest's history. **Resolves:** a live
+allowance for build B's pass 3 or the orchestrator, then record the results here.
+
+**C2-3 — NOTE, part of C2-2's allowance — the design's two "to check" items are still open (E8).** Is
+`recentStandings`' `videogameId` optional, and does `user.events` take a date filter? Until
+`scripts/schema-check.js` runs, a no-account player gets only the seeded games' last 20 results, never
+other games, and every user is paged to the end. The impact so far is nil (0 guests in any live data),
+and paging everything is the design's stated default.
+
+**C2-4 — NOTE — the reconcile script's live check is no longer fully independent.** For a pool,
+`--live` now expects `fresh participants − duplicate_player − no_player − cross_event_repeats`, with the
+three subtractions taken from the pull's own `meta.json`. With a union of events, the literal "row count
+equals the participant count" cannot hold, so some change was needed. As written, though, the check
+trusts the pull for the very counts it should test. **Resolves:** have `--live` count distinct player
+ids across the fresh entrant pages itself.
+
+**C2-5 — NOTE — the request log stamps a send before an outer limiter's wait.** `lib/startgg.js` stamps
+`ms` when the client decides to send. Under the app's queue (or a script's limiter) the real send can be
+later. In the live pool's log, 21 stamps fall in one 60 s window, while the actual sends in that window
+were 20. `scripts/check-requests.js`, the Acceptance 6 instrument, therefore overstates. That direction
+is safe, but the instrument is inexact. **Resolves:** log the dispatch time the queue reports, or say in
+the script that the count is an upper bound.
+
+**C2-6 — NOTE — pass 1's open questions, settled where evidence now exists.**
+- **A1** (`userEntrant: null` kept as a blank-placement row): keep. Live data shows 8 such rows of
+  2,192 in the CoN3 pool and 38 of 10,154 in the Eclipse run, all on past events, mostly ladders. Nothing
+  suggests they are events the player never entered.
+- **E7** (`user.events` perPage 120): the live complexity maximum is 841 (CoN3 pool), under 1,000.
+  Holds.
+- **E2/E3** (error classes; rate-limit text checked first): the structure holds. Increment 2 added the
+  time-budget kind from a live observation (A2-2). The rate-limit message text itself is still model
+  knowledge.
+- **E9:** closed for readers by the `current` pointer (Acceptance 8 above).
+- **E10:** Noah's open A2-6. The pull's CSVs stay verbatim, as the design says; the Sheets export guards
+  them.
+
+**C2-7 — FINDING (cross-reference D2-2) — an incremental or retry pull's `meta.json` drops the skip
+counts of carried players.** The rule broken is this design's ("Nothing is dropped without being
+counted"), so it is listed here as well. Evidence and resolution are under D2-2 in
+`docs/build-record-tool.md`.
+
+**C2-8 — NOTE — the offline harness has limits worth knowing.** `testlib/no-network.js` blocks
+`fetch`, `net` and `tls` (it holds). The fake start.gg (`testlib/fake-api.js`) is hand-shaped from the
+queries and ignores `AbortSignal`, so it cannot show timing faults such as D2-3. Until C2-1 lands, the
+fake's fidelity limits what the suite can prove. Pass 1's other questions: the launcher was rewritten in
+build B (pull folders, grouping links by tournament, the 24 h resume kept, tests retargeted), and the
+views now have tests (`test/wl.test.js` runs `views/major-table.js` end to end; the parity test pins its
+cells). `views/serve.js` no longer exists.
+
+### Verdict
+
+**APPROVE WITH FINDINGS for the pull's code against `design.md` as amended. The increment's live
+acceptance legs are not closed.** The pull is reliable on every point the suite and the files can show:
+the token handling, pacing and retries, resume without refetching, no fake-complete output (now with the
+`current` swap), region, reconciliation, and the per-event layout's replacement by the pool. What it
+cannot claim yet is the independent live evidence increment 1's contract asked for (C2-1, C2-2). That
+needs a small live allowance, which is the caller's to grant. C2-7 is the one code defect, shared with
+build B as D2-2. It covers the code, tests, scripts and the live artifacts on disk. It could not judge
+start.gg's live behavior for the parked checks.

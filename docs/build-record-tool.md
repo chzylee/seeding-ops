@@ -1849,3 +1849,27 @@ REPORT
   3. The orchestrator's usage-log row for "Mark live again" (D2-4), after pass 4.
   4. Pass 4: re-review, including the UI checklist above (offline, no live calls).
 ```
+
+---
+
+## Orchestrator verification after build B pass 3 (2026-10-29)
+
+Suite on the working tree at `d89c860`: 223 tests, 223 pass, 0 fail, 0 skipped (matches pass 3).
+The app restarted on the repaired code against the scratch Crescendo pool: home, tournament page, tab
+data and seeds export all 200.
+
+**D2-1, driven through the API against the fake start.gg** (no live calls; `fake-global-fetch.js`,
+`FAKE_DELAY_MS=120`, `STARTGG_TOKEN=FAKE-SENTINEL`, scratch `--out` and tiers copy, port 8798):
+
+| step | result |
+|---|---|
+| add `combo-breaker-2026`, tick MBAACC, Pull | done in about 2 s; one tab (MBAACC, 15 players) |
+| Refresh, then tick Melee Singles while the job is in its W-L phase | tick response `started: false, queued: true`; status mid-job `message: "Fetching W-L", queued: true` |
+| after both jobs | tabs MBAACC (15 players) and Super Smash Bros. Melee (3 players); `out/combo-breaker-2026/` holds one `pull-…` folder, `current` names it, `set-records.json` and `state.json` beside it |
+
+One thing seen on the way, not a defect of pass 3: ticking events through the API on a tournament with
+no pool yet does not start a pull (`started: null`); the page's Pull button is the path. That is the
+shape of pass 3's queued **P3-2** (a first Pull while another tournament's job runs does nothing and says
+nothing). Handed to pass 4 to judge; the extra repair pair is available if it is a return.
+
+D2-7's Windows file-lock steps were not run by hand; they rest on pass 3's two tests and its own run.

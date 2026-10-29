@@ -476,3 +476,45 @@ REPORT
   4. B2-7: the orchestrator records commit 73a085a, and whether its UI check wrote the real
      registry/tiers.csv (mtime 09:29:36, content unchanged).
 ```
+
+---
+
+## Orchestrator verification after pass 1, and rulings for pass 3 (2026-10-29)
+
+Recorded per A4-6 rule (a) before pass 3 starts. Written by the orchestrating session.
+
+### UI checklist (pass 1's list, run in the session's browser pane against the live app on 8765)
+
+| item | result |
+|---|---|
+| 1 Majors per game | Eclipse page columns: Combo Breaker, Frosty Faustings, Climax of Night. No CEO. Frosty shows one line per year ('26 and '25). |
+| 2 Recency color | 107 Tier cells `rec-here`, 75 `rec-never`, counted in the DOM. |
+| 3 Hover | 107 × "Last reviewed <date> at eclipse-1st-cour (this tournament)", 75 × "Never reviewed (tier from the sheet import)". |
+| 4 ✓ persistence | **Done against the real `registry/tiers.csv`** (this is what touched it at 09:29:36, B2-7): ✓ on Skeleton (sheet-only row) wrote `2026-10-29` / `eclipse-1st-cour` to disk; ✓ again the same day cleared both; the file came back byte-identical (git saw no change). A second browser profile reads the server, so the disk write is the persistence. |
+| 5 Earlier review kept | ✓ on Aster Laker (reviewed 2026-10-16) left the review unchanged. **The status line stayed empty**; the "message line explains why" the record describes did not show within 1.2 s. Minor; pass 3 may check. |
+| 6 Sort | Seeded header click groups 75 unreviewed then 107 reviewed; second click reverses. (A first attempt hit the header's ❄ button instead; the column is always frozen, so no effect.) |
+| 7 Editor | Double-click on a Tier cell: one field labeled Tier, no Reason. |
+| 8 Other runs | Via the data API: MBTL majors = Combo Breaker, Frosty Faustings; UNI2 = CEO, Evo, Combo Breaker, Frosty Faustings; Eclipse as above. Index lists all three events. |
+| 9 Compare | Panel headers match the table's columns; its Tier cells carry the same recency classes. |
+
+### Out-of-band change (B2-7)
+
+Commit `73a085a` (`.claude/launch.json`: port 3000 → 8765) was the orchestrator's, made so the app
+could be previewed; it landed during pass 2 and is harmless. Recorded here.
+
+### Rulings for pass 3
+
+Noah authorized the whole build to run ("start the whole build … use subagents"). Where a finding
+needs his ruling, the orchestrator proceeds on a stated default, marked **amendable**, and flags it
+at the top of the final report.
+
+| finding | ruling | basis |
+|---|---|---|
+| B2-1 | **Option (a), amendable.** On un-✓ the page sends the pair it displayed before the ✓ (date and tournament, possibly blank); the route restores that pair only when the row's current review equals this tournament and today, else it is a no-op. The route accepts review values from the body for this one case only. Add the two-click test (✓ at a new tournament, un-✓ same day, earlier review back). | Spec §T1 Rules: "A review recorded earlier is never destroyed by a click." (a) keeps T1's columns as specified and survives restarts; (b) does not survive a restart; (c) changes the table. Noah may pick (c) or (d) later. |
+| B2-2 | **Add Climax of Night (`game`) to a `36865` (MBTL) list, amendable.** Leave UNI2 (`50203`) on the default list. | Rule 6's own test on the real MBTL data (142/158 vs Frosty 85/73). UNI2's data is 5 players; no basis. |
+| B2-3 | Fix: un-✓ removes a row that holds nothing but this review. | Undo restores the prior state; no product choice. |
+| B2-4 | Record the fifth changed test in pass 3's section. | A4-6 rule (a). |
+| B2-5 | Acknowledged as the orchestrator's default: the CLI HTML carries tiers and notes. Flagged to Noah. | Acceptance 8 requires parity. |
+| B2-6 | Acknowledged: UTC "today", as `decided_on` always was. Flagged to Noah. | Consistency with existing dates. |
+| B2-8 | Fix the README list slip. | Record accuracy. |
+| item 5 above | Check whether the no-op un-✓ shows its explanation in the status line; fix if the message is never rendered. | Pass 1's own checklist promised it. |

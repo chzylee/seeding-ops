@@ -82,12 +82,16 @@ function reconcile(runDir) {
   return { checks, players, results, meta };
 }
 
-async function liveParticipantCount(eventId) {
+function liveClient() {
   const sgg = require('../lib/startgg');
   const { loadToken } = require('../lib/token');
   const { token } = loadToken({ envFile: path.join(__dirname, '..', '.env') });
   if (!token) throw new Error('No STARTGG_TOKEN for --live.');
-  const client = sgg.createClient({ token });
+  return sgg.createClient({ token });
+}
+
+async function liveParticipantCount(eventId, client) {
+  const before = client.stats.requests;
   // Deliberately not lib/history: a separate, minimal count of participants.
   const Q = `query ReconcileCount($id: ID!, $page: Int!) {
     event(id: $id) { entrants(query: { page: $page, perPage: 150 }) {
@@ -100,7 +104,27 @@ async function liveParticipantCount(eventId) {
     totalPages = conn.pageInfo.totalPages;
     for (const n of conn.nodes) count += (n.participants || []).length;
   }
-  return { count, requests: client.stats.requests };
+  return { count, requests: client.stats.requests - before };
+}
+
+// The --live checks, added to a reconcile() result. client: a lib/startgg client (one for every
+// seeded event, so a caller can run everything through one client and one limiter).
+async function liveCheck(res, client) {
+  // A pool: every seeded event's participants, summed (meta.json seeded_events).
+  const live = { count: 0, requests: 0 };
+  for (const e of res.meta.seeded_events || []) {
+    const one = await liveParticipantCount(e.id, client);
+    live.count += one.count;
+    live.requests += one.requests;
+  }
+  const a = res.meta.registrant_anomalies;
+  res.checks.push({ name: 'API participant count (fresh query) = meta.registrant_anomalies.api_participants',
+    ok: live.count === a.api_participants,
+    detail: `${live.count} vs ${a.api_participants} (${live.requests} requests)` });
+  const expected = live.count - (a.duplicate_player || 0) - (a.no_player || 0) - (a.cross_event_repeats || 0);
+  res.checks.push({ name: 'players.csv rows = API participant count (fresh query) - duplicates - no-player - cross-event repeats',
+    ok: expected === res.players.length, detail: `${res.players.length} vs ${expected}` });
+  return res;
 }
 
 async function main() {
@@ -108,22 +132,7 @@ async function main() {
   const runDir = args.find((a) => !a.startsWith('--'));
   if (!runDir) { console.error("Usage: node scripts/reconcile.js <pull folder> [--live]"); return 2; }
   const res = reconcile(runDir);
-  if (args.includes('--live') && res.meta) {
-    // A pool: every seeded event's participants, summed (meta.json seeded_events).
-    const live = { count: 0, requests: 0 };
-    for (const e of res.meta.seeded_events || []) {
-      const one = await liveParticipantCount(e.id);
-      live.count += one.count;
-      live.requests += one.requests;
-    }
-    const a = res.meta.registrant_anomalies;
-    res.checks.push({ name: 'API participant count (fresh query) = meta.registrant_anomalies.api_participants',
-      ok: live.count === a.api_participants,
-      detail: `${live.count} vs ${a.api_participants} (${live.requests} requests)` });
-    const expected = live.count - (a.duplicate_player || 0) - (a.no_player || 0) - (a.cross_event_repeats || 0);
-    res.checks.push({ name: 'players.csv rows = API participant count (fresh query) - duplicates - no-player - cross-event repeats',
-      ok: expected === res.players.length, detail: `${res.players.length} vs ${expected}` });
-  }
+  if (args.includes('--live') && res.meta) await liveCheck(res, liveClient());
   for (const c of res.checks) console.log(`${c.ok ? 'PASS' : 'FAIL'}  ${c.name}${c.detail ? '  (' + c.detail + ')' : ''}`);
   const failed = res.checks.filter((c) => !c.ok).length;
   console.log(failed ? `${failed} check(s) FAILED` : `all ${res.checks.length} checks passed`);
@@ -134,4 +143,4 @@ if (require.main === module) {
   main().then((c) => { process.exitCode = c; }, (e) => { console.error(e.message); process.exitCode = 1; });
 }
 
-module.exports = { reconcile };
+module.exports = { reconcile, liveCheck };

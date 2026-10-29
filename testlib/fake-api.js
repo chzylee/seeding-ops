@@ -275,6 +275,28 @@ function createFakeFetch(world, opts = {}) {
         !s.container.videogame || String(s.container.videogame.id) === String(v.videogameId));
       return jsonResponse(200, { data: { player: { recentStandings: list } }, extensions: ext(196) });
     }
+    // ---- The live-check instruments (scripts/ground-truth.js, scripts/reconcile.js --live) ----
+    if (op === 'GTUser') {
+      const p = world.players.find((x) => x.user && x.user.slug === v.slug);
+      return jsonResponse(200, { data: { user: p ? { id: p.user.id, player: { id: p.id, gamerTag: p.gamerTag } } : null }, extensions: ext(3) });
+    }
+    if (op === 'GTUserEvents') {
+      const p = world.players.find((x) => x.user && String(x.user.id) === String(v.id));
+      if (!p) return jsonResponse(200, { data: { user: null }, extensions: ext(1) });
+      const per = v.perPage;
+      const nodes = p.events.slice((v.page - 1) * per, v.page * per).map((ev) => ({ id: ev.id, startAt: ev.startAt }));
+      return jsonResponse(200, { data: { user: { events: { pageInfo: { totalPages: Math.ceil(p.events.length / per) }, nodes } } }, extensions: ext(per * 2) });
+    }
+    if (op === 'GTEvent') {
+      const p = world.players.find((x) => x.user && String(x.user.id) === String(v.uid));
+      const ev = p && p.events.find((e) => String(e.id) === String(v.id));
+      return jsonResponse(200, { data: { event: ev ? { id: ev.id, name: ev.name, startAt: ev.startAt, videogame: { id: ev.videogame.id }, userEntrant: eventNode(ev, v.uid).userEntrant } : null }, extensions: ext(5) });
+    }
+    if (op === 'ReconcileCount') {
+      const all = (world.entrantsByEvent && world.entrantsByEvent[String(v.id)]) || world.entrants;
+      const nodes = all.slice((v.page - 1) * 150, v.page * 150).map((e) => ({ participants: e.participants.map((p, i) => ({ id: 80000 + i })) }));
+      return jsonResponse(200, { data: { event: { entrants: { pageInfo: { totalPages: Math.max(1, Math.ceil(all.length / 150)) }, nodes } } }, extensions: ext(150) });
+    }
     // ---- W-L (lib/wl.js): user ids by slug, then sets per (event, user) ----
     if (op === 'UserIds') {
       const data = {};

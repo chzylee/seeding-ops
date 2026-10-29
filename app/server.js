@@ -185,8 +185,9 @@ function createApp(opts = {}) {
         if (!e) throw bad(400, `No event "${slug}" in this tournament.`);
         if (!e.singles) throw bad(400, `${e.name} is not a singles event; only singles can be seeded.`);
       }
-      added = next.filter((x) => !s.ticked.includes(x));
+      const was = s.ticked || [];
       s.ticked = s.events.map((e) => e.slug).filter((slug) => next.includes(slug)); // catalog order
+      added = s.ticked.filter((x) => !was.includes(x));
     });
     // Ticking a new event is incremental: only players not yet in the pool are pulled. Before the
     // first pool exists, the page's Pull button starts the first (full) pull.
@@ -252,7 +253,8 @@ function createApp(opts = {}) {
     try {
       return await push.dryRun({ client: client(), event: ev, poolIds: ids, tiersFile });
     } catch (err) {
-      if (err.status) throw err;
+      // A start.gg error carries start.gg's HTTP status; only our own errors pass through as they are.
+      if (!(err instanceof sgg.StartggError)) throw err;
       const f = sgg.pushFailure(err);
       throw bad(502, f.text, { failure: f.kind });
     }
@@ -266,7 +268,8 @@ function createApp(opts = {}) {
     try {
       dry = await push.dryRun({ client: c, event: ev, poolIds: ids, tiersFile });
     } catch (err) {
-      if (err.status) throw err;
+      // A start.gg error carries start.gg's HTTP status; only our own errors pass through as they are.
+      if (!(err instanceof sgg.StartggError)) throw err;
       const f = sgg.pushFailure(err);
       throw bad(502, f.text, { failure: f.kind });
     }
@@ -414,8 +417,9 @@ function createApp(opts = {}) {
       }
       return notFound(res);
     } catch (err) {
-      if (err && err.status) return json(res, err.status, { error: err.message, ...(err.failure ? { failure: err.failure } : {}) });
+      // start.gg's errors first: a StartggError's .status is start.gg's HTTP status, not ours.
       if (err instanceof sgg.StartggError) return json(res, err.kind === 'event-not-found' ? 404 : 502, { error: err.kind === 'bad-token' ? 'start.gg rejected the token.' : err.message });
+      if (err && err.status) return json(res, err.status, { error: err.message, ...(err.failure ? { failure: err.failure } : {}) });
       return send(res, 500, `Server error: ${err && err.message}`);
     }
   }

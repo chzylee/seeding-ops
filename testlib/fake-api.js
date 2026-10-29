@@ -115,12 +115,16 @@ function buildWorld(runAtSec) {
     id: 77, slug: 'tournament/combo-breaker-2026', name: 'Combo Breaker 2026', startAt: runAtSec - 140 * DAY, timezone: 'America/Chicago',
     events: [event, event2, teamsEvent],
   };
-  const entrantsByEvent = { 1000: entrants, 2000: entrants2 };
+  // A side tournament (T3's linked side games): one event, P1 in it.
+  const sideTournament = { id: 78, slug: 'tournament/cb-side-games', name: 'CB Side Games', startAt: runAtSec - 140 * DAY, timezone: 'America/Chicago',
+    events: [{ id: 7000, slug: 'tournament/cb-side-games/event/tekken-8', name: 'Tekken 8', startAt: runAtSec - 140 * DAY, numEntrants: 1,
+      videogame: { id: 49783, name: 'TEKKEN 8' }, type: 1, phases: [] }] };
+  const entrantsByEvent = { 1000: entrants, 2000: entrants2, 7000: [{ id: ++entId, participants: [byPid(101)] }] };
   // The main bracket's seeds in start.gg's current order: entrants in reverse registration order,
   // plus one placeholder seed with no entrant (unmappable).
   const seeds = { 5001: [...entrants].reverse().map((e, i) => ({ id: 400000 + i, seedNum: i + 1, entrant: e })) };
   seeds[5001].push({ id: 499999, seedNum: seeds[5001].length + 1, entrant: null });
-  return { event, event2, teamsEvent, tournament, players, entrants, entrantsByEvent, seeds };
+  return { event, event2, teamsEvent, tournament, sideTournament, players, entrants, entrantsByEvent, seeds };
 }
 
 function jsonResponse(status, body, headers = {}) {
@@ -182,6 +186,25 @@ function createFakeFetch(world, opts = {}) {
     if (op === 'TournamentEvents') {
       const t = world.tournament && v.slug === world.tournament.slug.replace(/^tournament\//, '') ? world.tournament : null;
       return jsonResponse(200, { data: { tournament: t }, extensions: ext(30) });
+    }
+    // T3's schedule queries (lib/schedule.js): the timetable, and entrants with their pools.
+    if (op === 'TournamentSchedule') {
+      const t = [world.tournament, world.sideTournament].find((x) => x && v.slug === x.slug.replace(/^tournament\//, '')) || null;
+      const shaped = t && { id: t.id, slug: t.slug, name: t.name, startAt: t.startAt, timezone: t.timezone,
+        events: t.events.map((e) => ({ id: e.id, slug: e.slug, name: e.name, startAt: e.startAt, numEntrants: e.numEntrants, videogame: e.videogame,
+          phases: (e.phases || []).map((ph) => ({ id: ph.id, name: ph.name, phaseOrder: ph.phaseOrder, groupCount: 1, numSeeds: null,
+            phaseGroups: { pageInfo: { total: 1 }, nodes: [{ id: Number(ph.id) * 10, displayIdentifier: 'A1', startAt: e.startAt, wave: { id: 1, identifier: 'A', startAt: e.startAt } }] } })) })) };
+      return jsonResponse(200, { data: { tournament: shaped }, extensions: ext(60) });
+    }
+    if (op === 'EventEntrantSeeds') {
+      const all = (world.entrantsByEvent || {})[String(v.eventId)] || [];
+      const ev = [world.event, world.event2, world.sideTournament && world.sideTournament.events[0]].find((e) => e && String(e.id) === String(v.eventId));
+      const ph = ev && ev.phases && ev.phases[0];
+      const per = v.perPage;
+      const nodes = all.slice((v.page - 1) * per, v.page * per).map((e, k) => ({ id: e.id, name: e.participants.map((p) => p.gamerTag).join(' / '),
+        participants: e.participants.map((p) => ({ player: { id: p.id, gamerTag: p.gamerTag, prefix: p.prefix }, user: p.user ? { id: p.user.id, slug: p.user.slug } : null })),
+        seeds: ph ? [{ seedNum: k + 1, groupSeedNum: k + 1, phase: { id: ph.id }, phaseGroup: { id: Number(ph.id) * 10 } }] : [] }));
+      return jsonResponse(200, { data: { event: { entrants: { pageInfo: { total: all.length, totalPages: Math.max(1, Math.ceil(all.length / per)) }, nodes } } }, extensions: ext(per * 6) });
     }
     if (op === 'PhaseSeeds') {
       if (opts.seedsError) return jsonResponse(200, { errors: [{ message: opts.seedsError, path: ['phase'] }] });

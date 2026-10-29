@@ -2,3 +2,5 @@
 out/
 node_modules/
 conflicts/out/
+registry/*.bak
+registry/*.tmp

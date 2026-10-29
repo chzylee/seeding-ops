@@ -12,7 +12,9 @@ const { parseCsv } = require('../lib/output');
 const { createClient } = require('../lib/startgg');
 const M = require('../lib/view/model');
 const wl = require('../lib/wl');
-const { buildWorld, createFakeFetch, virtualClock, sink, fakeSets, EVENT_SLUG } = require('../testlib/fake-api');
+const { buildWorld, createFakeFetch, virtualClock, sink, fakeSets, EVENT_SLUG, T_SLUG, E_SLUG, GAME } = require('../testlib/fake-api');
+const { addTournament } = require('../testlib/pool-fixture');
+const out = require('../lib/output');
 
 const ROOT = path.join(__dirname, '..');
 const START = Date.UTC(2026, 9, 12, 15, 0, 0);
@@ -25,9 +27,13 @@ async function fakeRun() {
   const clock = virtualClock(START);
   const code = await run({ url: 'https://www.start.gg/' + EVENT_SLUG, token: TOKEN, outRoot, fetchImpl: createFakeFetch(world), now: clock.now, sleep: clock.sleep, stderr: sink(), stdout: sink() });
   assert.strictEqual(code, 0);
-  const runDir = path.join(outRoot, fs.readdirSync(outRoot)[0]);
+  // Retargeted for increment 3 (T2): the pull is out/<t>/<current>; results.csv has no
+  // is_event_game, so rows of the event's game are marked here (what a tab computes).
+  const tDir = path.join(outRoot, T_SLUG);
+  const runDir = path.join(tDir, out.readCurrent(tDir));
   const read = (f) => parseCsv(fs.readFileSync(path.join(runDir, f), 'utf8'));
-  return { world, runDir, players: read('players.csv'), results: read('results.csv') };
+  const results = read('results.csv').map((r) => ({ ...r, is_event_game: String(r.game_id === String(GAME.id)) }));
+  return { world, outRoot, tDir, runDir, players: read('players.csv'), results };
 }
 const userOf = (world, playerId) => world.players.find((p) => String(p.id) === String(playerId)).user;
 
@@ -100,26 +106,31 @@ test('wl: saveCache writes atomically and loadCache merges the legacy bbb-record
   assert.ok(!fs.existsSync(path.join(dir, 'views', 'set-records.json.tmp')));
 });
 
-test('views/major-table.js: renders a fake run end to end, fetching W-L through a fake start.gg', async () => {
-  const { runDir, results } = await fakeRun();
+// Retargeted for increment 3 (Pages): the CLI view renders one game tab of a tournament pool,
+// node views/major-table.js out/<t> [--game <id>], into out/<t>/, with the pool's shared W-L cache.
+test('views/major-table.js: renders a fake pool\'s game tab end to end, fetching W-L through a fake start.gg', async () => {
+  const { outRoot, tDir, world, results } = await fakeRun();
+  addTournament(outRoot, world, [E_SLUG]);
+  const runDir = tDir;
   const calls = path.join(runDir, 'calls.jsonl');
   const env = { ...process.env, STARTGG_TOKEN: TOKEN, FAKE_WORLD_AT: String(START), FAKE_CALLS_FILE: calls,
     NODE_OPTIONS: `--require "${slash(path.join(ROOT, 'testlib', 'no-network.js'))}" --require "${slash(path.join(ROOT, 'testlib', 'fake-global-fetch.js'))}"` };
-  const r = spawnSync(process.execPath, [path.join(ROOT, 'views', 'major-table.js'), runDir], { env, encoding: 'utf8' });
+  const r = spawnSync(process.execPath, [path.join(ROOT, 'views', 'major-table.js'), tDir, '--game', String(GAME.id)], { env, encoding: 'utf8' });
   assert.strictEqual(r.status, 0, r.stderr);
   assert.ok(!r.stdout.includes(TOKEN) && !r.stderr.includes(TOKEN));
-  const html = fs.readFileSync(path.join(runDir, 'views', 'major-table.html'), 'utf8');
+  const htmlFile = path.join(tDir, `major-table-${GAME.id}.html`);
+  const html = fs.readFileSync(htmlFile, 'utf8');
   assert.match(html, /<table class="summary">/);
   assert.match(html, /GeneralMidwest/);
-  const cache = JSON.parse(fs.readFileSync(path.join(runDir, 'views', 'set-records.json'), 'utf8'));
+  const cache = JSON.parse(fs.readFileSync(path.join(tDir, 'set-records.json'), 'utf8'));
   assert.ok(Object.keys(cache).length >= results.filter(M.isGame).length - 5);
   const ops = fs.readFileSync(calls, 'utf8').trim().split('\n').map((l) => JSON.parse(l).op);
   assert.strictEqual(ops[0], 'UserIds');
   assert.ok(ops.includes('SetsBatch'));
   // --no-fetch with a full cache makes no requests and writes the same file.
   fs.rmSync(calls);
-  const r2 = spawnSync(process.execPath, [path.join(ROOT, 'views', 'major-table.js'), runDir, '--no-fetch'], { env, encoding: 'utf8' });
+  const r2 = spawnSync(process.execPath, [path.join(ROOT, 'views', 'major-table.js'), tDir, '--game', String(GAME.id), '--no-fetch'], { env, encoding: 'utf8' });
   assert.strictEqual(r2.status, 0, r2.stderr);
   assert.ok(!fs.existsSync(calls));
-  assert.strictEqual(fs.readFileSync(path.join(runDir, 'views', 'major-table.html'), 'utf8'), html);
+  assert.strictEqual(fs.readFileSync(htmlFile, 'utf8'), html);
 });

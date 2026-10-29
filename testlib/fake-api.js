@@ -14,6 +14,10 @@ const DAY = 86_400;
 const GAME = { id: 22, name: 'Melty Blood: Actress Again Current Code' };
 const OTHER_GAME = { id: 1, name: 'Super Smash Bros. Melee' };
 const EVENT_SLUG = 'tournament/combo-breaker-2026/event/melty-blood-actress-again-current-code';
+const EVENT2_SLUG = 'tournament/combo-breaker-2026/event/melee-singles';
+const T_SLUG = 'combo-breaker-2026';
+const E_SLUG = 'melty-blood-actress-again-current-code';
+const E2_SLUG = 'melee-singles';
 
 // A deterministic little world. `runAtSec` anchors event dates relative to the run so the
 // window cases (in, out, future, boundary) hold no matter when the tests run.
@@ -90,8 +94,33 @@ function buildWorld(runAtSec) {
     id: 1000, slug: EVENT_SLUG, name: 'Melty Blood: Actress Again Current Code',
     startAt: runAtSec - 140 * DAY, numEntrants: entrants.length, videogame: GAME,
     tournament: { name: 'Combo Breaker 2026' },
+    type: 1, phases: [{ id: 5001, name: 'Bracket', phaseOrder: 1 }, { id: 5002, name: 'Top 8', phaseOrder: 2 }],
   };
-  return { event, players, entrants };
+
+  // Increment 3: the tournament pool. A second singles event in another game, shared by P1 (101)
+  // and P8 (108), with one player only in it (P16, 116); and a teams event the picker must hide.
+  const p16 = addPlayer({ id: 116, gamerTag: 'MeleeOnly', prefix: '', user: { id: 9016, slug: 'user/aaaa0016', location: { state: 'OH', country: 'United States' } },
+    events: [mkEvent(3, OTHER_GAME), mkEvent(33, OTHER_GAME)] });
+  const byPid = (id) => players.find((p) => p.id === id);
+  const entrants2 = [byPid(101), byPid(108), p16].map((p) => ({ id: ++entId, participants: [p] }));
+  const event2 = {
+    id: 2000, slug: EVENT2_SLUG, name: 'Melee Singles', startAt: runAtSec - 139 * DAY, numEntrants: entrants2.length,
+    videogame: OTHER_GAME, tournament: { name: 'Combo Breaker 2026' }, type: 1, phases: [{ id: 6001, name: 'Pools', phaseOrder: 1 }],
+  };
+  const teamsEvent = {
+    id: 3000, slug: 'tournament/combo-breaker-2026/event/mbaacc-2v2', name: 'MBAACC 2v2', startAt: runAtSec - 139 * DAY, numEntrants: 4,
+    videogame: GAME, tournament: { name: 'Combo Breaker 2026' }, type: 5, phases: [],
+  };
+  const tournament = {
+    id: 77, slug: 'tournament/combo-breaker-2026', name: 'Combo Breaker 2026', startAt: runAtSec - 140 * DAY, timezone: 'America/Chicago',
+    events: [event, event2, teamsEvent],
+  };
+  const entrantsByEvent = { 1000: entrants, 2000: entrants2 };
+  // The main bracket's seeds in start.gg's current order: entrants in reverse registration order,
+  // plus one placeholder seed with no entrant (unmappable).
+  const seeds = { 5001: [...entrants].reverse().map((e, i) => ({ id: 400000 + i, seedNum: i + 1, entrant: e })) };
+  seeds[5001].push({ id: 499999, seedNum: seeds[5001].length + 1, entrant: null });
+  return { event, event2, teamsEvent, tournament, players, entrants, entrantsByEvent, seeds };
 }
 
 function jsonResponse(status, body, headers = {}) {
@@ -137,7 +166,7 @@ function createFakeFetch(world, opts = {}) {
 
   async function fakeFetch(url, init) {
     const req = JSON.parse(init.body);
-    const op = (/query\s+(\w+)/.exec(req.query) || [])[1];
+    const op = (/(?:query|mutation)\s+(\w+)/.exec(req.query) || [])[1];
     const v = req.variables || {};
     calls.push({ op, variables: v, auth: init.headers.Authorization });
     if (opts.badToken) return jsonResponse(badTokenFixture.httpStatus, badTokenFixture.body);
@@ -150,9 +179,39 @@ function createFakeFetch(world, opts = {}) {
       const ev = v.slug === world.event.slug ? world.event : null;
       return jsonResponse(200, { data: { event: ev }, extensions: ext(4) });
     }
+    if (op === 'TournamentEvents') {
+      const t = world.tournament && v.slug === world.tournament.slug.replace(/^tournament\//, '') ? world.tournament : null;
+      return jsonResponse(200, { data: { tournament: t }, extensions: ext(30) });
+    }
+    if (op === 'PhaseSeeds') {
+      if (opts.seedsError) return jsonResponse(200, { errors: [{ message: opts.seedsError, path: ['phase'] }] });
+      const all = (world.seeds || {})[String(v.phaseId)];
+      if (!all) return jsonResponse(200, { data: { phase: null }, extensions: ext(1) });
+      const per = v.perPage;
+      let i = 0;
+      const nodes = all.slice((v.page - 1) * per, v.page * per).map((sd) => ({ id: sd.id, seedNum: sd.seedNum,
+        entrant: sd.entrant ? { id: sd.entrant.id, name: sd.entrant.participants.map((p) => p.gamerTag).join(' / '),
+          participants: sd.entrant.participants.map((p) => ({ player: participantNode(p, i++).player })) } : null }));
+      return jsonResponse(200, { data: { phase: { id: v.phaseId, name: 'Bracket', seeds: { pageInfo: { total: all.length, totalPages: Math.ceil(all.length / per) }, nodes } } }, extensions: ext(per * 4) });
+    }
+    if (op === 'UpdatePhaseSeeding') {
+      if (opts.onPush) opts.onPush(v);
+      if (opts.pushError) return jsonResponse(200, { errors: [{ message: opts.pushError, path: ['updatePhaseSeeding'] }] });
+      const all = (world.seeds || {})[String(v.phaseId)] || [];
+      for (const m of v.seedMapping) { const sd = all.find((x) => String(x.id) === String(m.seedId)); if (sd) sd.seedNum = m.seedNum; }
+      all.sort((a, b) => a.seedNum - b.seedNum);
+      return jsonResponse(200, { data: { updatePhaseSeeding: { id: v.phaseId } }, extensions: ext(10) });
+    }
+    if (op === 'EventStandings') {
+      const all = (world.entrantsByEvent || {})[String(v.eventId)] || [];
+      const per = v.perPage;
+      const nodes = all.slice((v.page - 1) * per, v.page * per).map((e, k) => ({ placement: (v.page - 1) * per + k + 1,
+        entrant: { id: e.id, name: e.participants.map((p) => p.gamerTag).join(' / '), participants: e.participants.map((p) => ({ player: { id: p.id, gamerTag: p.gamerTag } })) } }));
+      return jsonResponse(200, { data: { event: { id: v.eventId, slug: '', standings: { pageInfo: { total: all.length, totalPages: Math.max(1, Math.ceil(all.length / per)) }, nodes } } }, extensions: ext(per * 4) });
+    }
     if (op === 'EventEntrants') {
       const per = v.perPage;
-      const all = world.entrants;
+      const all = (world.entrantsByEvent && world.entrantsByEvent[String(v.eventId)]) || world.entrants;
       const slice = all.slice((v.page - 1) * per, v.page * per);
       let i = 0;
       const nodes = slice.map((e) => ({ id: e.id, participants: e.participants.map((p) => participantNode(p, i++)) }));
@@ -265,4 +324,4 @@ function sink() {
   return { write: (s) => { chunks.push(String(s)); return true; }, text: () => chunks.join('') };
 }
 
-module.exports = { buildWorld, createFakeFetch, virtualClock, sink, GAME, OTHER_GAME, EVENT_SLUG, readFixture, fakeSets };
+module.exports = { buildWorld, createFakeFetch, virtualClock, sink, GAME, OTHER_GAME, EVENT_SLUG, EVENT2_SLUG, T_SLUG, E_SLUG, E2_SLUG, readFixture, fakeSets };

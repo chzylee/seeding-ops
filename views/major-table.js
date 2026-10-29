@@ -1,18 +1,21 @@
 #!/usr/bin/env node
 'use strict';
-// views/major-table.js — the seeding view as one static HTML file per run folder. This is not part
-// of the pull. The app (npm run app) shows the same view live, with pin, compare and refresh;
-// this CLI stays for a file you can keep or send, and for rendering from the cache alone.
-//   node views/major-table.js <run folder> [--no-fetch] [--all-games]
-// Writes <run folder>/views/major-table.html:
-//   1. Summary: one row per player. Majors (config/majors.json: this game's main event there, one per year)
-//      as "placement / entrants · W-L"; the series the most registrants share, each as best
-//      placement (with W-L), best W-L and average W-L; seed and notes from views/notes.json.
+// views/major-table.js — one game tab of a tournament pool as a static HTML file. This is not part
+// of the pull. The app (npm start) shows the same view live, with pin, compare, refresh and the
+// review mark; this CLI stays for a file you can keep, and for rendering from the cache alone.
+//   node views/major-table.js out/<tournament> [--game <start.gg game id>] [--no-fetch] [--all-games]
+// Writes out/<tournament>/major-table-<game id>.html for that game's tab (the first tab by default):
+//   1. Summary: one row per player, the app's columns minus its controls (the parity test pins it):
+//      Team, Player, Region, Tier (registry/tiers.csv, with the recency color and the review hover),
+//      majors (config/majors.json: this game's main event there, one per year) as
+//      "placement / entrants · W-L", the series the most registrants share (best placement with W-L,
+//      best W-L, average W-L), Other series (this game), Other games, and Notes (registry/tiers.csv).
 //   2. Per player: a series table, then every result in this game and other games, collapsed.
+// The file carries Noah's tiers, notes and review marks (build A, B2-5): know that before sending it.
 // Per Noah (2026-10-14): what matters per result is event name, placement out of entrants and W-L;
 // the date is secondary; no aggregate counts (placements only mean something relative to the event).
-// W-L needs sets, which the pull doesn't fetch. lib/wl.js fetches them and caches them in
-// <run>/views/set-records.json, so re-rendering costs nothing.
+// W-L needs sets, which the pull doesn't fetch. lib/wl.js fetches them and caches them in the
+// pool's out/<tournament>/set-records.json (shared with the app), so re-rendering costs nothing.
 // The logic lives in lib/view/model.js and the HTML in lib/view/render.js, shared with the app.
 
 const fs = require('node:fs');
@@ -26,8 +29,8 @@ const wl = require('../lib/wl');
 
 const { esc } = R;
 
-async function fetchSetRecords(runDir, players, rows, isSummary) {
-  const cache = wl.loadCache(runDir);
+async function fetchSetRecords(tDir, players, rows, isSummary) {
+  const cache = wl.loadPoolCache(tDir);
   const todo = rows.filter((r) => !cache[M.key(r)]);
   // --no-fetch renders from the cache only (e.g. while another render is still fetching:
   // two fetching processes would together exceed start.gg's 80 requests / 60 s).
@@ -40,11 +43,11 @@ async function fetchSetRecords(runDir, players, rows, isSummary) {
     await wl.fetchSetRecords({
       client, players, rows, cache, isSummary,
       onChunk: (p) => {
-        wl.saveCache(runDir, cache); // a killed render keeps what it fetched
+        wl.savePoolCache(tDir, cache); // a killed render keeps what it fetched
         process.stderr.write(`sets ${p.done}/${p.total} · ${p.rows[0].gamer_tag} · ${client.stats.requests} requests · complexity max ${client.stats.complexityMax}\n`);
       },
     });
-    wl.saveCache(runDir, cache);
+    wl.savePoolCache(tDir, cache);
   }
   return cache;
 }
@@ -52,9 +55,10 @@ async function fetchSetRecords(runDir, players, rows, isSummary) {
 // The page as one HTML string. The context comes from the app's own view model and context
 // builder (lib/view/data.js viewModel, lib/view/render.js contextFromViewModel), so this file
 // shows the same cells as the app: the same majors (config/majors.json), the same tiers and
-// review marks (registry/tiers.csv), the same series. opts.today / opts.tiersFile: for tests.
-function renderHtml(runDir, { records, allGames = false, today, tiersFile } = {}) {
-  const vm = data.viewModel(runDir, { records, today, tiersFile });
+// review marks (registry/tiers.csv), the same series. src: a tab (data.tabSource) or a run-shaped
+// folder (the parity test's fixture). opts.today / opts.tiersFile: for tests.
+function renderHtml(src, { records, allGames = false, today, tiersFile } = {}) {
+  const vm = data.viewModel(src, { records, today, tiersFile });
   const ctx = { ...R.contextFromViewModel(vm, { app: false }), allGames };
   const ordered = M.orderPlayers(vm.players, ctx.notes);
   const meta = vm.meta;
@@ -113,18 +117,26 @@ document.querySelectorAll('table.sortable').forEach(function (t) {
 }
 
 async function main() {
-  const runDir = path.resolve(process.argv[2] || '');
-  if (!fs.existsSync(path.join(runDir, 'meta.json'))) { console.error('Usage: node views/major-table.js <finished run folder>'); return 2; }
-  fs.mkdirSync(path.join(runDir, 'views'), { recursive: true });
-  const run = data.loadRun(runDir);
+  const pool = require('../lib/pool');
+  const tDir = path.resolve(process.argv[2] || '');
+  const usage = () => { console.error('Usage: node views/major-table.js out/<tournament> [--game <start.gg game id>] [--no-fetch] [--all-games]'); return 2; };
+  const state = pool.readState(tDir);
+  const cur = pool.currentPull(tDir);
+  if (!state || !cur) return usage();
+  const tabs = pool.tabsOf(state, cur.meta);
+  const gi = process.argv.indexOf('--game');
+  const tab = gi > 0 ? tabs.find((x) => String(x.game.id) === String(process.argv[gi + 1])) : tabs[0];
+  if (!tab) { console.error(`No such game tab. Tabs: ${tabs.map((x) => `${x.game.id} (${x.game.name})`).join(', ') || 'none ticked'}`); return 2; }
+  const src = data.tabSource(path.dirname(tDir), path.basename(tDir), tab.game.id);
+  const run = data.loadRun(src);
   // W-L for this game's results by default; --all-games also fetches other games (more requests).
   // Fetch order: results the summary columns use first, so the summary is complete early.
   const allGames = process.argv.includes('--all-games');
   const columns = { majors: run.columns.majors.map((label) => ({ label })), shared: run.columns.shared };
   const { ordered: fetchRows, inSummary } = M.fetchOrder(allGames ? run.results : run.gameRows, columns, run.index);
-  const records = await fetchSetRecords(runDir, run.players, fetchRows, inSummary);
-  const html = renderHtml(runDir, { records, allGames });
-  const out = path.join(runDir, 'views', 'major-table.html');
+  const records = await fetchSetRecords(tDir, run.players, fetchRows, inSummary);
+  const html = renderHtml(src, { records, allGames });
+  const out = path.join(tDir, `major-table-${tab.game.id}.html`);
   fs.writeFileSync(out, html);
   console.log(out);
   return 0;

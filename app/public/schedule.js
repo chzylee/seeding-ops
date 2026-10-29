@@ -1,87 +1,12 @@
-<!doctype html>
-<html lang="en">
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Player schedules</title>
-<link rel="stylesheet" href="/static/app.css">
-<!-- conflicts/public/schedule.html — served at /schedule/<tournament> by app/server.js.
-     One row per player, one column per wave; each cell names the event and pool they play then. -->
-<style>
-  body.schedule { display: flex; flex-direction: column; height: 100%; }
-  .s-head { padding: var(--s-3) var(--s-4) var(--s-2); background: var(--cell); border-bottom: 1px solid var(--line); }
-  .s-head h1 { font-size: 18px; margin: 0; display: inline; }
-  .s-head .back { margin-right: var(--s-3); }
-  .s-sub { color: var(--dim); margin-top: 2px; }
-  .s-bar { display: flex; flex-wrap: wrap; gap: var(--s-3); align-items: center; margin-top: var(--s-2); }
-  .s-bar button, .s-bar select, .s-bar input { height: var(--ctl-h); border: 1px solid var(--line-strong); border-radius: var(--radius-sm);
-    background: var(--cell); padding: 0 var(--s-2); font: inherit; }
-  .s-bar button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
-  .s-bar button:disabled { opacity: .6; cursor: default; }
-  .s-status { color: var(--dim); }
-  .s-status.err { color: var(--err); }
-  .s-wrap { flex: 1 1 0; overflow: auto; min-height: 80px; }
-  /* Block view: a second copy of the table in the lower half with its own column sort. */
-  #lower { flex: 1 1 0; display: flex; flex-direction: column; min-height: 80px; border-top: 2px solid var(--split); }
-  .lower-bar { display: flex; gap: var(--s-3); align-items: center; padding: var(--s-1) var(--s-4); background: var(--accent-weak); }
-  .lower-bar strong { font-weight: 600; }
-  .lower-bar button { margin-left: auto; height: 26px; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background: var(--cell); padding: 0 var(--s-2); }
-  #sched2 thead th { cursor: pointer; user-select: none; }
-  #sched2 thead th:hover { background: var(--head-hover); }
-  th .cnt { font-weight: 400; color: var(--dim); }
-  #lowerToggle[aria-pressed="true"] { background: var(--accent-weak-2); border-color: var(--split); color: var(--accent-ink); }
-  table.sched { border-collapse: separate; border-spacing: 0; font-variant-numeric: tabular-nums; min-width: 100%; }
-  table.sched th, table.sched td { border-bottom: 1px solid var(--line); border-right: 1px solid var(--line); padding: var(--s-1) var(--s-2);
-    text-align: left; vertical-align: top; background: var(--cell); white-space: nowrap; }
-  table.sched thead th { position: sticky; top: 0; z-index: var(--z-head); background: var(--head); font-weight: 600; }
-  table.sched thead th .t { display: block; font-weight: 400; color: var(--dim); font-size: 12px; }
-  table.sched th.player, table.sched td.player { position: sticky; left: 0; z-index: var(--z-cell); }
-  table.sched thead th.player { z-index: var(--z-head-frozen); }
-  table.sched td.player .pre { color: var(--dim); }
-  table.sched td.player .n { color: var(--dim); font-size: 12px; margin-left: var(--s-1); }
-  table.sched tbody tr:hover td { background: var(--row-hover); }
-  /* Conflicts first: red = two main-tournament pools at the same time; orange = only clashes with a side game. */
-  table.sched tbody tr.clash td { background: #fde4e4; }
-  table.sched tbody tr.clash:hover td { background: #fbd5d5; }
-  table.sched tbody tr.clash-side td { background: #feead6; }
-  table.sched tbody tr.clash-side:hover td { background: #fddcbd; }
-  .chip .seed { opacity: .7; margin-left: 3px; }
-  .chip.side { background: #fff; color: var(--ink-2); border: 1px dashed var(--line-strong); line-height: 18px; }
-  #clashToggle[aria-pressed="true"] { background: #fde4e4; border-color: #e3a3a3; color: #7a1d1d; }
-  .chip { display: inline-block; padding: 0 6px; border-radius: var(--radius-sm); margin: 1px 2px 1px 0; font-size: 13px; line-height: 20px; }
-  .ev0 { background: #e3ecfa; color: #183d73; } .ev1 { background: #fde8d7; color: #6b3410; }
-  .ev2 { background: #e6f2e1; color: #24502a; } .ev3 { background: #f1e4f6; color: #55276a; }
-  .ev4 { background: #eceef1; color: #33363c; } .ev5 { background: #fdf3c8; color: #5a4600; }
-  #msg { padding: var(--s-4); }
-</style>
-<body class="schedule">
-<header class="s-head">
-  <a href="/" class="back" title="All events">◂ Events</a>
-  <h1 id="title">Loading…</h1>
-  <div id="sub" class="s-sub"></div>
-  <div class="s-bar">
-    <button id="refresh" class="primary" type="button" title="Pull every event's entrants and pools again from start.gg">Refresh from start.gg</button>
-    <button id="refreshSeeds" type="button" title="Re-pull only this tournament's pools and seeds (about 10 requests). Side games are kept from the last full refresh.">Refresh seeds</button>
-    <button id="clashToggle" type="button" aria-pressed="false" title="Move players with two pools at the same time to the top. Red: two main-event pools clash. Orange: the only clash is with a side game.">Conflicts first</button>
-    <button id="lowerToggle" type="button" aria-pressed="false" title="Open a second copy of the table below, sortable by any column">▤ Block view</button>
-    <span id="status" class="s-status" role="status" aria-live="polite"></span>
-    <label>Players in <select id="eventFilter"><option value="">any event</option></select></label>
-    <label>Find <input id="find" placeholder="type a tag" autocomplete="off" spellcheck="false"></label>
-    <span id="count" class="s-status"></span>
-  </div>
-</header>
-<div class="s-wrap">
-  <div id="msg"></div>
-  <table class="sched" id="sched"><thead></thead><tbody></tbody></table>
-</div>
-<section id="lower" hidden aria-label="Block view">
-  <div class="lower-bar"><strong>Block view</strong><span id="lowerNote" class="s-status"></span>
-    <button id="lowerClose" type="button">Close</button></div>
-  <div class="s-wrap"><table class="sched" id="sched2"><thead></thead><tbody></tbody></table></div>
-</section>
-<script>
+// app/public/schedule.js — the Schedule tab (T3, docs/design-tool.md): every player's pools and start
+// times across the tournament's events, side tournaments included. Visibility only: it never fixes a
+// conflict. Moved from conflicts/public/schedule.html in build B (same table, block view and
+// conflicts-first sort); tournament.js loads it with window.SCHEDULE_T set. Data: GET
+// /api/t/<t>/schedule (out/<t>/schedule.json); the pull goes through the app's one request queue.
+(function () {
 'use strict';
-const slug = decodeURIComponent(location.pathname.replace(/^\/schedule\//, '').replace(/\/$/, ''));
-const API = '/api/schedule/' + encodeURIComponent(slug);
+const slug = window.SCHEDULE_T;
+const API = '/api/t/' + encodeURIComponent(slug);
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const shortName = (name) => { const m = String(name).match(/\]\s*([A-Z0-9]{2,})\b/); return m ? m[1] : String(name); };
@@ -209,17 +134,14 @@ function render() {
 }
 
 async function load() {
-  const r = await fetch(API + '/data', { cache: 'no-store' });
+  const r = await fetch(API + '/schedule', { cache: 'no-store' });
   const body = await r.json();
   if (!r.ok) {
-    $('title').textContent = slug;
-    $('msg').textContent = body.error + ' Click "Refresh from start.gg" to pull it.';
+    $('sMsg').textContent = body.error + ' Click "Refresh schedule" to pull it.';
     return body.status;
   }
   D = body;
-  $('msg').textContent = '';
-  document.title = `${D.tournament.name} · Schedules`;
-  $('title').textContent = `${D.tournament.name} · Player schedules`;
+  $('sMsg').textContent = '';
   const tz = D.tournament.timezone || 'UTC';
   const f = new Intl.DateTimeFormat('en-US', { timeZone: tz, weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
   fmt = (s) => (s ? f.format(new Date(s * 1000)) : '');
@@ -227,7 +149,7 @@ async function load() {
   const pulled = when(D.pulled_at);
   const inSide = D.players.filter((p) => p.entries.some((e) => e.side)).length;
   const sides = (D.side_tournaments || []).map((s) => s.name).join(', ');
-  $('sub').textContent = `${D.players.length} players · ${D.events.filter((e) => e.numEntrants && !e.side).map((e) => `${e.short || shortName(e.name)} ${e.numEntrants}`).join(' · ')}`
+  $('sSub').textContent = `${D.players.length} players · ${D.events.filter((e) => e.numEntrants && !e.side).map((e) => `${e.short || shortName(e.name)} ${e.numEntrants}`).join(' · ')}`
     + (sides ? ` · ${inSide} also in side games (${sides})` : '') + ` · pulled ${pulled}`
     + (D.sides_pulled_at && D.sides_pulled_at !== D.pulled_at ? ` (side games ${when(D.sides_pulled_at)})` : '') + ` · times in ${tz}`;
   const sel = $('eventFilter');
@@ -240,28 +162,40 @@ async function load() {
 }
 
 function showStatus(st) {
-  const s = $('status');
+  const s = $('sStatus');
   s.classList.toggle('err', !!(st && st.error));
-  $('refresh').disabled = $('refreshSeeds').disabled = !!(st && st.running);
+  $('sRefresh').disabled = $('sRefreshSeeds').disabled = !!(st && st.running);
   s.textContent = st && st.running ? (st.kind === 'seeds' ? 'Pulling seeds from start.gg…' : 'Pulling from start.gg…') : st && st.error ? 'Refresh failed: ' + st.error : '';
 }
 
 async function poll() {
-  const st = await (await fetch(API + '/status', { cache: 'no-store' })).json();
+  const st = (await (await fetch(API + '/status', { cache: 'no-store' })).json()).schedule;
   showStatus(st);
   if (st.running) return setTimeout(poll, 1500);
-  if (!st.error) { await load(); $('status').textContent = 'Updated.'; }
+  if (!st.error) { await load(); $('sStatus').textContent = 'Updated.'; }
 }
 
 async function startRefresh(query, kind) {
-  const r = await fetch(API + '/refresh' + query, { method: 'POST', headers: { 'X-Seeding-App': '1' } });
+  const r = await fetch(API + '/schedule/refresh' + query, { method: 'POST', headers: { 'X-Seeding-App': '1' } });
   const st = await r.json();
-  if (r.status === 400) return showStatus({ error: st.error });
+  if (r.status === 400 || r.status === 404) return showStatus({ error: st.error });
   showStatus({ running: true, kind: st.kind || kind });
   setTimeout(poll, 1000);
 }
-$('refresh').addEventListener('click', () => startRefresh('', 'full'));
-$('refreshSeeds').addEventListener('click', () => startRefresh('?only=seeds', 'seeds'));
+$('sRefresh').addEventListener('click', () => startRefresh('', 'full'));
+$('sRefreshSeeds').addEventListener('click', () => startRefresh('?only=seeds', 'seeds'));
+
+// Side tournaments linked to this one (T3: state.json `linked`, joined on the next full refresh).
+$('linked').value = (window.SCHEDULE_LINKED || []).join(', ');
+$('linkedForm').addEventListener('submit', async (ev) => {
+  ev.preventDefault();
+  const linked = $('linked').value.split(/[\s,]+/).map((x) => (x.match(/tournament\/([^/?#\s]+)/i) || [null, x])[1]).filter(Boolean);
+  const r = await fetch(API + '/linked', { method: 'POST', headers: { 'X-Seeding-App': '1', 'Content-Type': 'application/json' }, body: JSON.stringify({ linked }) });
+  const body = await r.json().catch(() => ({}));
+  if (!r.ok) return showStatus({ error: body.error || 'Not saved.' });
+  $('linked').value = body.linked.join(', ');
+  $('sStatus').textContent = `Side tournaments saved (${body.linked.length}). Refresh schedule to pull them.`;
+});
 $('eventFilter').addEventListener('change', () => D && render());
 $('find').addEventListener('input', () => D && render());
 function setLower(open) { lowerOpen = open; store.set('lowerOpen', open); if (D) render(); }
@@ -282,7 +216,5 @@ $('clashToggle').addEventListener('click', () => {
 });
 
 load().then((st) => { if (st && st.running) { showStatus(st); setTimeout(poll, 1500); } })
-  .catch((err) => { $('msg').textContent = 'Could not load: ' + err.message; });
-</script>
-</body>
-</html>
+  .catch((err) => { $('sMsg').textContent = 'Could not load: ' + err.message; });
+}());

@@ -11,7 +11,8 @@ const { parseCsv } = require('../lib/output');
 const { run } = require('../lib/run');
 const { createApp } = require('../app/server');
 const { inject } = require('../testlib/inject');
-const { buildWorld, createFakeFetch, virtualClock, sink, EVENT_SLUG } = require('../testlib/fake-api');
+const { buildWorld, createFakeFetch, virtualClock, sink, EVENT_SLUG, T_SLUG, E_SLUG, GAME } = require('../testlib/fake-api');
+const { addTournament } = require('../testlib/pool-fixture');
 
 test('export: a cell starting with = + - @ tab or CR gets a leading apostrophe; nothing else changes', () => {
   assert.strictEqual(sheetsCell('=SUM(1,2)'), `"'=SUM(1,2)"`);
@@ -37,23 +38,26 @@ test('export: the CSV parses back to the same table (after the guard), CRLF, no 
   assert.deepStrictEqual(parseCsv(csv), [{ Player: `'=SUM(1,2) "the" @Kid, -x`, Notes: 'says "hi", twice' }, { Player: '愛', Notes: '' }]);
 });
 
-test('export: GET /api/e/<t>/<e>/export.csv serves the latest run\'s summary as an attachment, tags guarded', async () => {
+// Retargeted for increment 3 (docs/design-tool.md, Pages): the export is a game tab's, at
+// /api/t/<t>/g/<game>/export.csv, over the tournament's live pull.
+test('export: GET /api/t/<t>/g/<game>/export.csv serves the live pull\'s tab summary as an attachment, tags guarded', async () => {
   const outRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'seeding-export-'));
   const START = Date.UTC(2026, 9, 12, 15, 0, 0);
   const world = buildWorld(START / 1000);
   const clock = virtualClock(START);
   assert.strictEqual(await run({ url: 'https://www.start.gg/' + EVENT_SLUG, token: 'T', outRoot, fetchImpl: createFakeFetch(world), now: clock.now, sleep: clock.sleep, stderr: sink(), stdout: sink() }), 0);
-  const [, t, , e] = EVENT_SLUG.split('/');
+  addTournament(outRoot, world, [E_SLUG]);
   const app = createApp({ outRoot, getToken: () => '' });
-  const r = await inject(app.handler, { url: `/api/e/${t}/${e}/export.csv` });
+  const r = await inject(app.handler, { url: `/api/t/${T_SLUG}/g/${GAME.id}/export.csv` });
   assert.strictEqual(r.status, 200);
   assert.match(r.headers['Content-Type'], /^text\/csv; charset=utf-8/);
-  assert.match(r.headers['Content-Disposition'], /^attachment; filename="combo-breaker-2026-melty-blood-actress-again-current-code-seeding-\d{8}-\d{4}\.csv"$/);
+  assert.match(r.headers['Content-Disposition'], /^attachment; filename="combo-breaker-2026-melty-blood-actress-again-current-code-seeding-\d{8}-\d{6}\.csv"$/);
   const rows = parseCsv(r.text);
   assert.strictEqual(rows.length, 15, 'one row per player');
   const tricky = rows.find((x) => x['start.gg player id'] === '102');
   assert.strictEqual(tricky.Player, `'=SUM(1,2) "the" @Kid, -x`);
   assert.strictEqual(tricky.Team, `'+P`);
   assert.ok(Object.keys(rows[0]).includes('Region'));
-  assert.strictEqual((await inject(app.handler, { url: '/api/e/nope/nada/export.csv' })).status, 404);
+  assert.strictEqual((await inject(app.handler, { url: '/api/t/nope/g/1/export.csv' })).status, 404);
+  assert.strictEqual((await inject(app.handler, { url: `/api/t/${T_SLUG}/g/999/export.csv` })).status, 404, 'a game that is not a tab');
 });

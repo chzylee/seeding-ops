@@ -11,7 +11,7 @@ const { run, EXIT_OK, EXIT_INCOMPLETE, EXIT_SETUP } = require('../lib/run');
 const out = require('../lib/output');
 const { reconcile } = require('../scripts/reconcile');
 const { checkRequests } = require('../scripts/check-requests');
-const { buildWorld, createFakeFetch, virtualClock, sink, EVENT_SLUG } = require('../testlib/fake-api');
+const { buildWorld, createFakeFetch, virtualClock, sink, EVENT_SLUG, T_SLUG, GAME } = require('../testlib/fake-api');
 
 const TOKEN = 'TOKEN-SENTINEL-c0ffee';
 const URL = 'https://www.start.gg/' + EVENT_SLUG;
@@ -27,7 +27,13 @@ async function freshRun(fetchOpts = {}, extra = {}) {
   const std = sink();
   const code = await run({ url: URL, token: TOKEN, outRoot, fetchImpl, now: clock.now, sleep: clock.sleep, stderr: err, stdout: std, ...extra });
   const dirs = fs.existsSync(outRoot) ? fs.readdirSync(outRoot) : [];
-  return { code, outRoot, dirs, runDir: dirs[0] && path.join(outRoot, dirs[0]), world, fetchImpl, err: err.text(), std: std.text() };
+  // Retargeted for increment 3 (docs/design-tool.md T2): a pull writes out/<t>/pull-<stamp>/ and
+  // names it in out/<t>/current. runDir is that pull (the live one, else the newest unfinished one).
+  const tDir = path.join(outRoot, T_SLUG);
+  const live = out.readCurrent(tDir);
+  const pulls = out.listPulls(tDir);
+  const runDir = live ? path.join(tDir, live) : pulls[0] && pulls[0].dir;
+  return { code, outRoot, dirs, tDir, runDir, world, fetchImpl, err: err.text(), std: std.text() };
 }
 
 function allFiles(dir) {
@@ -42,8 +48,10 @@ function allFiles(dir) {
 test('run: full fake run writes players.csv, results.csv, meta.json that reconcile', async () => {
   const r = await freshRun();
   assert.strictEqual(r.code, EXIT_OK, r.err);
-  assert.strictEqual(r.dirs.length, 1);
-  assert.match(r.dirs[0], /^combo-breaker-2026__melty-blood-actress-again-current-code__\d{8}-\d{4}$/);
+  // T2: one folder per tournament, holding the pull folder and the current pointer.
+  assert.deepStrictEqual(r.dirs, ['combo-breaker-2026']);
+  assert.deepStrictEqual(fs.readdirSync(r.tDir).sort(), ['current', path.basename(r.runDir)].sort());
+  assert.match(path.basename(r.runDir), /^pull-\d{8}-\d{6}$/);
   const rec = reconcile(r.runDir);
   const failed = rec.checks.filter((c) => !c.ok);
   assert.deepStrictEqual(failed, [], JSON.stringify(failed));
@@ -60,7 +68,8 @@ test('run: full fake run writes players.csv, results.csv, meta.json that reconci
   assert.strictEqual(gm.result_count, '83');
   assert.strictEqual(gm.history_status, 'complete');
   const gmRows = results.filter((r) => r.player_id === '101');
-  assert.ok(gmRows.some((r) => r.is_event_game === 'false'), 'other games kept, flagged');
+  // T2 dropped is_event_game; other games are kept and told apart by game_id.
+  assert.ok(gmRows.some((r) => r.game_id !== String(GAME.id)), 'other games kept');
   assert.ok(gmRows.every((r, i) => i === 0 || gmRows[i - 1].event_date >= r.event_date), 'newest first');
 
   // Skipped totals across the world: P1 46, P2 1, P4 1 out of window + 1 phase, P8..15 1 each.
@@ -210,6 +219,7 @@ test('run: a schema error mid-run stops the run with no final output, resumable'
   assert.strictEqual(r.code, EXIT_INCOMPLETE);
   assert.strictEqual(r.dirs.length, 1);
   assert.deepStrictEqual(out.outputsPresent(r.runDir), []);
+  assert.strictEqual(out.readCurrent(r.tDir), null, 'nothing was swapped in');
   assert.match(r.err, /--resume/);
   assert.strictEqual(r.fetchImpl.calls.filter((c) => c.op === 'UserEvents').length, 1, 'no retry on a schema error');
 });
@@ -221,8 +231,11 @@ test('kill + resume: SIGKILL after 13 players leaves no output files; --resume f
   // -> P1..P13 (13 players, P4 via recentStandings) checkpointed before the kill.
   const killed = spawnSync(process.execPath, [harness, outRoot, String(START), String(START), '--kill-at', '14'], { encoding: 'utf8' });
   assert.notStrictEqual(killed.status, 0, 'killed run must not exit 0');
-  const [dir] = fs.readdirSync(outRoot);
-  const runDir = path.join(outRoot, dir);
+  // T2: the killed pull is out/<t>/pull-<stamp>/, unfinished, and nothing is live yet.
+  const tDir = path.join(outRoot, T_SLUG);
+  const [pull] = out.listPulls(tDir);
+  const runDir = pull.dir;
+  assert.strictEqual(out.readCurrent(tDir), null);
   // Acceptance 8: no fake-complete output.
   assert.deepStrictEqual(out.outputsPresent(runDir), []);
   const before = out.readCheckpoint(runDir).done;
@@ -239,10 +252,14 @@ test('kill + resume: SIGKILL after 13 players leaves no output files; --resume f
   assert.strictEqual(chk.sessions[1].players.size, 15 - before.size);
   assert.deepStrictEqual(reconcile(runDir).checks.filter((c) => !c.ok), []);
 
-  // Matches a clean run's player set and row counts.
-  const clean = spawnSync(process.execPath, [harness, outRoot, String(START), String(START)], { encoding: 'utf8' });
+  assert.strictEqual(out.readCurrent(tDir), path.basename(runDir), 'the resumed pull was swapped in');
+
+  // Matches a clean run's player set and row counts. The clean run gets its own out/ (T2: a second
+  // pull of the same tournament would be swapped in and delete the first).
+  const cleanRoot = tmp();
+  const clean = spawnSync(process.execPath, [harness, cleanRoot, String(START), String(START)], { encoding: 'utf8' });
   assert.strictEqual(clean.status, 0, clean.stderr);
-  const cleanDir = fs.readdirSync(outRoot).map((d) => path.join(outRoot, d)).find((d) => d !== runDir);
+  const cleanDir = path.join(cleanRoot, T_SLUG, out.readCurrent(path.join(cleanRoot, T_SLUG)));
   const a = reconcile(runDir);
   const b = reconcile(cleanDir);
   const summary = (x) => x.players.map((p) => `${p.player_id}:${p.result_count}:${p.history_status}`).join(',');
@@ -268,7 +285,12 @@ test('resume: a finished run with a failed player retries just that player', asy
   assert.strictEqual(code, EXIT_OK);
   // Ids travel as strings (GraphQL ID accepts either).
   assert.deepStrictEqual(fetchImpl.calls.map((c) => c.variables.userId), ['9003']);
-  const { meta, checks } = reconcile(r.runDir);
+  // T2: the retry writes a NEW pull beside the live one and swaps it in (the live files are never
+  // rewritten in place); the old pull is deleted after the swap.
+  const retried = path.join(r.tDir, out.readCurrent(r.tDir));
+  assert.notStrictEqual(retried, r.runDir);
+  assert.ok(!fs.existsSync(r.runDir));
+  const { meta, checks } = reconcile(retried);
   assert.deepStrictEqual(checks.filter((c) => !c.ok), []);
   assert.deepStrictEqual(meta.history_status, { complete: 14, limited: 1, failed: 0 });
 });

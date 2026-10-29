@@ -1,16 +1,18 @@
 #!/usr/bin/env node
 'use strict';
 // seed.js — the everyday launcher. Double-click seed.cmd (Windows) or run `npm run seed`.
-// Paste one or more event URLs (or pass them as arguments). Each is pulled in turn with pull.js.
-// An unfinished run of the same event from the last 24 h is resumed instead of restarted.
-// When a run finishes, a ready-to-paste Claude prompt is written into its folder.
+// Paste one or more event URLs (or pass them as arguments). They are grouped by tournament, and each
+// tournament is pulled once with pull.js: one pool for all of its pasted events (docs/design-tool.md,
+// T2). An unfinished pull of the same tournament from the last 24 h is resumed instead of restarted.
+// When a pull finishes, a ready-to-paste Claude prompt is written into out/<tournament>/.
 // This file adds no fetch logic. pull.js stays the single path to start.gg.
 
 const fs = require('node:fs');
 const path = require('node:path');
 const readline = require('node:readline');
 const { spawnSync, spawn } = require('node:child_process');
-const { parseEventSlug } = require('./lib/startgg');
+const { parseEventSlug, parseTournamentSlug } = require('./lib/startgg');
+const out = require('./lib/output');
 const { loadToken } = require('./lib/token');
 
 const ROOT = __dirname;
@@ -19,45 +21,29 @@ const ENV_FILE = path.join(ROOT, '.env');
 const RESUME_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const PROMPT_FILE = 'claude-prompt.txt';
 
-// "tournament/<t>/event/<e>" -> "<t>__<e>__", the prefix lib/output.js gives this event's folders.
-function folderPrefix(slug) {
-  const m = /tournament\/([^/]+)\/event\/([^/]+)/.exec(slug) || [];
-  return `${m[1] || 'tournament'}__${m[2] || 'event'}__`;
+// A tournament's pull folders (lib/output.js listPulls), newest work first.
+function pullsFor(outRoot, t) {
+  const tDir = path.join(outRoot, t);
+  return out.listPulls(tDir).map((p) => {
+    const work = path.join(p.dir, out.WORK_DIR);
+    const stamps = ['run.json', 'checkpoint.jsonl', 'requests.jsonl']
+      .map((f) => path.join(work, f)).filter((f) => fs.existsSync(f))
+      .map((f) => fs.statSync(f).mtimeMs);
+    return { ...p, lastWorkMs: stamps.length ? Math.max(...stamps) : fs.statSync(p.dir).mtimeMs };
+  }).sort((x, y) => y.lastWorkMs - x.lastWorkMs);
 }
 
-// Run folders for this event, newest first (by the last time any work was saved).
-function runsFor(outRoot, slug) {
-  if (!fs.existsSync(outRoot)) return [];
-  const prefix = folderPrefix(slug);
-  return fs.readdirSync(outRoot, { withFileTypes: true })
-    .filter((d) => d.isDirectory() && d.name.startsWith(prefix))
-    .map((d) => {
-      const dir = path.join(outRoot, d.name);
-      const work = path.join(dir, '_work');
-      const stamps = ['run.json', 'checkpoint.jsonl', 'requests.jsonl']
-        .map((f) => path.join(work, f)).filter((f) => fs.existsSync(f))
-        .map((f) => fs.statSync(f).mtimeMs);
-      return {
-        dir,
-        finished: fs.existsSync(path.join(dir, 'meta.json')),
-        resumable: fs.existsSync(path.join(work, 'run.json')),
-        lastWorkMs: stamps.length ? Math.max(...stamps) : fs.statSync(dir).mtimeMs,
-      };
-    })
-    .sort((a, b) => b.lastWorkMs - a.lastWorkMs);
-}
-
-// The newest unfinished, resumable run of this event touched within maxAgeMs, else null.
-function findUnfinishedRun(outRoot, slug, nowMs = Date.now(), maxAgeMs = RESUME_MAX_AGE_MS) {
-  const hit = runsFor(outRoot, slug)
-    .find((r) => !r.finished && r.resumable && nowMs - r.lastWorkMs <= maxAgeMs);
+// The newest unfinished, resumable pull of this tournament touched within maxAgeMs, else null.
+function findUnfinishedPull(outRoot, t, nowMs = Date.now(), maxAgeMs = RESUME_MAX_AGE_MS) {
+  const hit = pullsFor(outRoot, t).find((r) => !r.finished && r.resumable && nowMs - r.lastWorkMs <= maxAgeMs);
   return hit ? hit.dir : null;
 }
 
 function claudePrompt(meta) {
-  const ev = meta.event || {};
-  const name = [ev.tournament_name, ev.name].filter(Boolean).join(' — ') || meta.input_url;
-  const game = meta.game ? meta.game.name : 'this event\'s game';
+  const t = meta.tournament || {};
+  const evs = meta.seeded_events || [];
+  const name = [t.name, evs.map((e) => e.name).join(' + ')].filter(Boolean).join(' — ') || meta.input_url;
+  const game = [...new Set(evs.map((e) => e.game && e.game.name).filter(Boolean))].join(', ') || 'the seeded games';
   const s = meta.history_status || {};
   return [
     `These are start.gg results for every registrant of ${name} (${game}),`,
@@ -67,7 +53,8 @@ function claudePrompt(meta) {
     '',
     'Join players.csv and results.csv on player_id (never on tag).',
     'history_status: "limited" = no start.gg account, so only their last 20 results in this game;',
-    '"failed" = we have nothing for them. is_event_game marks results in this event\'s game.',
+    '"failed" = we have nothing for them. players.csv "events" lists which seeded events each one entered;',
+    'a result is in a seeded game when its game_id matches that event\'s game (meta.json seeded_events).',
     'region_state / region_country come from the player\'s public start.gg location (blank if hidden).',
     'Placement is blank when start.gg has no standing.',
     '',
@@ -76,10 +63,12 @@ function claudePrompt(meta) {
   ].join('\n');
 }
 
-function writePromptFile(runDir) {
-  const metaPath = path.join(runDir, 'meta.json');
-  if (!fs.existsSync(metaPath)) return null;
-  const file = path.join(runDir, PROMPT_FILE);
+// Into out/<t>/ (outside the pull folder, which the next pull replaces), from the live pull's meta.
+function writePromptFile(tDir) {
+  const live = out.readCurrent(tDir);
+  if (!live) return null;
+  const metaPath = path.join(tDir, live, 'meta.json');
+  const file = path.join(tDir, PROMPT_FILE);
   fs.writeFileSync(file, claudePrompt(JSON.parse(fs.readFileSync(metaPath, 'utf8'))));
   return file;
 }
@@ -88,7 +77,7 @@ function askForUrls() {
   return new Promise((resolve) => {
     const urls = [];
     const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-    console.log('Paste start.gg event links, one per line. Press Enter on an empty line to start.');
+    console.log('Paste start.gg event links, one per line (events of one tournament are pulled together). Press Enter on an empty line to start.');
     const ask = () => rl.question(`  event ${urls.length + 1}: `, (line) => {
       const v = line.trim();
       if (!v) { rl.close(); resolve(urls); return; }
@@ -122,25 +111,26 @@ async function main() {
   }
 
   const raw = process.argv.slice(2).length ? process.argv.slice(2) : await askForUrls();
-  const jobs = [];
+  const jobs = []; // one per tournament: { t, urls }
   for (const u of raw) {
     const p = parseEventSlug(u);
-    if (p.error) console.error(`Skipping (not an event link; it needs /event/ in it): ${u}`);
-    else if (!jobs.some((j) => j.slug === p.slug)) jobs.push({ url: u, slug: p.slug });
+    if (p.error) { console.error(`Skipping (not an event link; it needs /event/ in it): ${u}`); continue; }
+    const t = parseTournamentSlug(u);
+    const job = jobs.find((j) => j.t === t) || (jobs.push({ t, urls: [] }), jobs[jobs.length - 1]);
+    if (!job.urls.includes(u)) job.urls.push(u);
   }
   if (!jobs.length) { console.error('Nothing to pull.'); return 2; }
 
   const results = [];
   for (const [i, job] of jobs.entries()) {
-    const resumeDir = findUnfinishedRun(OUT_ROOT, job.slug);
-    console.log(`\n[${i + 1}/${jobs.length}] ${job.slug}${resumeDir ? `  (resuming ${path.basename(resumeDir)})` : ''}`);
-    const args = resumeDir ? ['--resume', resumeDir] : [job.url];
+    const resumeDir = findUnfinishedPull(OUT_ROOT, job.t);
+    console.log(`\n[${i + 1}/${jobs.length}] ${job.t}${resumeDir ? `  (resuming ${path.basename(resumeDir)})` : ''}`);
+    const args = resumeDir ? ['--resume', resumeDir] : job.urls;
     const r = spawnSync(process.execPath, [path.join(ROOT, 'pull.js'), ...args], { stdio: 'inherit' });
     const code = r.status == null ? 1 : r.status;
-    const latest = runsFor(OUT_ROOT, job.slug)[0];
-    const runDir = resumeDir || (latest && latest.dir) || null;
-    const prompt = runDir && code !== 2 ? writePromptFile(runDir) : null;
-    results.push({ slug: job.slug, code, runDir, prompt });
+    const tDir = path.join(OUT_ROOT, job.t);
+    const prompt = code !== 2 && fs.existsSync(tDir) ? writePromptFile(tDir) : null;
+    results.push({ slug: job.t, code, runDir: fs.existsSync(tDir) ? tDir : null, prompt });
   }
 
   console.log('\nSummary');
@@ -160,4 +150,4 @@ if (require.main === module) {
     (err) => { console.error(`Unexpected error: ${err && err.stack ? err.stack : err}`); process.exitCode = 1; });
 }
 
-module.exports = { folderPrefix, runsFor, findUnfinishedRun, claudePrompt, writePromptFile };
+module.exports = { pullsFor, findUnfinishedPull, claudePrompt, writePromptFile };

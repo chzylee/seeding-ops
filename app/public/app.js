@@ -1,15 +1,21 @@
-// app/public/app.js — the event page. Fetches the view model from /api/e/<t>/<e>/data and renders
-// it with SeedRender (lib/view/render.js, the same cells as views/major-table.js).
+// app/public/app.js — one game's tab on the tournament page (docs/design-tool.md, Pages): the seeding
+// table, increment 2's page sliced by game. Fetches the view model from /api/t/<t>/g/<game>/data and
+// renders it with SeedRender (lib/view/render.js, the same cells as views/major-table.js).
+// app/public/tournament.js loads this script when a game tab is open, with window.SEED_TAB set.
 //   - Summary first; per-player detail renders as it scrolls near the viewport.
 //   - 📌 pins rows into a block frozen under the sticky header (localStorage, per event).
 //   - ⇅ Compare opens the lower half: two players' summary rows, events both entered, series side by side.
-//   - Refresh re-pulls on the server; this page polls /status and shows the new run when it lands.
+//   - Refresh re-pulls the tournament on the server; this tab polls /status and shows the new pull when
+//     it lands (the pull is swapped in through out/<t>/current, so it is never half new).
+//   - Export seeds CSV numbers the table's current order by tier; Push to start.gg runs a dry run first.
 (function () {
   'use strict';
   const M = window.SeedModel, R = window.SeedRender;
-  const parts = location.pathname.split('/').filter(Boolean); // e, <t>, <e>
-  const T = parts[1], E = parts[2], SLUG = `${T}/${E}`;
-  const api = (what) => `/api/e/${encodeURIComponent(T)}/${encodeURIComponent(E)}/${what}`;
+  const TAB = window.SEED_TAB; // { t, game: { id, name }, events: [slug] } from tournament.js
+  const T = TAB.t, G = String(TAB.game.id), SLUG = `${T}/${G}`;
+  // The tab's own routes (data, exports, the T1 writes), and the tournament's (refresh, status, push).
+  const api = (what) => `/api/t/${encodeURIComponent(T)}/g/${encodeURIComponent(G)}/${what}`;
+  const tapi = (what) => `/api/t/${encodeURIComponent(T)}/${what}`;
   const $ = (id) => document.getElementById(id);
   const pane = $('pane'), table = $('summary'), thead = table.tHead, pinnedBody = table.tBodies[0], mainBody = table.tBodies[1];
   const details = $('details'), compare = $('compare'), cmpBody = $('cmpBody');
@@ -90,13 +96,12 @@
 
   function renderHeader() {
     const ev = vm.meta.event || {};
-    document.title = `${ev.name || 'Event'} — seeding`;
-    $('title').textContent = [ev.tournament_name, ev.name].filter(Boolean).join(' · ');
+    document.title = `${vm.meta.game.name} — ${ev.tournament_name || T} — seeding`;
     const w = vm.meta.window || {};
     const runAt = new Date(vm.run.run_at);
     // Two units (event facts, then W-L progress) so the line wraps between them, not mid-phrase.
     const facts = document.createElement('span'), wl = document.createElement('span');
-    facts.textContent = `${vm.meta.game.name} · ${vm.meta.registrant_count} registrants · results ${String(w.start).slice(0, 10)} to ${String(w.end).slice(0, 10)}`
+    facts.textContent = `${ev.name || vm.meta.game.name} · ${vm.meta.registrant_count} registrants · results ${String(w.start).slice(0, 10)} to ${String(w.end).slice(0, 10)}`
       + ` · pulled ${runAt.toLocaleString()}`;
     wl.textContent = `W-L known for ${vm.wl.known.toLocaleString()} of ${vm.wl.total.toLocaleString()} ${vm.meta.game.name} results`;
     $('sub').replaceChildren(facts, wl);
@@ -144,7 +149,7 @@
     } catch (err) { body = { error: err.message }; res = { ok: false }; }
     reviewing.delete(pid);
     for (const td of table.querySelectorAll(`tbody tr[data-pid="${CSS.escape(pid)}"] > td.seeded`)) td.classList.remove('saving');
-    if (!res.ok) { showMsg(`Not saved: ${body.error || 'error'}`); return; }
+    if (!res.ok) { notSaved(body, table.querySelectorAll(`tbody tr[data-pid="${CSS.escape(pid)}"] > td.seeded`)); return; }
     if (on && body.changed) replaced.set(pid, shown);
     if (!on && body.changed) replaced.delete(pid);
     // An un-✓ only undoes a review made today at this tournament (T1 rules); the status line says
@@ -493,8 +498,9 @@
   function statusText(st) {
     if (!st) return '';
     if (st.running && st.pulling) return `Pulling… ${st.message || ''}`;
+    if (st.running && st.kind === 'archive') return `Archiving standings… ${st.message || ''}`;
     if (st.running && st.wl) return `W-L ${st.wl.done.toLocaleString()} / ${st.wl.total.toLocaleString()} (summary ${st.wl.summaryDone.toLocaleString()} / ${st.wl.summaryTotal.toLocaleString()})`;
-    if (st.busy) return `Another event is refreshing (${st.busy}).`;
+    if (st.busy) return `Another tournament is refreshing (${st.busy}).`;
     if (st.phase === 'error') return `Refresh failed: ${st.error}`;
     if (st.phase === 'done') return `Refreshed. ${st.message || ''}`;
     return '';
@@ -502,12 +508,19 @@
   // The status line also carries a short note from the last click (the ✓'s explanation). A note
   // stays until the next action replaces it (another ✓, an edit, a refresh); a refresh's own
   // progress text takes the line over while it runs.
-  let note = '', lastSt = null;
-  function showNote(s) {
+  let note = '', noteErr = false, lastSt = null;
+  function showNote(s, { err = false } = {}) {
     note = s || '';
+    noteErr = !!note && err;
     const el = $('status');
     el.textContent = note || statusText(lastSt);
-    el.classList.toggle('err', !note && !!(lastSt && lastSt.phase === 'error'));
+    el.classList.toggle('err', noteErr || (!note && !!(lastSt && lastSt.phase === 'error')));
+  }
+  // B4-2 (build A pass 4): a failed ✓ or edit says "Not saved" in the status line, which stays in view
+  // when the table is scrolled (#msg sits above the table), and the cells that did not save flash red.
+  function notSaved(body, cells) {
+    showNote(`Not saved: ${(body && body.error) || 'error'}`, { err: true });
+    for (const c of cells) { c.classList.add('save-failed'); setTimeout(() => c.classList.remove('save-failed'), 2500); }
   }
   function showStatus(st) {
     lastSt = st;
@@ -515,7 +528,7 @@
     const t = statusText(st);
     if (t) note = '';
     el.textContent = t || note;
-    el.classList.toggle('err', !!(st && st.phase === 'error'));
+    el.classList.toggle('err', t ? !!(st && st.phase === 'error') : noteErr);
     $('refresh').disabled = !!(st && (st.running || st.busy));
     if (st && (st.running || st.busy)) startPolling();
   }
@@ -524,11 +537,11 @@
     let lastDone = -1;
     polling = setInterval(async () => {
       let st;
-      try { st = await (await fetch(api('status'), { cache: 'no-store' })).json(); } catch { return; }
+      try { st = await (await fetch(tapi('status'), { cache: 'no-store' })).json(); } catch { return; }
       showStatus(st);
       const finished = !st.running && !st.busy;
       if (finished) { clearInterval(polling); polling = null; }
-      // A new run (the pull finished) shows at once; the finished W-L shows when the job ends.
+      // A new pull (swapped in as current) shows at once; the finished W-L shows when the job ends.
       const newRun = vm && st.run && st.run !== vm.run.folder;
       if (newRun || (finished && st.phase === 'done')) { load({ keep: true }); return; }
       if (st.running && st.wl && st.wl.done !== lastDone && st.wl.done > 0) {
@@ -542,7 +555,7 @@
   $('refresh').addEventListener('click', async () => {
     $('refresh').disabled = true;
     let res;
-    try { res = await fetch(api('refresh'), { method: 'POST', headers: { 'X-Seeding-App': '1' } }); } catch (err) { showMsg(err.message); $('refresh').disabled = false; return; }
+    try { res = await fetch(tapi('refresh'), { method: 'POST', headers: { 'X-Seeding-App': '1' } }); } catch (err) { showMsg(err.message); $('refresh').disabled = false; return; }
     const st = await res.json().catch(() => null);
     if (res.status === 409) $('status').textContent = `A refresh is already running${st && st.busy ? ` (${st.busy})` : ''}.`;
     if (st) showStatus(st);
@@ -551,6 +564,72 @@
   $('update').addEventListener('click', () => load({ keep: true }));
 
   $('export').href = api('export.csv');
+
+  // ---- Export seeds CSV (docs/design-tool.md, Outputs 1): the table's current order, as shown ------
+  // (pinned rows at their place in the sort), numbered by tier on the server with the same function
+  // the push uses (lib/view/model.js seedSequence). No start.gg request.
+  function tableOrder() {
+    return [...table.querySelectorAll('tbody tr[data-pid]')].sort((a, b) => Number(a.dataset.i) - Number(b.dataset.i)).map((tr) => tr.dataset.pid);
+  }
+  $('exportSeeds').addEventListener('click', () => { $('exportSeeds').href = api(`seeds.csv?order=${tableOrder().join(',')}`); });
+
+  // ---- Push to start.gg (docs/design-tool.md, Outputs 2): dry run first, always --------------------
+  // A dry run reads the phase's seeds (start.gg's current order) and shows current -> proposed. The
+  // post needs a click on that dry run and a confirm; the server re-reads the seeds and refuses if
+  // anything changed since (the fingerprint). Failures are one status line, no retry.
+  const pushPanel = $('push');
+  let dry = null;
+  function pushLine(text, err) { const el = $('pushStatus'); el.textContent = text || ''; el.classList.toggle('err', !!err); }
+  function renderPushEvents() {
+    $('pushEvents').innerHTML = (TAB.events || []).map((slug) => {
+      const ev = (TAB.eventInfo || {})[slug] || { name: slug };
+      return `<button type="button" class="push-dry" data-e="${R.esc(slug)}">Dry run: ${R.esc(ev.name)}</button>`;
+    }).join('');
+  }
+  function setPush(on) {
+    pushPanel.hidden = !on;
+    $('pushToggle').setAttribute('aria-pressed', String(on));
+    if (on) renderPushEvents();
+  }
+  $('pushToggle').addEventListener('click', () => setPush(pushPanel.hidden));
+  $('pushClose').addEventListener('click', () => setPush(false));
+  async function postJson(url, body) {
+    let res, out;
+    try {
+      res = await fetch(url, { method: 'POST', headers: { 'X-Seeding-App': '1', 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
+      out = await res.json().catch(() => ({}));
+    } catch (err) { return { ok: false, body: { error: err.message } }; }
+    return { ok: res.ok, body: out };
+  }
+  async function runDry(e) {
+    dry = null;
+    pushLine(`Dry run for ${e}: reading start.gg's seeds…`);
+    $('pushBody').innerHTML = '';
+    const r = await postJson(tapi(`push/${encodeURIComponent(e)}/dry-run`));
+    if (!r.ok) { pushLine(r.body.error || 'Dry run failed.', true); return; }
+    dry = r.body;
+    pushLine(`Dry run: ${dry.event.name}, phase "${dry.phase.name || dry.phase.id}". Nothing has been sent.`);
+    $('pushBody').innerHTML = R.pushDiffTable(dry)
+      + `<p><button type="button" id="pushPost" class="danger">Post this seeding to start.gg</button> <span class="dim">Sets all ${dry.summary.seeds} seeds of phase "${R.esc(dry.phase.name || dry.phase.id)}" as proposed.</span></p>`;
+  }
+  async function postSeeding() {
+    if (!dry) return;
+    const flagged = dry.summary.crosses_tier ? ` ${dry.summary.crosses_tier} seed(s) move across a tier boundary relative to start.gg's current order: a conflict fix made by hand there would be reverted.` : '';
+    if (!window.confirm(`Post the proposed seeding for ${dry.event.name} (phase "${dry.phase.name || dry.phase.id}") to start.gg?${flagged}`)) return;
+    const btn = $('pushPost');
+    if (btn) btn.disabled = true;
+    pushLine('Posting to start.gg…');
+    const r = await postJson(tapi(`push/${encodeURIComponent(dry.event.slug)}/post`), { fingerprint: dry.fingerprint, confirm: true });
+    if (!r.ok) { pushLine(r.body.error || 'Not posted.', true); if (btn) btn.disabled = false; return; }
+    pushLine(`Posted: ${r.body.seed_count} seeds for ${dry.event.name} at ${r.body.at}. Recorded in this tournament's pushes.`);
+    if (btn) btn.remove();
+    dry = null;
+  }
+  pushPanel.addEventListener('click', (ev) => {
+    const d = ev.target.closest('button.push-dry');
+    if (d) { runDry(d.dataset.e); return; }
+    if (ev.target.closest('#pushPost')) postSeeding();
+  });
 
   // ---- Sorting the summary: click a header (again to reverse). Pinned rows stay put. ------------
   // Cells carry data-v (lib/view/render.js): tier number, tag/region text, or best placement /
@@ -632,12 +711,7 @@
       body = await res.json().catch(() => ({}));
     } catch (err) { body = { error: err.message }; res = { ok: false }; }
     td.classList.remove('saving');
-    if (!res.ok) {
-      showMsg(`Not saved: ${body.error || 'error'}`);
-      td.classList.add('save-failed');
-      setTimeout(() => td.classList.remove('save-failed'), 2500);
-      return;
-    }
+    if (!res.ok) { notSaved(body, [td]); return; }
     showMsg('');
     ctx.notes[pid] = { ...n, tier: body.tier == null ? undefined : body.tier, notes: body.notes,
       last_reviewed_on: body.last_reviewed_on, last_reviewed_tournament: body.last_reviewed_tournament };

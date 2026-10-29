@@ -24,9 +24,11 @@ function reconcile(runDir) {
   check('players.csv rows = meta.registrant_count', players.length === meta.registrant_count,
     `${players.length} vs ${meta.registrant_count}`);
   const a = meta.registrant_anomalies || {};
-  const expectedRows = a.api_participants - (a.duplicate_player || 0) - (a.no_player || 0);
-  check('players.csv rows = API participants - duplicates - no-player', players.length === expectedRows,
-    `${players.length} vs ${a.api_participants} - ${a.duplicate_player} - ${a.no_player}`);
+  // A pool (increment 3) sums participants across its seeded events; a player in two of them is
+  // one row, counted in cross_event_repeats.
+  const expectedRows = a.api_participants - (a.duplicate_player || 0) - (a.no_player || 0) - (a.cross_event_repeats || 0);
+  check('players.csv rows = API participants - duplicates - no-player - cross-event repeats', players.length === expectedRows,
+    `${players.length} vs ${a.api_participants} - ${a.duplicate_player} - ${a.no_player} - ${a.cross_event_repeats || 0}`);
 
   const ids = new Set(players.map((p) => p.player_id));
   check('player_id unique in players.csv', ids.size === players.length, `${ids.size} unique of ${players.length}`);
@@ -71,9 +73,11 @@ function reconcile(runDir) {
   const dupes = results.length - new Set(results.map((r) => `${r.player_id}|${r.event_id}`)).size;
   check('no (player, event) appears twice', dupes === 0, `${dupes} repeats`);
 
-  const gameId = meta.game && meta.game.id;
-  const wrongFlag = results.filter((r) => (r.is_event_game === 'true') !== (r.game_id === gameId));
-  check('is_event_game = (game_id = input event game)', wrongFlag.length === 0, `${wrongFlag.length} rows`);
+  // T2: no is_event_game column; every player names the seeded events they entered.
+  check('results.csv has no is_event_game column (T2)', !results.length || !('is_event_game' in results[0]));
+  const seeded = new Set((meta.seeded_events || []).map((e) => e.slug));
+  const badEvents = players.filter((p) => { const ev = String(p.events || '').split(';').filter(Boolean); return !ev.length || ev.some((e) => !seeded.has(e)); });
+  check('every player names 1+ seeded events in `events`', badEvents.length === 0, `${badEvents.length} players`);
 
   return { checks, players, results, meta };
 }

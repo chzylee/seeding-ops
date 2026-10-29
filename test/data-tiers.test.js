@@ -22,6 +22,7 @@ const { toCsv, parseCsv } = require('../lib/output');
 const data = require('../lib/view/data');
 const { createApp } = require('../app/server');
 const { inject } = require('../testlib/inject');
+const { makePool } = require('../testlib/pool-fixture');
 
 const PLAYER_COLS = ['player_id', 'gamer_tag', 'prefix', 'user_slug', 'region_state', 'region_country', 'result_count', 'history_status', 'team_entry'];
 const RESULT_COLS = ['player_id', 'gamer_tag', 'event_date', 'game_id', 'game_name', 'is_event_game', 'tournament_name', 'event_name', 'event_slug', 'event_id', 'num_entrants', 'placement', 'is_online'];
@@ -215,14 +216,16 @@ test('updatePlayer: the write is atomic (temp file + rename) — no .tmp left be
   assert.strictEqual(rows.length, 2, 'the second edit matched Breeze by player_id/tag, not a third row');
 });
 
-// ---- The route: POST /api/e/<t>/<e>/player/<id> ------------------------------------------------
+// ---- The route: POST /api/t/<t>/g/<game>/player/<id> -------------------------------------------
+// Retargeted for increment 3 (docs/design-tool.md, Pages): the app serves a tournament pool's game
+// tab, not an increment 1 run folder (which it no longer reads); the route is /api/t/<t>/g/<game>/.
 test('route: POST player edit — X-Seeding-App guard, JSON body, field allow-list, against a temp tiers file', async () => {
   const outRoot = tmpDir('seeding-tiers-route-');
   const tiersFile = path.join(outRoot, 'registry', 'tiers.csv');
-  makeRun(outRoot, { t: 'tour', e: 'ev', players: [player(1, 'Alice'), player(2, 'Bob')] });
+  makePool(outRoot, { t: 'tour', events: [{ slug: 'ev', game: { id: '1', name: 'MBTL' } }], players: [player(1, 'Alice'), player(2, 'Bob')] });
   seedTiers(tiersFile, []);
   const app = createApp({ outRoot, tiersFile, getToken: () => 'unused' });
-  const API = '/api/e/tour/ev/player/1';
+  const API = '/api/t/tour/g/1/player/1';
 
   // No X-Seeding-App header -> 403, nothing written.
   const noHeader = await inject(app.handler, { url: API, method: 'POST', body: JSON.stringify({ tier: 5 }) });
@@ -251,11 +254,11 @@ test('route: POST player edit — X-Seeding-App guard, JSON body, field allow-li
   assert.strictEqual(rows[0].startgg_tag, 'Alice', 'the real player tag, not the body\'s "EVIL"');
 
   // Unknown player id -> 404 (updatePlayer's own error, surfaced through the route).
-  const unknown = await inject(app.handler, { url: '/api/e/tour/ev/player/999', method: 'POST', headers: { 'X-Seeding-App': '1' }, body: JSON.stringify({ tier: 1 }) });
+  const unknown = await inject(app.handler, { url: '/api/t/tour/g/1/player/999', method: 'POST', headers: { 'X-Seeding-App': '1' }, body: JSON.stringify({ tier: 1 }) });
   assert.strictEqual(unknown.status, 404);
 
   // Invalid tier through the route -> 400, same as the direct unit test.
-  const badTier = await inject(app.handler, { url: '/api/e/tour/ev/player/2', method: 'POST', headers: { 'X-Seeding-App': '1' }, body: JSON.stringify({ tier: 99 }) });
+  const badTier = await inject(app.handler, { url: '/api/t/tour/g/1/player/2', method: 'POST', headers: { 'X-Seeding-App': '1' }, body: JSON.stringify({ tier: 99 }) });
   assert.strictEqual(badTier.status, 400);
 
   // Still exactly one row: Alice's, untouched by the 404/400 attempts.

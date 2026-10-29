@@ -45,17 +45,36 @@ test('writeOutputs: leaves no .tmp files and writes all three', () => {
   assert.deepStrictEqual(fs.readdirSync(dir).sort(), ['meta.json', 'players.csv', 'results.csv']);
 });
 
-test('runFolderName: <tournament>__<event>__YYYYMMDD-HHMM', () => {
-  const at = new Date(2026, 9, 12, 9, 5).getTime(); // local time
-  assert.strictEqual(o.runFolderName('tournament/combo-breaker-2026/event/mbaacc', at), 'combo-breaker-2026__mbaacc__20261012-0905');
+// Retargeted for increment 3 (docs/design-tool.md T2): increment 1's per-event run folder
+// (<tournament>__<event>__YYYYMMDD-HHMM) is retired; a pull is out/<t>/pull-YYYYMMDD-HHMMSS/.
+test('pullFolderName: pull-YYYYMMDD-HHMMSS', () => {
+  const at = new Date(2026, 9, 12, 9, 5, 7).getTime(); // local time
+  assert.strictEqual(o.pullFolderName(at), 'pull-20261012-090507');
+  assert.ok(o.PULL_RE.test(o.pullFolderName(at)));
 });
 
-test('createRunFolder: a same-minute second run gets its own folder', () => {
+test('createPullFolder: a same-second second pull gets its own folder', () => {
   const root = tmp();
-  const a = o.createRunFolder(root, 'x__y__20261012-0905');
-  const b = o.createRunFolder(root, 'x__y__20261012-0905');
+  const a = o.createPullFolder(root, 'pull-20261012-090507');
+  const b = o.createPullFolder(root, 'pull-20261012-090507');
   assert.notStrictEqual(a, b);
+  assert.ok(o.PULL_RE.test(path.basename(b)));
   assert.ok(fs.existsSync(path.join(b, o.WORK_DIR)));
+});
+
+test('current: written atomically, names only a finished pull, and a bad pointer reads as none', () => {
+  const root = tmp();
+  const a = o.createPullFolder(root, 'pull-20261012-090507');
+  assert.throws(() => o.writeCurrent(root, 'pull-20261012-090507'), /unfinished/);
+  assert.throws(() => o.writeCurrent(root, '../x'), /not a pull folder/);
+  fs.writeFileSync(path.join(a, 'meta.json'), '{}');
+  o.writeCurrent(root, 'pull-20261012-090507');
+  assert.strictEqual(o.readCurrent(root), 'pull-20261012-090507');
+  assert.deepStrictEqual(fs.readdirSync(root).sort(), ['current', 'pull-20261012-090507'], 'no .tmp left behind');
+  fs.writeFileSync(path.join(root, 'current'), '../../etc\n');
+  assert.strictEqual(o.readCurrent(root), null);
+  fs.writeFileSync(path.join(root, 'current'), 'pull-20991231-000000\n');
+  assert.strictEqual(o.readCurrent(root), null, 'a pointer to a missing pull is none');
 });
 
 test('buildOutputs refuses to write when any player has no outcome', () => {

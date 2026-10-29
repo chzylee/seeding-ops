@@ -1,8 +1,11 @@
 'use strict';
-// conflicts/lib/schedule.js: slug parsing and the pure entrants x timetable join.
+// lib/schedule.js (T3; moved from conflicts/lib/schedule.js in build B): slug parsing and the pure
+// entrants x timetable join. The app and pull tests below are retargeted to the tournament pool
+// (docs/design-tool.md T3 and Pages): schedule.json lives at out/<t>/, the Schedule tab's routes are
+// /api/t/<t>/schedule[/refresh], and conflicts/out/ is no longer read.
 const { test } = require('node:test');
 const assert = require('node:assert');
-const sch = require('../conflicts/lib/schedule');
+const sch = require('../lib/schedule');
 
 const tournament = {
   id: 1, slug: 'tournament/t', name: 'T', timezone: 'America/New_York',
@@ -83,46 +86,45 @@ const path = require('node:path');
 const { createApp } = require('../app/server');
 const { inject } = require('../testlib/inject');
 
-test('schedule app: page, data (latest pull wins), refresh runs one pull at a time', async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'schedule-app-'));
-  const write = (name, players) => {
-    fs.mkdirSync(path.join(root, name));
-    fs.writeFileSync(path.join(root, name, 'schedule.json'), JSON.stringify({ tournament: { name: 'T' }, pulled_at: 'x', events: [], blocks: [], players }));
-  };
-  write('eclipse__20261016-1046', [{ tag: 'old' }]);
-  write('eclipse__20261016-104700', [{ tag: 'new' }]);
-  fs.mkdirSync(path.join(root, 'eclipse__20991231-2359')); // unfinished: no schedule.json
+test('schedule app: the Schedule tab\'s data (out/<t>/schedule.json), refresh runs one schedule pull at a time', async () => {
+  const outRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'seed-out-'));
+  makePool(outRoot, { t: 'eclipse', events: [{ slug: 'mbaacc', game: { id: '22407', name: 'MBAACC' } }], players: [] });
+  // conflicts/out/-style folders beside it are never read.
+  fs.mkdirSync(path.join(outRoot, 'eclipse__20261016-104700'));
+  fs.writeFileSync(path.join(outRoot, 'eclipse__20261016-104700', 'schedule.json'), JSON.stringify({ tournament: { name: 'T' }, players: [{ tag: 'old-layout' }] }));
 
   let release;
   const calls = [];
   const seedsFlags = [];
-  const app = createApp({ outRoot: fs.mkdtempSync(path.join(os.tmpdir(), 'seed-out-')), scheduleRoot: root, getToken: () => 'TOKEN',
+  const app = createApp({ outRoot, getToken: () => 'TOKEN',
     pullSchedule: (o) => { calls.push(o.slug); seedsFlags.push(!!o.seedsOnly); return new Promise((r) => { release = r; }); } });
 
-  assert.strictEqual((await inject(app.handler, { url: '/schedule/eclipse' })).status, 200);
-  assert.match((await inject(app.handler, { url: '/' })).text, /href="\/schedule\/eclipse"/);
-  assert.deepStrictEqual((await inject(app.handler, { url: '/api/schedule/eclipse/data' })).json().players, [{ tag: 'new' }]);
-  assert.strictEqual((await inject(app.handler, { url: '/api/schedule/nope/data' })).status, 404);
+  assert.strictEqual((await inject(app.handler, { url: '/t/eclipse?tab=schedule' })).status, 200);
+  assert.strictEqual((await inject(app.handler, { url: '/api/t/eclipse/schedule' })).status, 404, 'no schedule pull yet; the old layout is not read');
+  fs.writeFileSync(path.join(outRoot, 'eclipse', 'schedule.json'), JSON.stringify({ tournament: { name: 'T' }, pulled_at: 'x', events: [], blocks: [], players: [{ tag: 'new' }] }));
+  assert.deepStrictEqual((await inject(app.handler, { url: '/api/t/eclipse/schedule' })).json().players, [{ tag: 'new' }]);
+  assert.strictEqual((await inject(app.handler, { url: '/api/t/nope/schedule' })).status, 404);
 
-  assert.strictEqual((await inject(app.handler, { method: 'POST', url: '/api/schedule/eclipse/refresh' })).status, 403);
-  const post = () => inject(app.handler, { method: 'POST', url: '/api/schedule/eclipse/refresh', headers: { 'X-Seeding-App': '1' } });
+  assert.strictEqual((await inject(app.handler, { method: 'POST', url: '/api/t/eclipse/schedule/refresh' })).status, 403);
+  const post = () => inject(app.handler, { method: 'POST', url: '/api/t/eclipse/schedule/refresh', headers: { 'X-Seeding-App': '1' } });
   assert.strictEqual((await post()).status, 202);
   assert.strictEqual((await post()).status, 409);
-  assert.strictEqual((await inject(app.handler, { url: '/api/schedule/eclipse/status' })).json().running, true);
+  assert.strictEqual((await inject(app.handler, { url: '/api/t/eclipse/status' })).json().schedule.running, true);
   release();
-  await app.scheduleJobs.get('eclipse').promise;
-  assert.strictEqual((await inject(app.handler, { url: '/api/schedule/eclipse/status' })).json().running, false);
+  await app.jobs.schedules.get('eclipse').promise;
+  assert.strictEqual((await inject(app.handler, { url: '/api/t/eclipse/status' })).json().schedule.running, false);
   assert.deepStrictEqual(calls, ['eclipse']);
   // ?only=seeds reaches the pull as seedsOnly.
-  assert.strictEqual((await inject(app.handler, { method: 'POST', url: '/api/schedule/eclipse/refresh?only=seeds', headers: { 'X-Seeding-App': '1' } })).status, 202);
-  assert.strictEqual((await inject(app.handler, { url: '/api/schedule/eclipse/status' })).json().kind, 'seeds');
+  assert.strictEqual((await inject(app.handler, { method: 'POST', url: '/api/t/eclipse/schedule/refresh?only=seeds', headers: { 'X-Seeding-App': '1' } })).status, 202);
+  assert.strictEqual((await inject(app.handler, { url: '/api/t/eclipse/status' })).json().schedule.kind, 'seeds');
   assert.deepStrictEqual(seedsFlags, [false, true]);
   release();
-  await app.scheduleJobs.get('eclipse').promise;
+  await app.jobs.schedules.get('eclipse').promise;
 });
 
-// ---- conflicts/lib/pull.js against a fake start.gg ------------------------------------------
-const { pullSchedule } = require('../conflicts/lib/pull');
+// ---- lib/schedule-pull.js (moved from conflicts/lib/pull.js) against a fake start.gg ---------
+const { pullSchedule } = require('../lib/schedule-pull');
+const { makePool } = require('../testlib/pool-fixture');
 
 function fakeStartgg({ mainSeed }) {
   const sent = [];
@@ -162,7 +164,8 @@ test('schedule pull: seedsOnly re-pulls the main tournament only and carries the
   const again = await pullSchedule({ ...base, seedsOnly: true });
   assert.deepStrictEqual(fake.sent, ['TournamentSchedule:main', 'EventEntrantSeeds:10']);
   assert.deepStrictEqual(again.players[0].entries.map((e) => [e.eventName, e.seedNum]), [['[x.] MBAACC Singles', 2], ['Tekken 8', null]]);
-  const j = JSON.parse(fs.readFileSync(path.join(again.dir, 'schedule.json'), 'utf8'));
+  assert.strictEqual(again.file, path.join(outRoot, 'main', 'schedule.json'), 'T3: next to the pool, outside any pull folder');
+  const j = JSON.parse(fs.readFileSync(again.file, 'utf8'));
   assert.strictEqual(j.sides_pulled_at, new Date(Date.UTC(2026, 9, 16, 12, 0, 0)).toISOString());
   assert.deepStrictEqual(j.events.map((e) => [e.name, e.side]), [['[x.] MBAACC Singles', false], ['Tekken 8', true]]);
 });

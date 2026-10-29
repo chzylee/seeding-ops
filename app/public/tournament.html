@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Tournament</title>
+<link rel="stylesheet" href="/static/app.css">
+<!-- app/public/tournament.html — the tournament page, served at /t/<tournament> (docs/design-tool.md,
+     Pages): a header with the seeded events, Refresh, the status and the lifecycle controls; a tab per
+     seeded game (the seeding table, app.js) and a Schedule tab (schedule.js). tournament.js picks the tab. -->
+<body class="app">
+<header id="top">
+  <div class="titlebar">
+    <a href="/" class="back" title="All tournaments">◂ Tournaments</a>
+    <h1 id="title">Loading…</h1>
+    <span id="tstatus" class="pill"></span>
+  </div>
+  <div id="sub" class="sub"></div>
+  <nav id="tabs" class="tabs" aria-label="Games and schedule"></nav>
+  <div class="bar">
+    <div class="group" role="group" aria-label="Data">
+      <button id="refresh" type="button" title="Pull every seeded event's registrants and every player's results again, then fetch W-L">Refresh data</button>
+      <span id="tline" class="status" role="status" aria-live="polite"></span>
+    </div>
+    <details id="eventsBox" class="about"><summary>Seeded events</summary>
+      <div class="about-body">
+        <p class="dim">Tick the singles events to seed. Each ticked event's game gets a tab. Ticking a new event pulls only the players not yet in the pool; unticking hides its tab.</p>
+        <div id="picker" class="picker"></div>
+        <button id="pickerSave" type="button">Save events</button>
+      </div>
+    </details>
+    <div class="group right" role="group" aria-label="Lifecycle">
+      <button id="markDone" type="button" hidden title="Treat this tournament as done now (it is computed from the last seeded event's start otherwise)">Mark done</button>
+      <button id="unmarkDone" type="button" hidden title="Undo Mark done">Mark live again</button>
+      <button id="archive" type="button" hidden title="Fetch the final standings of every seeded event into standings.json (one request per event)">Archive standings</button>
+      <button id="delete" type="button" hidden class="danger" title="Delete out/&lt;tournament&gt;/: the pool, W-L, schedule and standings. Your tiers (registry/tiers.csv) are kept.">Delete tournament data</button>
+    </div>
+  </div>
+  <div id="seedBar" class="bar" hidden>
+    <div class="group" role="group" aria-label="Compare">
+      <button id="compareToggle" type="button" aria-pressed="false" title="Compare up to 3 selected players in the lower half">⇅ Compare</button>
+      <span id="status" class="status" role="status" aria-live="polite"></span>
+      <button id="update" type="button" hidden>Show new data</button>
+    </div>
+    <div class="group" role="group" aria-label="View">
+      <label class="freeze-ctl" title="Columns that stay put when you scroll sideways. ❄ in a column header freezes just that column.">Freeze
+        <select id="freezeN"></select></label>
+      <label class="jump-ctl" title="Type a tag and press Enter to scroll to that player">Jump to <input id="jump" list="playerList" placeholder="type a tag" autocomplete="off" spellcheck="false"></label>
+      <label class="needs-ctl" title="Show only registrants with no tier in registry/tiers.csv"><input type="checkbox" id="needsOnly"> Needs tier only</label>
+      <label class="needs-ctl team-ctl" title="Show or hide the Team column"><input type="checkbox" id="showTeam" checked> Show team</label>
+    </div>
+    <div class="group right" role="group" aria-label="Outputs">
+      <a id="export" class="button" href="#" download title="The summary table as a CSV. In Google Sheets: File → Import → Upload.">Download for Google Sheets</a>
+      <a id="exportSeeds" class="button" href="#" download title="tier, tag, player_id, proposed seed: higher tier first, this table's order within a tier, untiered last. No start.gg request.">Export seeds CSV</a>
+      <button id="pushToggle" type="button" aria-pressed="false" title="Dry run first: see start.gg's seeding against your tiers. Posting needs a second, confirmed click.">Push to start.gg…</button>
+    </div>
+    <details class="about"><summary>How to read this</summary>
+      <div class="about-body">
+      Placement is out of the event's entrants. W-L counts sets won and lost at that event, with DQs excluded.
+      Major columns count this game only, using the main bracket (largest field). Series columns are the series
+      the most registrants played: best placement (with its W-L), best W-L, and average W-L when there are 2+
+      events. Click a column header to sort; ❄ freezes that column; 📌 pins a row under the header.
+      Tick up to 3 rows to compare them. Double-click Tier or Notes to edit (<kbd>Enter</kbd> saves, <kbd>Esc</kbd> cancels).
+      Click a player for their tables; click a column header in those tables to sort.
+      </div>
+    </details>
+  </div>
+</header>
+<section id="setup" class="setup" hidden aria-label="Before the first pull">
+  <p id="setupMsg"></p>
+  <button id="pullFirst" type="button" class="primary">Pull</button>
+</section>
+<main id="pane" tabindex="-1" hidden>
+  <div id="msg"></div>
+  <table class="summary" id="summary"><thead></thead><tbody class="pinned"></tbody><tbody class="main"></tbody></table>
+  <div id="details"></div>
+</main>
+<section id="push" hidden aria-label="Push to start.gg">
+  <div class="cmp-bar">
+    <strong>Push to start.gg</strong>
+    <span id="pushEvents" class="chips"></span>
+    <span id="pushStatus" class="status" role="status" aria-live="polite"></span>
+    <button id="pushClose" type="button">Close</button>
+  </div>
+  <div id="pushBody"><p class="hint">Pick an event for a dry run. Nothing is sent to start.gg until you post, and posting asks you to confirm.</p></div>
+</section>
+<section id="compare" hidden aria-label="Compare players">
+  <div class="cmp-bar">
+    <div id="cmpChips" class="chips" aria-live="polite"></div>
+    <button id="cmpClear" type="button" title="Deselect everyone">Clear</button>
+    <span class="note">Compares placements at the same events. Not head-to-head sets.</span>
+    <button id="compareClose" type="button" title="Close the compare panel">Close</button>
+  </div>
+  <datalist id="playerList"></datalist>
+  <div id="cmpBody"></div>
+</section>
+<section id="schedulePanel" class="schedule" hidden aria-label="Schedule">
+  <div class="s-head">
+    <div class="s-bar">
+      <button id="sRefresh" class="primary" type="button" title="Pull every event's entrants and pools again from start.gg, side tournaments included">Refresh schedule</button>
+      <button id="sRefreshSeeds" type="button" title="Re-pull only this tournament's pools and seeds. Side games are kept from the last full refresh.">Refresh seeds</button>
+      <button id="clashToggle" type="button" aria-pressed="false" title="Move players with two pools at the same time to the top. Red: two main-event pools clash. Orange: the only clash is with a side game.">Conflicts first</button>
+      <button id="lowerToggle" type="button" aria-pressed="false" title="Open a second copy of the table below, sortable by any column">▤ Block view</button>
+      <span id="sStatus" class="s-status" role="status" aria-live="polite"></span>
+      <label>Players in <select id="eventFilter"><option value="">any event</option></select></label>
+      <label>Find <input id="find" placeholder="type a tag" autocomplete="off" spellcheck="false"></label>
+      <span id="count" class="s-status"></span>
+    </div>
+    <div id="sSub" class="s-sub"></div>
+    <form id="linkedForm" class="s-bar linked"><label>Side tournaments <input id="linked" placeholder="start.gg tournament slugs, comma-separated" autocomplete="off" spellcheck="false"></label>
+      <button type="submit">Save</button><span class="dim">Their entries join this schedule on the next full refresh.</span></form>
+  </div>
+  <div class="s-wrap">
+    <div id="sMsg"></div>
+    <table class="sched" id="sched"><thead></thead><tbody></tbody></table>
+  </div>
+  <section id="lower" hidden aria-label="Block view">
+    <div class="lower-bar"><strong>Block view</strong><span id="lowerNote" class="s-status"></span>
+      <button id="lowerClose" type="button">Close</button></div>
+    <div class="s-wrap"><table class="sched" id="sched2"><thead></thead><tbody></tbody></table></div>
+  </section>
+</section>
+<script src="/static/model.js"></script>
+<script src="/static/render.js"></script>
+<script src="/static/tournament.js"></script>
+</body>
+</html>

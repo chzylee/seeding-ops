@@ -15,6 +15,11 @@ const M = require('../lib/view/model');
 const R = require('../lib/view/render');
 const { createApp } = require('../app/server');
 const { inject } = require('../testlib/inject');
+const { makePool } = require('../testlib/pool-fixture');
+// Route tests are retargeted for increment 3 (docs/design-tool.md, Pages): the app serves a pool's
+// game tab at /api/t/<t>/g/<game>/; poolFor() puts the same players in out/<t>/ as a pool.
+const poolFor = (outRoot, t, players) => makePool(outRoot, { t, events: [{ slug: E, name: 'MBAACC Singles', game: GAME }], players });
+const TAB = (t) => `/api/t/${t}/g/${GAME.id}`;
 
 const PLAYER_COLS = ['player_id', 'gamer_tag', 'prefix', 'user_slug', 'region_state', 'region_country', 'result_count', 'history_status', 'team_entry'];
 const RESULT_COLS = ['player_id', 'gamer_tag', 'event_date', 'game_id', 'game_name', 'is_event_game', 'tournament_name', 'event_name', 'event_slug', 'event_id', 'num_entrants', 'placement', 'is_online'];
@@ -42,6 +47,7 @@ function setup(rows, players = [player(1, 'Kouryuu'), player(2, 'Ono'), player(3
   const tiersFile = path.join(outRoot, 'registry', 'tiers.csv');
   fs.mkdirSync(path.dirname(tiersFile), { recursive: true });
   fs.writeFileSync(tiersFile, toCsv(data.TIER_COLS, rows));
+  poolFor(outRoot, T, players);
   return { outRoot, tiersFile, dir: makeRun(outRoot, { players }) };
 }
 const readRows = (f) => parseCsv(fs.readFileSync(f, 'utf8'));
@@ -122,7 +128,7 @@ test('route: POST …/player/<id>/review — header guard, JSON body, the URL\'s
   const { outRoot, tiersFile } = setup([tierRow({ sheet_tag: 'Kouryuu', tier: '8' })]);
   const clock = () => day('2026-11-03').getTime();
   const app1 = createApp({ outRoot, tiersFile, getToken: () => 'unused', now: clock });
-  const URL = `/api/e/${T}/${E}/player/1/review`;
+  const URL = `${TAB(T)}/player/1/review`;
   assert.strictEqual((await inject(app1.handler, { url: URL, method: 'POST', body: '{"reviewed":true}' })).status, 403);
   assert.strictEqual((await inject(app1.handler, { url: URL, method: 'POST', headers: { 'X-Seeding-App': '1' }, body: 'nope' })).status, 400);
   assert.strictEqual((await inject(app1.handler, { url: URL, method: 'POST', headers: { 'X-Seeding-App': '1' }, body: '{"reviewed":"yes"}' })).status, 400);
@@ -134,7 +140,7 @@ test('route: POST …/player/<id>/review — header guard, JSON body, the URL\'s
   // "Another browser": a separate app instance over the same files sees the mark in its data and
   // renders the row reviewed (green) with the Eclipse recency color.
   const app2 = createApp({ outRoot, tiersFile, getToken: () => 'unused', now: clock });
-  const vm = (await inject(app2.handler, { url: `/api/e/${T}/${E}/data` })).json();
+  const vm = (await inject(app2.handler, { url: `${TAB(T)}/data` })).json();
   assert.strictEqual(vm.tournament, T);
   assert.strictEqual(vm.today, '2026-11-03');
   assert.strictEqual(vm.notes['1'].last_reviewed_on, '2026-11-03');
@@ -203,9 +209,9 @@ test('a tier edit still stamps decided_on when the tier changes, through the rou
   const { outRoot, tiersFile } = setup([tierRow({ player_id: '1', sheet_tag: 'Kouryuu', tier: '8', decided_on: '2026-10-16', source: 'app' })]);
   const app = createApp({ outRoot, tiersFile, getToken: () => 'unused', now: () => day('2026-11-03').getTime() });
   const post = (url, body) => inject(app.handler, { url, method: 'POST', headers: { 'X-Seeding-App': '1' }, body: JSON.stringify(body) });
-  await post(`/api/e/${T}/${E}/player/1/review`, { reviewed: true });
+  await post(`${TAB(T)}/player/1/review`, { reviewed: true });
   assert.strictEqual(readRows(tiersFile)[0].decided_on, '2026-10-16');
-  const r = await post(`/api/e/${T}/${E}/player/1`, { tier: 9, justification: 'ignored' });
+  const r = await post(`${TAB(T)}/player/1`, { tier: 9, justification: 'ignored' });
   assert.strictEqual(r.json().decided_on, '2026-11-03');
   assert.ok(!('justification' in readRows(tiersFile)[0]));
 });
@@ -217,6 +223,7 @@ const NEXT = 'next-event';
 const ECLIPSE_REVIEW = { last_reviewed_on: '2026-10-16', last_reviewed_tournament: T };
 function setupNext(rows, players = [player(1, 'Kouryuu'), player(2, 'Ono'), player(3, 'Fresh')]) {
   const s = setup(rows, players);
+  poolFor(s.outRoot, NEXT, players);
   return { ...s, next: makeRun(s.outRoot, { t: NEXT, players }) };
 }
 
@@ -310,7 +317,7 @@ test('B2-3: ✓ then un-✓ on a player with no tiers row leaves the file as it 
 test('route: an un-✓ body carries the earlier pair (B2-1); a bad pair is a 400; a ✓ ignores body review values', async () => {
   const { outRoot, tiersFile } = setupNext([tierRow({ player_id: '1', sheet_tag: 'Kouryuu', tier: '8', source: 'app', decided_on: '2026-10-16', ...ECLIPSE_REVIEW })]);
   const app = createApp({ outRoot, tiersFile, getToken: () => 'unused', now: () => day('2026-11-02').getTime() });
-  const URL = `/api/e/${NEXT}/${E}/player/1/review`;
+  const URL = `${TAB(NEXT)}/player/1/review`;
   const post = (body) => inject(app.handler, { url: URL, method: 'POST', headers: { 'X-Seeding-App': '1' }, body: JSON.stringify(body) });
   const before = fs.readFileSync(tiersFile, 'utf8');
   let r = await post({ reviewed: true, last_reviewed_on: '2020-01-01', last_reviewed_tournament: 'spoofed' });

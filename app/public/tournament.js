@@ -28,6 +28,7 @@
     if (st.running && st.pulling) return `Pulling… ${st.message || ''}`;
     if (st.running && st.kind === 'archive') return `Archiving standings… ${st.message || ''}`;
     if (st.running) return `W-L ${st.wl ? `${st.wl.done} / ${st.wl.total}` : '…'}`;
+    if (st.queued) return `Pulling the newly ticked event's players after the current job${st.busy ? ` (${st.busy})` : ''}.`;
     if (st.busy) return `Another tournament is busy (${st.busy}).`;
     if (st.phase === 'error') return `Failed: ${st.error}`;
     if (st.phase === 'done') return st.message || 'Done.';
@@ -123,7 +124,7 @@
       let st;
       try { st = await (await fetch(tapi('status'), { cache: 'no-store' })).json(); } catch { return; }
       line(jobText(st), st.phase === 'error');
-      if (st.running || st.busy) return;
+      if (st.running || st.busy || st.queued) return;
       clearInterval(polling); polling = null;
       if (reloadWhenDone && st.phase !== 'error') { location.reload(); return; }
       await refreshInfo();
@@ -155,6 +156,13 @@
     const r = await post(tapi('events'), { ticked: pickedSlugs() });
     if (!r.ok) { line(r.body.error || 'Not saved.', true); return; }
     if (r.body.started) { line('Saved. Pulling the players of the newly ticked event(s)…'); poll({ reloadWhenDone: true }); return; }
+    if (r.body.queued) {
+      // D2-1: another job is running; the pull is queued behind it and starts by itself.
+      const names = r.body.addedNames.join(', ');
+      line(`${names} ticked; pulling ${r.body.addedNames.length > 1 ? 'their' : 'its'} players after the current job.`);
+      poll({ reloadWhenDone: true });
+      return;
+    }
     if (!info.pull) { line(`Saved ${r.body.ticked.length} event(s). Press Pull to fetch them.`); return; }
     location.reload();
   });
@@ -202,7 +210,7 @@
       bindRefresh();
       const st = info.job;
       line(jobText(st), st && st.phase === 'error');
-      if (st && (st.running || st.busy)) poll({ reloadWhenDone: active === 'setup' });
+      if (st && (st.running || st.busy || st.queued)) poll({ reloadWhenDone: active === 'setup' });
     }
   }());
 }());

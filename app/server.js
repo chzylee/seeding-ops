@@ -15,7 +15,8 @@
 //   GET  /api/t/<t>                           the tournament: catalog, ticked, tabs, status, controls,
 //                                             pushes, the live pull's facts, job status
 //   POST /api/t/<t>/events                    { ticked: [slug] } the seeded events; a newly ticked
-//                                             event with a pool present starts an incremental pull
+//                                             event with a pool present starts an incremental pull,
+//                                             or queues it behind a running job (D2-1)
 //   POST /api/t/<t>/refresh                   the full pull (Refresh means everything), then W-L
 //   GET  /api/t/<t>/status                    job status
 //   POST /api/t/<t>/lifecycle                 { action: mark-done | unmark-done | archive | delete, confirm }
@@ -177,6 +178,7 @@ function createApp(opts = {}) {
     const tDir = pool.tournamentDir(outRoot, t);
     if (!Array.isArray(fields.ticked)) throw bad(400, '"ticked" must be a list of event slugs.');
     let added = [];
+    let addedNames = [];
     const state = pool.updateState(tDir, (s) => {
       const known = new Map(s.events.map((e) => [e.slug, e]));
       const next = [...new Set(fields.ticked.map((x) => String(x).toLowerCase()))];
@@ -188,12 +190,15 @@ function createApp(opts = {}) {
       const was = s.ticked || [];
       s.ticked = s.events.map((e) => e.slug).filter((slug) => next.includes(slug)); // catalog order
       added = s.ticked.filter((x) => !was.includes(x));
+      addedNames = added.map((slug) => known.get(slug).name);
     });
     // Ticking a new event is incremental: only players not yet in the pool are pulled. Before the
-    // first pool exists, the page's Pull button starts the first (full) pull.
+    // first pool exists, the page's Pull button starts the first (full) pull. D2-1: while another
+    // job runs, the tick is saved and the pull is queued behind that job (one queue), never dropped.
     let started = null;
-    if (added.length && pool.currentPull(tDir)) started = jobs.startPull(t, { mode: 'incremental' }).started;
-    return { ticked: state.ticked, added, started };
+    let queued = false;
+    if (added.length && pool.currentPull(tDir)) ({ started, queued } = jobs.queuePull(t, { mode: 'incremental' }));
+    return { ticked: state.ticked, added, addedNames, started, queued };
   }
 
   function lifecycle(t, fields) {

@@ -14,7 +14,9 @@
 //             then state.json `archived`.
 //   schedule  T3: out/<t>/schedule.json (lib/schedule-pull.js).
 // One pull or archive at a time per server (start.gg's limit is per token); a schedule pull may run
-// beside it, its requests queued with the others.
+// beside it, its requests queued with the others. A pull asked for while another job runs (a newly
+// ticked event, D2-1) waits in `waiting` and starts when the running job ends; one entry per
+// tournament, a full pull outranking an incremental one.
 
 const fs = require('node:fs');
 const path = require('node:path');
@@ -40,6 +42,7 @@ class Jobs {
     this.current = null;        // the running pull or archive job, or null
     this.last = new Map();      // t -> the most recent pull/archive job
     this.schedules = new Map(); // t -> the most recent schedule job
+    this.waiting = [];          // pulls queued behind the running job: [{ t, mode, at }]
   }
 
   now() { return (this.opts.now || Date.now)(); }
@@ -69,8 +72,31 @@ class Jobs {
       }
       job.cache = null;
       this.current = null;
+      this.startNext();
     });
     return { started: true, job };
+  }
+
+  // D2-1: start the pull, or queue it behind the running job. Returns { started, queued, behind }.
+  queuePull(t, { mode = 'incremental' } = {}) {
+    const r = this.startPull(t, { mode });
+    if (r.started) return { started: true, queued: false, job: r.job };
+    const had = this.waiting.find((w) => w.t === t);
+    if (had) { if (mode === 'full') had.mode = 'full'; } else this.waiting.push({ t, mode, at: new Date(this.now()).toISOString() });
+    return { started: false, queued: true, behind: r.job ? r.job.t : null };
+  }
+
+  startNext() {
+    while (!this.current && this.waiting.length) {
+      const w = this.waiting.shift();
+      if (!pool.readState(this.tDir(w.t))) continue; // deleted while it waited
+      this.begin(w.t, 'pull', { mode: w.mode, queuedAt: w.at });
+    }
+  }
+
+  // Resolves when no job runs and none waits (tests, and a clean shutdown).
+  async idle() {
+    while (this.current) await this.current.promise;
   }
 
   startPull(t, { mode = 'full' } = {}) { return this.begin(t, 'pull', { mode }); }
@@ -120,6 +146,7 @@ class Jobs {
       run: cur ? cur.name : null,
       error: job ? job.error : null,
       busy: this.current && this.current.t !== t ? this.current.t : null,
+      queued: this.waiting.some((w) => w.t === t),
       startedAt: job ? job.startedAt : null,
       finishedAt: job ? job.finishedAt : null,
       schedule: s ? { running: s.running, kind: s.kind, error: s.error, startedAt: s.startedAt, finishedAt: s.finishedAt } : { running: false, error: null },

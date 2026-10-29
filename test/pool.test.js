@@ -381,3 +381,53 @@ test("D2-9: a CLI pull uses one client (one limiter) for the catalog request and
     assert.deepStrictEqual(pool.readState(tDir).ticked, [E_SLUG, E2_SLUG]);
   }
 });
+
+test('D2-1: ticking a new event while a job runs saves the tick, queues the incremental pull behind the job and says so; the pull runs when the job ends and fills the new tab', async () => {
+  const outRoot = tmp();
+  const world = buildWorld(START / 1000);
+  await pull(outRoot, { world, events: [E_SLUG] });
+  addTournament(outRoot, world, [E_SLUG]);
+  const fake = createFakeFetch(world);
+  // Hold the Refresh's W-L open (its first set lookup waits) so the tick lands mid-job.
+  let release;
+  const gate = new Promise((r) => { release = r; });
+  let held = false;
+  const order = [];
+  const fetchImpl = async (u, init) => {
+    const op = opOf(init);
+    order.push(op);
+    if (/^Sets/.test(op) && !held) { held = true; await gate; }
+    return fake(u, init);
+  };
+  const clock = virtualClock(START + HOUR);
+  const app = createApp({ outRoot, getToken: () => TOKEN, fetchImpl, now: clock.now, sleep: clock.sleep });
+  assert.strictEqual((await inject(app.handler, { url: `/api/t/${T_SLUG}/refresh`, method: 'POST', headers: H })).status, 202);
+  while (!held) await new Promise((r) => setImmediate(r));
+  assert.strictEqual(app.jobs.status(T_SLUG).phase, 'wl');
+  const r = await inject(app.handler, { url: `/api/t/${T_SLUG}/events`, method: 'POST', headers: H, body: JSON.stringify({ ticked: [E_SLUG, E2_SLUG] }) });
+  assert.strictEqual(r.status, 200);
+  assert.deepStrictEqual([r.json().added, r.json().addedNames, r.json().started, r.json().queued], [[E2_SLUG], ['Melee Singles'], false, true]);
+  assert.deepStrictEqual(pool.readState(path.join(outRoot, T_SLUG)).ticked, [E_SLUG, E2_SLUG], 'the tick is saved');
+  assert.strictEqual(app.jobs.status(T_SLUG).queued, true, 'the status says a pull is queued');
+  // A second tick of the same tournament while queued adds no second entry.
+  await inject(app.handler, { url: `/api/t/${T_SLUG}/events`, method: 'POST', headers: H, body: JSON.stringify({ ticked: [E_SLUG] }) });
+  await inject(app.handler, { url: `/api/t/${T_SLUG}/events`, method: 'POST', headers: H, body: JSON.stringify({ ticked: [E_SLUG, E2_SLUG] }) });
+  assert.strictEqual(app.jobs.waiting.length, 1);
+  assert.ok(!order.includes('EventEntrants') || order.lastIndexOf('EventEntrants') < order.indexOf('SetsBatch'), 'nothing of the queued pull ran yet');
+  release();
+  await app.jobs.idle();
+  const st = app.jobs.status(T_SLUG);
+  assert.strictEqual(st.phase, 'done', st.error);
+  assert.strictEqual(st.queued, false);
+  const tDir = path.join(outRoot, T_SLUG);
+  const m = JSON.parse(fs.readFileSync(path.join(tDir, out.readCurrent(tDir), 'meta.json'), 'utf8'));
+  assert.strictEqual(m.mode, 'incremental');
+  assert.deepStrictEqual(m.seeded_events.map((e) => e.slug), [E_SLUG, E2_SLUG]);
+  // The new game's tab: its three players, including the two already in the pool.
+  const d = (await inject(app.handler, { url: `/api/t/${T_SLUG}/g/${OTHER_GAME.id}/data` })).json();
+  assert.deepStrictEqual(d.players.map((p) => p.player_id).sort(), ['101', '108', '116']);
+  // The page's status line and polling know the queued state.
+  const js = fs.readFileSync(path.join(__dirname, '..', 'app', 'public', 'tournament.js'), 'utf8');
+  assert.match(js, /ticked; pulling \$\{[^}]+\} players after the current job/);
+  assert.match(js, /st\.running \|\| st\.busy \|\| st\.queued/);
+});

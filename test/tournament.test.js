@@ -60,7 +60,8 @@ test('add a tournament: an event URL makes ONE synchronous events request; state
   assert.match(bad.json().error, /not a singles event/);
   assert.strictEqual((await post(app, `${TAPI}/events`, { ticked: ['nope'] })).status, 400);
   const ok = await post(app, `${TAPI}/events`, { ticked: [E2_SLUG, E_SLUG] });
-  assert.deepStrictEqual(ok.json(), { ticked: [E_SLUG, E2_SLUG], added: [E_SLUG, E2_SLUG], started: null }, 'catalog order; no pool yet, so no pull');
+  // Build B pass 3 (D2-1): the response also names the added events and says whether a pull was queued.
+  assert.deepStrictEqual(ok.json(), { ticked: [E_SLUG, E2_SLUG], added: [E_SLUG, E2_SLUG], addedNames: ['Melty Blood: Actress Again Current Code', 'Melee Singles'], started: null, queued: false }, 'catalog order; no pool yet, so no pull');
   // Re-adding refreshes the catalog and keeps every decision.
   await post(app, '/api/tournaments', { url: `https://start.gg/tournament/${T_SLUG}` });
   assert.deepStrictEqual(pool.readState(path.join(outRoot, T_SLUG)).ticked, [E_SLUG, E2_SLUG]);

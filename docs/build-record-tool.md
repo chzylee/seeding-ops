@@ -243,3 +243,236 @@ REPORT
      contract's list.
   6. Increment 1's passes 2–4 remain open, due with build B.
 ```
+
+---
+
+## Pass 2 — engineering auditor
+
+Seat: engineering-auditor persona v0.2.0 (`personal-staff/personas/library/engineering-auditor.md`,
+Profile block). Model: Opus. Report-only: no source, test, config or data file edited; this section is
+the only change. Reviewed the handoff at `3e67359` (code head `7bf7b9d`), pass 1's commits `1aeb72b`,
+`90b8d31`, `e23581b`, `7bf7b9d`, `3e67359` on `e388fcc`. No skills, subagents or workflows. No start.gg
+calls; the token was never read (every script I ran used `testlib/no-network.js` or touched no client,
+and the app was built with a `getToken` that throws). All exercise of write paths ran on copies in a
+scratch folder; `out/` and `registry/` were read only.
+
+### Terms as understood
+
+- **Comparand:** `docs/dispatch-contract-tool.md` Acceptance 1–11 (12 is pass 4's), the spec
+  `docs/design-tool.md` §T1, §Display rules 5–9, §Open questions defaults, and the Ratified rows in
+  `docs/usage-log.md` → Requirements surfaced. The handoff's "Terms as understood" and "Assumptions I
+  supplied" are the drift comparand.
+- **Drift check, builder's terms vs the contract:** the builder's terms match the contract (scope,
+  grants, prohibitions, `.bak`, no build-B work). Four assumptions go past the literal ask; I judged
+  each by user impact:
+  - **9 (a `default` majors list):** not asked for, but without it the MBTL and UNI2 runs lose every
+    major column, which Acceptance 8 ("the event page still works for every existing run folder")
+    would not tolerate, and its four entries are exactly rule 5's named known majors. In scope as
+    built. Its side effect is B2-2.
+  - **14 (the CLI view reads tiers):** required by Acceptance 8's "the CLI view renders the same
+    cells as the app (parity test)"; the app has a Tier column, so the CLI must too. In scope. Side
+    effect: B2-5.
+  - **15 (the writer keeps unknown columns):** small and defensive; changes nothing on the migrated
+    file. Fine.
+  - **5 (exclusions match the tournament name or the event name):** the contract says "excluding
+    names matching", the spec says "event names". On the real data the tournament-name match is what
+    keeps "CEO 2025/2026 Community Tournaments" out of a CEO column, which is the point of rule 5.
+    Fine; Noah to confirm (handoff Needs attention 3).
+- **Rulings on the handoff's Needs attention 1–6:** 1 is a finding routed to Noah (B2-2, with
+  evidence). 2 is Noah's call; the default is defensible (B2-6). 3 is fine as built (see above and
+  B2-5). 4 is correct under rule 5 and needs no change; Noah should expect it. 5 is out of this
+  contract, correctly left alone. 6 is correctly recorded.
+
+### What I re-ran
+
+| what | command / method | result |
+|---|---|---|
+| suite, working tree | `node --test` (Node v24.14.1) | tests 168, pass 165, fail 0, skipped 3 |
+| suite, clean clone, offline | `git clone --branch build/tool-a` into scratch (HEAD `3e67359`), `NODE_OPTIONS="--require ./testlib/no-network.js" node --test` | 168 / 165 / 0 / 3, matches the claim |
+| before-state | clone checked out at `e388fcc`, same offline command | 144 / 141 / 0 / 3, matches the claim |
+| test names, before vs after | sorted pass/skip lines of both runs, `comm` | 24 new tests; one renamed (`model: configured majors and Boston Blue Beat are keyed by label, not name` → `… keyed by label through the run index …`); none removed; the same 3 `recorded:` skips |
+| changed existing tests | `git diff e388fcc 3e67359 -- test/data-tiers.test.js test/render.test.js test/view-model.test.js` | see Acceptance 1 and B2-4 |
+| migration, column by column | my own raw CSV splitter (not `lib/tiers-migrate.js`) on `registry/tiers.csv.bak` vs `registry/tiers.csv` | BOM on both; 713 records each; header 13 → 14 columns (`justification` gone, `last_reviewed_on`, `last_reviewed_tournament` after `decided_on`); **0 raw-field differences** in any carried column; 0 line-ending differences; 0 unquoted fields; 0 non-empty justifications in the `.bak`; 107 `source=app` rows, all with `decided_on`; those 107 and only those backfilled, with `last_reviewed_on = decided_on` (all `2026-10-16`) and `eclipse-1st-cour` |
+| migration reproduces the real file | copy of the `.bak` → `node scripts/migrate-tiers.js <copy>` | "712 rows, 107 with source=app, 107 backfilled; columns 13 -> 14"; result sha1 `ffb8898…` = the real `registry/tiers.csv` |
+| idempotence | the script again on that output, and on a copy of the real file | "already migrated … Nothing written"; sha1 unchanged |
+| `.bak` = pre-pass file | line-ending-normalized sha1 of `.bak` vs `git show e388fcc:registry/tiers.csv` | equal (`b8f2d3b…`) |
+| committed file | `git ls-files --eol registry/tiers.csv` | index LF, working tree CRLF (`core.autocrlf=true`), clean clone LF; normalized content equal |
+| app writer on the migrated file | `parseCsv` → `toCsv` round trip | byte-identical on the working-tree file, so a first ✓ does not reformat it |
+| ✓ / un-✓ semantics | `data.reviewPlayer` on a scratch copy of the Eclipse run and a scratch tiers copy, plus a second run folder named `next-event__…` | as specified for single clicks; the two-click case is B2-1; the leftover row is B2-3 |
+| real data, Acceptance 6/7 | my script: `data.loadRun` + the index on a scratch copy of `out/eclipse-1st-cour__bloody-fights-mbaacc-singles__20261015-0925`, before (the `e388fcc` clone's code and the `.bak`) and after | table under Acceptance 7; matches the builder's counts exactly |
+| every run folder | `data.loadRun` on all 6 folders, before and after | major columns listed under Acceptance 8 |
+| routes | `createApp` over a scratch copy of all of `out/`, via `testlib/inject.js`, offline | `GET /` 200 with 3 event links; each event's page, `data` and `export.csv` 200; `/.env`, `/static/../.env`, `/%2e%2e/.env`, `/static/.env`, `/registry/tiers.csv`, `/out/x`, `/config/majors.json` all 404 |
+| `out/` untouched | sha1 of all 56 files before my work vs after; `find out -newermt 2026-10-28` | identical; no file newer than 2026-10-28 |
+| protected files | `git diff --stat e388fcc HEAD --` usage-log, the three designs, the contracts, increment 1/2 records, `.env`, `conflicts/`, `lib/run.js`, `lib/output.js`, `lib/startgg.js`, `pull.js`, `seed.js` | empty |
+| commits | `git show --stat` of each pass-1 commit; `git reflog` | contents as the record says; tests (`90b8d31`, 09:23:47) committed before the migration commit (`e23581b`, 09:24:03) |
+
+### Findings
+
+**B2-1 — FINDING, routed to Noah (needs a ruling) — a misclick ✓ followed by its undo erases the
+earlier review.** Spec §T1 Rules: un-✓ "is an undo for a misclick only … A review recorded earlier is
+never destroyed by a click." Contract 3: "a review from another tournament is never cleared." The
+README added in `7bf7b9d` promises "an earlier review is never erased by a click." Each single click
+behaves as specified, but ✓ overwrites the earlier review and un-✓ then clears both fields instead of
+putting the earlier one back. Reproduced on scratch copies (`data.reviewPlayer`), player 10482,
+reviewed `2026-10-16` at `eclipse-1st-cour`:
+
+```
+✓ at next-event, 2026-11-02   -> last_reviewed_on 2026-11-02, last_reviewed_tournament next-event
+un-✓ same day                 -> last_reviewed_on "",         last_reviewed_tournament ""
+after: the Eclipse review is gone; the tier cell turns grey with the hover
+"Never reviewed (tier from the sheet import)", which is also wrong for an app-set tier.
+```
+
+User impact: this happens at the next event, the first one after Eclipse, where every one of the 107
+backfilled reviews is one misclick and one undo from being lost. That is the success criterion the
+backfill exists for. The contract's single-click wording is met, so this is not a contract miss. But
+the fix is a choice the builder may not make: where the earlier review lives during the undo. Options:
+(a) the page sends back the pair it showed before the click, and the route restores it, which means
+the route accepts review values from the body for this one case; (b) the server keeps the replaced
+pair in memory for the same-day undo, which is lost on restart; (c) a stored "previous review" pair,
+which changes the T1 table; (d) accept the behavior and correct the README sentence and the hover
+text. Resolves when Noah picks one and pass 3 builds it with a test for the two-click sequence.
+
+**B2-2 — FINDING, Noah's call — Climax of Night is no longer a major column for MBTL, and by Noah's
+own rule 6 it would qualify.** This is the builder's Needs attention 1, with the evidence it lacked.
+Real MBTL data (`out/crescendo-of-night-3-episode-0__allegro-mbtl-pc__20261014-1909/results.csv`,
+read only): Climax of Night MBTL Singles had 142 and 158 entrants; Frosty Faustings MBTL had 85 and
+73; Combo Breaker 96 and 157. Rule 6 adds a series of the game "whose field is at least as large as a
+known major's field for that game". Before this build the MBTL page had a Climax of Night column; now
+it does not (all three MBTL folders: `["Combo Breaker","Frosty Faustings"]`). The usage log's
+candidate row ("CEO/Evo/CB/FF/Climax of Night") also lists it with the other majors. Resolves with no
+code change: if Noah agrees, add a `36865` list to `config/majors.json` (the README already explains
+how). UNI2 (`50203`) is his call the same way.
+
+**B2-3 — NOTE — ✓ then un-✓ on a player with no tiers row leaves an empty row.** On a scratch copy,
+player 530924 had no row: ✓ created one, un-✓ cleared the review, and the file kept
+`"22407",…,"530924","HARD_BREAD","HARD_BREAD","","","","","","app","","",""` (713 → 714 records). No
+display effect, since `readNotes` skips such rows. But the undo does not put the file back the way it
+was, and the empty rows end up in Noah's tiers table and any Sheets import of it. Resolves by having
+un-✓ remove a row that holds nothing but this review (undo restores the earlier state; no product
+choice involved), with a test.
+
+**B2-4 — NOTE — the record names four corrected tests; a fifth existing test changed too.**
+`test/view-model.test.js` "model: column choice — majors only if someone played them …" had its CEO
+rows' `event_date` changed to 2024/2025/2026. This is justified by rule 5: with one shared date, the
+three CEO tournaments would fall in one year and collapse to one. It is not a weakening, but the
+handoff's list of changed tests should include it (A4-6's rule: record every change). Also, the
+route test no longer sends `justification` through the route. The "sent anyway, not stored" case is
+now covered only at `updatePlayer` level. That is acceptable because the route's allow-list drops it.
+Resolves with one line in pass 3's record.
+
+**B2-5 — NOTE, Noah's call — the CLI's HTML file now carries Noah's tiers, notes and review marks.**
+`views/major-table.js` describes its output as "a file you can keep or send". Since this build it
+renders from `data.viewModel`, so `views/major-table.html` includes the Tier column, recency, and the
+notes from `registry/tiers.csv`. Acceptance 8 requires this, and I judge it correct. Noah should know
+before he sends that file to anyone. Resolves by Noah acknowledging it; no change asked.
+
+**B2-6 — NOTE, Noah's call — "today" is the UTC date** (handoff Needs attention 2). Confirmed: a ✓ at
+23:30 EST on 2026-11-02 (`2026-11-03T04:30Z`) is stamped `2026-11-03`. The same-day undo and the
+hover follow the UTC day. This is the calendar `decided_on` has always used, so the default is
+defensible. Changing it later is one helper (`data.todayOf`), but dates already written stay UTC.
+
+**B2-7 — NOTE — out-of-band change during this pass, not yet in the record.** Commit `73a085a`
+("launch.json: the app listens on 8765, not 3000", co-authored by Claude Fable 5.1, 09:30:42) landed
+on `build/tool-a` during pass 2, after the handoff commit. It changes one line in
+`.claude/launch.json` and is harmless. A4-6 rule (a) asks the orchestrating session to record it
+before pass 3. Related: `registry/tiers.csv`'s mtime is 09:29:36, later than the migration commit
+(09:24:03) and the record commit (09:27:24). Its content is byte-identical to the migration's output
+and git sees no change, so no data changed. I could not tell what touched it. The app writer's round
+trip is byte-identical, so a ✓ and its undo through the real file would look exactly like this. If
+the orchestrator's UI check clicked against the real file, the record should say so.
+
+**B2-8 — NOTE — README layout slip.** In the Code layout list, the existing continuation line
+"`lib/view/export.js`: the Google Sheets CSV." (`README.md:233`) now sits under the new
+`scripts/migrate-tiers.js` bullet, so it reads as part of the migration's entry. Resolves by moving
+it under `lib/view/data.js` or giving it its own bullet.
+
+No RETURN-level finding. Comprehension: the code diff is about 1,400 lines across 22 files (plus the
+migrated CSV) and reads in one sitting. Majors live in one config file and one function
+(`mainEventMajors`). The app, the CLI and the export share one context builder
+(`contextFromViewModel`). I could follow every acceptance path from the code.
+
+### Acceptance
+
+| # | item | met | my evidence |
+|---|---|---|---|
+| 1 | `node --test` on a clean clone, offline, no regression | yes | 168 / 165 / 0 / 3 on a clean clone with `no-network.js` (before: 144 / 141 / 0 / 3). Every pre-existing test name still passes except the one renamed in place. Changed existing tests: data-tiers multi-word and route tests (justification dropped from T1), view-model majors test (oracle moved to the index, same cases plus a per-game case), view-model column-choice fixture dates (rule 5's one-per-year, B2-4), render fixtures (majors list passed in, assertions unchanged). Each traces to a spec change; none skipped or deleted. |
+| 2 | T1 migration | yes | My column-by-column raw diff: 0 differences outside the dropped and added columns; BOM, quoting and CRLF kept; exactly the 107 `app`+`decided_on` rows backfilled. Re-running the script on a `.bak` copy reproduces the real file byte for byte; a second run writes nothing. `test/tiers-migrate.test.js` covers the 712/107 shape, LF, idempotence and refusals. |
+| 3 | ✓ semantics | yes, with B2-1 | `data.reviewPlayer`: ✓ writes today plus the URL's tournament through `matchTierRow`; un-✓ on another day or at another tournament is a no-op (`"changed": false`, on the real Eclipse data). Route test and unit tests pass. Browser storage: removed, never read (`localStorage.removeItem` once in `app.js`). The two-click sequence breaks the spec's "never destroyed" promise (B2-1). |
+| 4 | reviewed row display | yes | `summaryRow`: `reviewed-row` only when `last_reviewed_tournament` equals the page's tournament; `rec-here` / `rec-old` / `rec-never` on the Tier cell; hover "Last reviewed <date> at <slug>". On Eclipse: 107 `here`, 75 `never`, 0 others (today 2026-10-29). ✓ column `data-v` 1/0 for the sort. Not checked in a browser (orchestrator's checklist). |
+| 5 | editor, no reason prompt; `decided_on` | yes | `app.js` diff: the Reason input and its field are gone; the route's allow-list is `tier`, `notes`; `updatePlayer` stamps `decided_on` on a tier change (existing test plus `review.test.js`). |
+| 6 | majors per game | yes | `config/majors.json` holds the MBAACC six with the right kinds, the exclusion list in the same file, and `default`. The logic is in `lib/view/model.js` `mainEventMajors`. The required tests exist and pass: Frosty GG main / MBAACC side gives no cell; Climax column for MBAACC; one per year; the four ratified rules on summary, compare panel (the same `summaryRow` the panel uses, `app.js` `renderCompare`) and export; header/row parity A4-1. |
+| 7 | real-data check | yes | Eclipse, my recount. Before → after (players / lines / players with two in one year): CEO 10/14/0 → column gone (only "Community Tournaments" brackets); Combo Breaker 80/95/2 → 77/77/0; Frosty Faustings 61/103/20 → 61/79/0; Climax of Night 85/143/17 → 83/124/0. Every major cell is game 22407; selected main events: 5. The 20 duplicate Frosty players came from MBAACC 2v2s, not other games: before, the column already held only game 22407 rows. Players with a non-major series labelled like a major column: 0. Players with an app-set tier: 107; without the Eclipse color: 0. |
+| 8 | `GET /`, event pages, CLI parity | yes | All 3 event pages, data and export 200 over a copy of `out/`. Major columns after: Eclipse `Combo Breaker, Frosty Faustings, Climax of Night`; MBTL ×3 `Combo Breaker, Frosty Faustings` (was + CEO, Climax of Night); UNI2 ×2 `CEO, Evo, Combo Breaker, Frosty Faustings` (was + Climax of Night). `test/parity.test.js` compares the CLI's rows with the app's rows minus its controls, byte for byte, and the export's columns and major cells. |
+| 9 | `.env` never served; 404s | yes | 7 probe paths 404 (table above); `test/app.test.js` unchanged and passing. |
+| 10 | README | yes, with B2-8 | `7bf7b9d` covers ✓ as review, recency colors, no reason field, and `config/majors.json` (where, how to add a game or a major). The sentence "an earlier review is never erased by a click" depends on B2-1. |
+| 11 | `docs/usage-log.md` not edited | yes | `git diff e388fcc HEAD -- docs/usage-log.md` empty. |
+| 12 | closing approval | pass 4's | — |
+
+### Could not verify
+
+- **Browser behavior:** two profiles, colors as rendered, hover, the editor, sort clicks. These are
+  the orchestrator's checklist items 1–9. I verified the same paths in code and tests only.
+- **The builder's live run and its scratch script** (`scratchpad/realcheck.js` is not in the repo).
+  I recomputed its counts myself and they match. Its screenshots I could not see.
+- **The exact order "tests passed on a copy, then the real file was migrated."** The commit order
+  supports it (`90b8d31` 09:23:47, `e23581b` 09:24:03). The `.bak`'s mtime (09:23:53) falls between
+  them, so whether the suite was green at the moment of migration rests on the record.
+- **What touched `registry/tiers.csv` at 09:29:36** (B2-7). Content unchanged.
+- **The A2-6 Sheets import**, still untried, as before.
+
+### Verdict: APPROVE WITH FINDINGS
+
+Covers Acceptance 1–11 against the artifact at `3e67359` (code `7bf7b9d`), checked by re-running the
+suite on a clean offline clone, diffing the migrated file column by column against its `.bak`,
+re-running the migration for idempotence, exercising the ✓ routes on copies, and recounting the
+Eclipse majors myself. Every item is met. The build reads clearly, and it stays inside build A: no
+pool layout, no `state.json`, no changes to the pull.
+
+Two findings need Noah before pass 4 can close cleanly. **B2-1** (misclick + undo erases the earlier
+review) needs a ruling on what undo restores; the loop continues on the rest while it waits. **B2-2**
+(Climax of Night for MBTL) is a config line if he says yes. Pass 3 can fix B2-3, B2-4 and B2-8
+without a ruling. B2-5 and B2-6 need only his acknowledgment. B2-7 is the orchestrator's to record.
+
+Not judged: anything only a browser shows (see Could not verify), and visual design. Increment 1's
+passes 2–4 remain open and are due with build B.
+
+### REPORT
+
+```
+REPORT
+- Overview: Pass 2 (engineering auditor, report-only) reviewed build A at 3e67359. Acceptance 1–11
+  all hold on the artifact: 168/165/0/3 on a clean offline clone (before 144/141/0/3), the
+  migration is byte-identical outside its three columns and idempotent, and the Eclipse majors
+  recount matches pass 1 (Frosty two-in-a-year players 20 -> 0). Verdict: APPROVE WITH FINDINGS. One
+  finding needs Noah's ruling before pass 4 can close cleanly: a misclick ✓ plus its undo erases the
+  earlier review.
+- Found: B2-1 FINDING (needs Noah: ✓ then un-✓ at a new tournament erases the earlier review; spec
+  and README promise it never does); B2-2 FINDING (Noah's call: Climax of Night dropped for MBTL,
+  and its MBTL fields of 142/158 beat Frosty's 85/73 under his rule 6); B2-3 NOTE (✓ + un-✓ leaves
+  an empty tiers row; pass 3 can fix); B2-4 NOTE (a fifth changed test, justified, not listed);
+  B2-5 NOTE (CLI HTML now carries tiers and notes; acknowledge); B2-6 NOTE (UTC "today";
+  acknowledge); B2-7 NOTE (out-of-band commit 73a085a during pass 2; orchestrator to record);
+  B2-8 NOTE (README list slip). No RETURN.
+- Ran: node --test on the working tree, on a clean clone offline, and at e388fcc; test-name diff;
+  my own raw CSV column diff of tiers.csv.bak vs tiers.csv; migration replay on copies; ✓ and
+  un-✓ scenarios on scratch copies; Eclipse and all-run majors recount, before and after; route
+  probes over a copy of out/. Evidence: this section in docs/build-record-tool.md, one commit.
+- Attributed: core / seeding-ops increment 3 build A. STATED: dispatch-contract-tool.md,
+  design-tool.md.
+- Queued: B2-1's repair, waiting on Noah's ruling (options a–d in the record). The fix needs a
+  choice the builder may not make, so it goes to the caller instead of the repair loop.
+- Spend: term = 4 passes + at most 1 repair pair; consumed pass 2 of 4. No skills, subagents or
+  workflows. start.gg requests 0. Token never read. out/ and registry/ read only; all writes on
+  scratch copies.
+- Parked: none. registry/tiers.csv.bak stays until pass 4 approves.
+- Needs attention:
+  1. B2-1: pick what un-✓ restores after a misclick replaced an earlier review: (a) the page sends
+     the prior pair back, (b) the server remembers it for the day, (c) a stored previous-review
+     pair, (d) accept it and fix the README and hover text.
+  2. B2-2: add a Climax of Night list for MBTL (36865), and UNI2 (50203) if wanted? One config edit.
+  3. B2-5 / B2-6: acknowledge that the CLI's HTML file now holds your tiers and notes, and that
+     review dates are UTC days.
+  4. B2-7: the orchestrator records commit 73a085a, and whether its UI check wrote the real
+     registry/tiers.csv (mtime 09:29:36, content unchanged).
+```

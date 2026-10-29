@@ -208,3 +208,18 @@ test('ticking a new event is incremental: only players not yet in the pool are p
   assert.strictEqual((await inject(app.handler, { url: `/api/t/${T_SLUG}/g/${OTHER_GAME.id}/data` })).status, 404);
   assert.deepStrictEqual(pool.tabsOf(pool.readState(tDir), meta).map((t) => t.game.id), [String(GAME.id)]);
 });
+
+test('T3: side tournaments linked before increment 3 (conflicts/linked.json) seed a newly added tournament\'s state.json `linked`; the picker\'s singles test', () => {
+  const dir = tmp();
+  const legacy = path.join(dir, 'linked.json');
+  fs.writeFileSync(legacy, JSON.stringify({ 'eclipse-1st-cour': ['2-on-block-presents-eclipse-community-games', '../bad'] }));
+  const cat = (slug) => pool.catalogOf({ id: 1, slug: `tournament/${slug}`, name: 'X', startAt: 1, timezone: 'UTC', events: [] });
+  assert.deepStrictEqual(pool.newState(cat('eclipse-1st-cour'), { linkedFile: legacy }).linked, ['2-on-block-presents-eclipse-community-games']);
+  assert.deepStrictEqual(pool.newState(cat('other'), { linkedFile: legacy }).linked, []);
+  // The shipped file still names Eclipse's side games, so adding Eclipse keeps that link.
+  assert.deepStrictEqual(pool.legacyLinked('eclipse-1st-cour'), ['2-on-block-presents-eclipse-community-games']);
+  assert.strictEqual(pool.isSingles({ type: 1, name: 'MBAACC Singles' }), true);
+  assert.strictEqual(pool.isSingles({ type: 5, name: 'Crew Battle' }), false);
+  assert.strictEqual(pool.isSingles({ type: 1, name: 'MBAACC 2v2' }), false, 'a 2v2 named event is not seedable even if typed 1');
+  assert.strictEqual(pool.isSingles({ name: 'UNI2 Singles' }), true, 'no type: by name');
+});

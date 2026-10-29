@@ -4,6 +4,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert');
 const M = require('../lib/view/model');
+const { majorsFor } = require('../testlib/majors-fixture');
 
 let nextEvent = 1;
 // A results.csv-shaped row. Strings, like the CSV.
@@ -53,13 +54,27 @@ test('model: run-wide key consistency — one series gets the same key for two p
   assert.notStrictEqual(idx2.keyOf(c), idx2.keyOf(d));
 });
 
-test('model: configured majors and Boston Blue Beat are keyed by label, not name', () => {
-  assert.strictEqual(M.seriesKeyFor(row(1, 'CEO 2026')), 'CEO');
-  assert.strictEqual(M.seriesKeyFor(row(1, 'CEOtaku 2025')), 'ceotaku');
-  assert.strictEqual(M.seriesKeyFor(row(1, 'EVO 2025')), 'Evo');
-  assert.strictEqual(M.seriesKeyFor(row(1, 'Climax of Night Season 6: [strong+hold]')), 'Climax of Night');
-  assert.notStrictEqual(M.seriesKeyFor(row(1, 'Crescendo of Night 3 - Episode 0')), 'Climax of Night');
+// Oracle corrected for increment 3 (docs/design-tool.md, display rules 5 and 6): this test used
+// to assert that seriesKeyFor keys any tournament NAME matching a major to the major's label. The
+// spec redefined that: a major is per game (config/majors.json) and main-event only, so the label
+// key now comes from the run's index (buildSeriesIndex with the game's list), and seriesKeyFor is
+// name-only. Same cases as before, asserted through the index; BBB is unchanged.
+test('model: configured majors are keyed by label through the run index (per game, main event); Boston Blue Beat by name', () => {
+  const keyIn = (name, gameId = '1') => {
+    const r = row(1, name);
+    return M.buildSeriesIndex([r], { majors: majorsFor(gameId) }).keyOf(r);
+  };
+  assert.strictEqual(keyIn('CEO 2026'), 'CEO');
+  assert.strictEqual(keyIn('CEOtaku 2025'), 'ceotaku');
+  assert.strictEqual(keyIn('EVO 2025'), 'Evo');
+  assert.strictEqual(keyIn('Climax of Night Season 6: [strong+hold]', '22407'), 'Climax of Night', 'a game-specific major in its game');
+  assert.notStrictEqual(keyIn('Climax of Night Season 6: [strong+hold]', '1'), 'Climax of Night', 'not a major for a game without it in its list');
+  assert.notStrictEqual(keyIn('Crescendo of Night 3 - Episode 0', '22407'), 'Climax of Night');
   assert.strictEqual(M.seriesKeyFor(row(1, 'Boston Blue Beat #40')), 'Boston Blue Beat');
+  // Without a list there are no majors: the name is a series like any other.
+  const r = row(1, 'CEO 2026');
+  assert.strictEqual(M.buildSeriesIndex([r]).keyOf(r), 'ceo');
+  assert.strictEqual(M.seriesKeyFor(r), 'ceo', 'seriesKeyFor is name-only now');
 });
 
 test('model: main bracket = the largest field of a tournament', () => {
@@ -113,9 +128,10 @@ test('model: column choice — majors only if someone played them; shared series
   const rows = [];
   // Series s0..s7: s_k played by (8 - k) players. sharedMin = ceil(10*0.2) = 2 -> s0..s6 qualify, top 6 kept.
   for (let k = 0; k < 8; k++) for (let p = 1; p <= 8 - k; p++) rows.push(row(p, `Series${k} Cup #${p}`));
-  rows.push(row(1, 'CEO 2026'), row(2, 'CEO 2025'), row(3, 'CEO 2024'));
+  rows.push(row(1, 'CEO 2026', { event_date: '2026-06-27' }), row(2, 'CEO 2025', { event_date: '2025-06-28' }), row(3, 'CEO 2024', { event_date: '2024-06-29' }));
   rows.push(row(1, 'Lonely Cup #1'));
-  const idx = M.buildSeriesIndex(rows);
+  // The game's majors list (increment 3: majors come from config, not from model.js).
+  const idx = M.buildSeriesIndex(rows, { majors: majorsFor() });
   const cols = M.chooseColumns(players, rows, idx);
   assert.deepStrictEqual(cols.majors.map((m) => m.label), ['CEO']);
   assert.deepStrictEqual(cols.shared.map((s) => s.key), ['series0 cup', 'series1 cup', 'series2 cup', 'series3 cup', 'series4 cup', 'series5 cup']);

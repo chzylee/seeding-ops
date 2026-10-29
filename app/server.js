@@ -11,6 +11,9 @@
 //   POST /api/e/<t>/<e>/refresh     re-pull + W-L in the background; 202, or 409 if a job runs
 //   GET  /api/e/<t>/<e>/status      { pulling, wl: {done,total,summaryDone,summaryTotal}, lastRunAt, error, ... }
 //   GET  /api/e/<t>/<e>/export.csv  the summary table as a CSV for Google Sheets (lib/view/export.js)
+//   POST /api/e/<t>/<e>/player/<id>         edit tier / notes in registry/tiers.csv (body { tier?, notes? })
+//   POST /api/e/<t>/<e>/player/<id>/review  the ✓ review mark (body { reviewed: true|false }): writes
+//                                           last_reviewed_on / last_reviewed_tournament (data.reviewPlayer)
 //   GET  /static/<file>             the page's JS/CSS (a fixed list; nothing else is served)
 //   GET  /schedule/<t>              conflicts: every player's schedule (pools, waves, start times)
 //   GET  /api/schedule/<t>/data     the latest schedule pull (conflicts/out/<t>__*/schedule.json)
@@ -101,6 +104,9 @@ function createApp(opts = {}) {
   // One schedule pull at a time per tournament. Small (about 10 requests), so it doesn't wait on the seeding job.
   const scheduleJobs = new Map();
   const tiersFile = opts.tiersFile; // undefined => data.js's own default (SEED_TIERS_FILE or registry/tiers.csv)
+  // The date for T1 writes (decided_on, last_reviewed_on) and the page's "today": opts.now (a ms
+  // clock, the one the jobs use) when given, else the real clock.
+  const nowDate = () => new Date(opts.now ? opts.now() : Date.now());
   const jobs = new Jobs({
     outRoot,
     getToken,
@@ -174,10 +180,11 @@ function createApp(opts = {}) {
         return send(res, 200, fs.readFileSync(PAGE), 'text/html; charset=utf-8');
       }
 
-      // Edit one player's tier / justification / notes in registry/tiers.csv (lib/view/data.js updatePlayer).
-      m = /^\/api\/e\/([^/]+)\/([^/]+)\/player\/(\d+)$/.exec(p);
+      // Edit one player's tier / notes (lib/view/data.js updatePlayer), or set / undo the ✓ review
+      // mark (reviewPlayer), in registry/tiers.csv. The tournament a review records is this URL's <t>.
+      m = /^\/api\/e\/([^/]+)\/([^/]+)\/player\/(\d+)(\/review)?$/.exec(p);
       if (m) {
-        const [, t, e, pid] = m;
+        const [, t, e, pid, review] = m;
         if (!data.SLUG_PART.test(t) || !data.SLUG_PART.test(e)) return notFound(res);
         if (method !== 'POST') return send(res, 405, 'Method not allowed');
         if (req.headers['x-seeding-app'] !== '1') return send(res, 403, 'Missing X-Seeding-App header');
@@ -187,9 +194,13 @@ function createApp(opts = {}) {
         for await (const chunk of req) { body += chunk; if (body.length > 20000) return send(res, 413, 'Too large'); }
         let fields;
         try { fields = JSON.parse(body || '{}'); } catch { return json(res, 400, { error: 'Body must be JSON.' }); }
-        const allowed = Object.fromEntries(Object.entries(fields).filter(([k]) => ['tier', 'justification', 'notes'].includes(k)));
-        try { return json(res, 200, data.updatePlayer(latest.dir, pid, allowed, { tiersFile })); }
-        catch (err) { return json(res, err.status || 500, { error: err.message }); }
+        if (!fields || typeof fields !== 'object' || Array.isArray(fields)) return json(res, 400, { error: 'Body must be a JSON object.' });
+        try {
+          if (review) return json(res, 200, data.reviewPlayer(latest.dir, pid, { reviewed: fields.reviewed, now: nowDate(), tiersFile }));
+          // Tier and notes only: T1 has no reason field, and nothing else on the row is the client's to set.
+          const allowed = Object.fromEntries(Object.entries(fields).filter(([k]) => ['tier', 'notes'].includes(k)));
+          return json(res, 200, data.updatePlayer(latest.dir, pid, allowed, { now: nowDate(), tiersFile }));
+        } catch (err) { return json(res, err.status || 500, { error: err.message }); }
       }
 
       m = /^\/api\/e\/([^/]+)\/([^/]+)\/(data|status|refresh|export\.csv)$/.exec(p);
@@ -200,14 +211,14 @@ function createApp(opts = {}) {
         if (what === 'data' && method === 'GET') {
           const latest = data.latestFinished(outRoot, t, e);
           if (!latest) return json(res, 404, { error: 'No finished pull for this event yet.', status: jobs.status(t, e) });
-          const vm = data.viewModel(latest.dir, { records: jobs.liveRecords(latest.dir), tiersFile });
+          const vm = data.viewModel(latest.dir, { records: jobs.liveRecords(latest.dir), tiersFile, today: data.todayOf(nowDate()) });
           vm.status = jobs.status(t, e);
           return json(res, 200, vm);
         }
         if (what === 'export.csv' && method === 'GET') {
           const latest = data.latestFinished(outRoot, t, e);
           if (!latest) return notFound(res);
-          const { filename, csv } = data.summaryExport(latest.dir, { records: jobs.liveRecords(latest.dir), tiersFile });
+          const { filename, csv } = data.summaryExport(latest.dir, { records: jobs.liveRecords(latest.dir), tiersFile, today: data.todayOf(nowDate()) });
           return send(res, 200, csv, 'text/csv; charset=utf-8', { 'Content-Disposition': `attachment; filename="${filename}"` });
         }
         if (what === 'refresh' && method === 'POST') {

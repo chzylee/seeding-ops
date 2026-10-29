@@ -1,0 +1,26 @@
+{
+  "_about": "Majors per game (docs/design-tool.md, display rules 5 and 6). Read by lib/view/majors.js. Each game is keyed by its start.gg videogame id; 'default' applies to any game without its own list. An entry is a column: label (the column header), pattern (a case-insensitive regular expression tested against the tournament name) and kind ('known' for the known majors, 'game' for a major specific to this game). A tournament counts only where the seeded game had a main event there: its largest bracket of that game at that tournament whose tournament or event name matches none of 'exclude'. One result per year per column (the year's largest such event).",
+  "exclude": ["\\bside\\b", "\\bcommunity\\b", "\\b2v2\\b", "\\bteams\\b", "\\bpre-"],
+  "games": {
+    "default": {
+      "name": "any game without its own list",
+      "majors": [
+        { "label": "CEO", "pattern": "^CEO \\d{4}\\b", "kind": "known" },
+        { "label": "Evo", "pattern": "^EVO \\d{4}\\b", "kind": "known" },
+        { "label": "Combo Breaker", "pattern": "^combo breaker\\b", "kind": "known" },
+        { "label": "Frosty Faustings", "pattern": "^frosty faustings\\b", "kind": "known" }
+      ]
+    },
+    "22407": {
+      "name": "Melty Blood Actress Again Current Code",
+      "majors": [
+        { "label": "CEO", "pattern": "^CEO \\d{4}\\b", "kind": "known" },
+        { "label": "Evo", "pattern": "^EVO \\d{4}\\b", "kind": "known" },
+        { "label": "Combo Breaker", "pattern": "^combo breaker\\b", "kind": "known" },
+        { "label": "Frosty Faustings", "pattern": "^frosty faustings\\b", "kind": "known" },
+        { "label": "Climax of Night", "pattern": "^climax of night\\b", "kind": "game" },
+        { "label": "Eclipse", "pattern": "^eclipse\\b", "kind": "game" }
+      ]
+    }
+  }
+}

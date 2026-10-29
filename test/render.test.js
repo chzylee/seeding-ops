@@ -10,6 +10,8 @@ const { test } = require('node:test');
 const assert = require('node:assert');
 const M = require('../lib/view/model');
 const R = require('../lib/view/render');
+// The game's majors list (increment 3: majors are per-game config, not built into model.js).
+const { majorsFor } = require('../testlib/majors-fixture');
 
 let ev = 100;
 const row = (pid, t, extra = {}) => ({ player_id: String(pid), gamer_tag: `P${pid}`, event_date: '2026-03-01', game_id: '1', game_name: 'MBTL',
@@ -32,7 +34,7 @@ function fixture() {
   const records = {};
   rows.forEach((r, i) => { if (i % 4 !== 3) records[M.key(r)] = { w: 2 + (i % 3), l: 1 + (i % 2), dq: 0 }; });
   const players = [1, 2, 3, 4].map((id) => ({ player_id: String(id), gamer_tag: `P${id}`, prefix: '', region_state: 'NY', region_country: 'United States' }));
-  const index = M.buildSeriesIndex(rows);
+  const index = M.buildSeriesIndex(rows, { majors: majorsFor() });
   const columns = M.chooseColumns(players, rows.filter(M.isGame), index);
   const meta = { game: { name: 'MBTL' } };
   const ctx = R.summaryContext({ meta, players, rows, records, notes: {}, columns, index });
@@ -263,7 +265,7 @@ test('render: A4-1 — summary header and row cell counts always agree (app row,
   // and app contexts must now show the SAME columns as each other too (hasTiers alone is enough).
   const { ctx, players, rows, records } = f;
   const notes = { [players[0].player_id]: { tier: 5 } };
-  const index = M.buildSeriesIndex(rows);
+  const index = M.buildSeriesIndex(rows, { majors: majorsFor() });
   const columns = M.chooseColumns(players, rows.filter(M.isGame), index);
   const tieredCtx = R.summaryContext({ meta: ctx.meta, players, rows, records, notes, columns, index });
   const withTiers = cellCounts({ ctx: tieredCtx, players });
@@ -306,7 +308,7 @@ test('notes: always a Notes column; other games grouped game > series with best 
     row(1, 'Fight Night 9', { is_event_game: 'false', game_name: 'SF6', placement: '5', num_entrants: '30', event_date: '2025-05-05' }),
   ];
   const rows = [...Object.values(ctx.rowsBy).flat(), ...extra];
-  const index = M.buildSeriesIndex(rows);
+  const index = M.buildSeriesIndex(rows, { majors: majorsFor() });
   const c2 = R.summaryContext({ meta: ctx.meta, players, rows, records: ctx.records, notes: {}, columns: { majors: ctx.majors, shared: ctx.shared }, index });
   const games = R.otherGameSeries(c2.rowsBy['1'], c2.records, c2.index);
   assert.strictEqual(games[0].game, 'GGST', 'games ordered by events entered (GGST 3 > SF6 1)');

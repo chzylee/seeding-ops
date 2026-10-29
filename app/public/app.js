@@ -44,14 +44,12 @@
   let vm = null, ctx = null, byId = new Map(), ordered = [], observer = null;
 
   // ---- Data ------------------------------------------------------------------------------------
+  // The context is built by lib/view/render.js contextFromViewModel, the same function the CLI view
+  // (views/major-table.js) uses, so the two render the same cells. app: the Tier column shows (and
+  // is editable) even before any tier exists.
   function hydrate(model) {
-    const cols = model.cols;
-    const rows = model.rows.map((a) => { const o = {}; for (let i = 0; i < cols.length; i++) o[cols[i]] = a[i]; return o; });
     const players = model.players;
-    const c = R.summaryContext({ meta: model.meta, players, rows, records: model.records, notes: model.notes || {},
-      columns: model.columns, index: M.indexFromKeys(model.labels) });
-    c.otherNote = '';
-    c.app = true; // the Tier column shows (and is editable) even before any tier exists
+    const c = R.contextFromViewModel(model, { app: true });
     return { ctx: c, byId: new Map(players.map((p) => [String(p.player_id), p])), ordered: M.orderPlayers(players, c.notes) };
   }
 
@@ -118,27 +116,36 @@
     applyFreeze();
     layoutPins();
     syncSel();
-    applySeeded();
   }
 
-  // ---- Seeded: a ✓ per row marks the player as seeded (green row). Per event, per viewer. --------
-  const SEEDED_KEY = `seeding:seeded:${SLUG}`;
-  let seeded = new Set((store.get(SEEDED_KEY, []) || []).map(String));
-  function applySeeded() {
-    for (const tr of table.querySelectorAll(':scope > tbody > tr[data-pid]')) {
-      const on = seeded.has(tr.dataset.pid);
-      tr.classList.toggle('seeded-row', on);
-      const td = tr.querySelector(':scope > td.seeded');
-      if (td) td.dataset.v = on ? '1' : '0';
-      const b = tr.querySelector('button.seed-btn');
-      if (b) { b.setAttribute('aria-pressed', String(on)); b.title = on ? 'Seeded — click to unmark' : 'Mark as seeded'; }
-    }
-  }
-  function toggleSeeded(pid) {
-    if (!pid) return;
-    if (seeded.has(pid)) seeded.delete(pid); else seeded.add(pid);
-    store.set(SEEDED_KEY, [...seeded]);
-    applySeeded();
+  // ---- ✓ review mark (T1): POST …/player/<id>/review writes last_reviewed_on and
+  // last_reviewed_tournament to registry/tiers.csv. The row's green state is rendered from the
+  // server's data (lib/view/render.js summaryRow), so every browser shows the same marks. The old
+  // per-browser seeded marks (localStorage, increment 2) are not read; their key is removed once.
+  try { localStorage.removeItem(`seeding:seeded:${SLUG}`); } catch { /* per-viewer storage only */ }
+  const reviewing = new Set();
+  async function toggleReviewed(pid) {
+    if (!pid || reviewing.has(pid)) return;
+    const n = ctx.notes[pid] || {};
+    const on = !M.reviewedHere(n, ctx.tournament);
+    reviewing.add(pid);
+    for (const td of table.querySelectorAll(`tbody tr[data-pid="${CSS.escape(pid)}"] > td.seeded`)) td.classList.add('saving');
+    let res, body;
+    try {
+      res = await fetch(api(`player/${encodeURIComponent(pid)}/review`), { method: 'POST', headers: { 'X-Seeding-App': '1', 'Content-Type': 'application/json' }, body: JSON.stringify({ reviewed: on }) });
+      body = await res.json().catch(() => ({}));
+    } catch (err) { body = { error: err.message }; res = { ok: false }; }
+    reviewing.delete(pid);
+    for (const td of table.querySelectorAll(`tbody tr[data-pid="${CSS.escape(pid)}"] > td.seeded`)) td.classList.remove('saving');
+    if (!res.ok) { showMsg(`Not saved: ${body.error || 'error'}`); return; }
+    // An un-✓ only undoes a review made today at this tournament (T1 rules); say so when it didn't.
+    const tag = byId.get(pid) ? byId.get(pid).gamer_tag : pid;
+    showMsg(!on && !body.changed ? `${tag} was reviewed here on ${body.last_reviewed_on}; a click only undoes a review made today, so that review stays.` : '');
+    ctx.notes[pid] = { ...n, tier: body.tier == null ? undefined : body.tier, notes: body.notes,
+      last_reviewed_on: body.last_reviewed_on, last_reviewed_tournament: body.last_reviewed_tournament };
+    rerenderRow(pid, null);
+    const btn = table.querySelector(`tbody tr[data-pid="${CSS.escape(pid)}"] button.seed-btn`);
+    if (btn) btn.focus({ preventScroll: true });
   }
 
   // ---- Freeze columns --------------------------------------------------------------------------
@@ -326,7 +333,7 @@
   // ---- Sorting (any table.sortable, including ones rendered later) ------------------------------
   document.addEventListener('click', (ev) => {
     const seedBtn = ev.target.closest('button.seed-btn');
-    if (seedBtn) { toggleSeeded(seedBtn.closest('tr').dataset.pid); return; }
+    if (seedBtn) { toggleReviewed(seedBtn.closest('tr').dataset.pid); return; }
     const pinBtn = ev.target.closest('button.pin');
     if (pinBtn) { togglePin(pinBtn.closest('tr')); return; }
     const fzBtn = ev.target.closest('button.freeze');
@@ -555,10 +562,8 @@
     box.className = `editor editor-${kind}`;
     if (kind === 'tier') {
       box.innerHTML = '<label>Tier <input class="ed-tier" type="number" min="0" max="20" step="1"></label>'
-        + '<label>Reason <input class="ed-just" type="text" placeholder="why this tier (optional)"></label>'
         + '<div class="ed-hint">Enter saves · Esc cancels</div>';
       box.querySelector('.ed-tier').value = Number.isFinite(n.tier) ? n.tier : '';
-      box.querySelector('.ed-just').value = n.justification || '';
     } else {
       box.innerHTML = '<textarea class="ed-notes" rows="4" placeholder="notes"></textarea><div class="ed-hint">Enter saves · Shift+Enter new line · Esc cancels</div>';
       box.querySelector('.ed-notes').value = n.notes || '';
@@ -585,14 +590,14 @@
     const { td, pid, kind, box } = editing;
     editing = null;
     const fields = kind === 'tier'
-      ? { tier: box.querySelector('.ed-tier').value.trim(), justification: box.querySelector('.ed-just').value.trim() }
+      ? { tier: box.querySelector('.ed-tier').value.trim() }
       : { notes: box.querySelector('.ed-notes').value };
     box.remove();
     td.classList.remove('editing');
     if (!save) { td.focus(); return; }
     const n = ctx.notes[pid] || {};
     const same = kind === 'tier'
-      ? String(Number.isFinite(n.tier) ? n.tier : '') === fields.tier && (n.justification || '') === fields.justification
+      ? String(Number.isFinite(n.tier) ? n.tier : '') === fields.tier
       : (n.notes || '') === fields.notes;
     if (same) { td.focus(); return; }
     td.classList.add('saving');
@@ -609,7 +614,8 @@
       return;
     }
     showMsg('');
-    ctx.notes[pid] = { ...n, tier: body.tier == null ? undefined : body.tier, justification: body.justification, notes: body.notes };
+    ctx.notes[pid] = { ...n, tier: body.tier == null ? undefined : body.tier, notes: body.notes,
+      last_reviewed_on: body.last_reviewed_on, last_reviewed_tournament: body.last_reviewed_tournament };
     ctx.hasTiers = true;
     rerenderRow(pid, kind);
   }
@@ -629,7 +635,6 @@
     applyFreeze();
     layoutPins();
     syncSel();
-    applySeeded();
     if (cmp.on && cmp.ids.includes(String(pid))) renderCompare();
   }
   table.addEventListener('dblclick', (ev) => {

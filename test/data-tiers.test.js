@@ -1,5 +1,5 @@
 'use strict';
-// lib/view/data.js — updatePlayer (the tier/justification/notes write path behind the app's
+// lib/view/data.js — updatePlayer (the tier/notes write path behind the app's
 // POST /api/e/<t>/<e>/player/<id>) and the route itself.
 //
 // A2-1 (build-record-webapp.md, pass 2): updatePlayer's tag-normalizer was missing a backslash
@@ -25,7 +25,8 @@ const { inject } = require('../testlib/inject');
 
 const PLAYER_COLS = ['player_id', 'gamer_tag', 'prefix', 'user_slug', 'region_state', 'region_country', 'result_count', 'history_status', 'team_entry'];
 const RESULT_COLS = ['player_id', 'gamer_tag', 'event_date', 'game_id', 'game_name', 'is_event_game', 'tournament_name', 'event_name', 'event_slug', 'event_id', 'num_entrants', 'placement', 'is_online'];
-const TIER_COLS = ['game_id', 'game_name', 'player_id', 'startgg_tag', 'sheet_tag', 'tier', 'justification', 'notes', 'decided_on', 'source', 'sheet_region', 'sheet_placements', 'sheet_notes'];
+// T1 as of increment 3 (docs/design-tool.md): justification dropped, last_reviewed_on / _tournament added.
+const TIER_COLS = data.TIER_COLS;
 
 const tmpDir = (prefix) => fs.mkdtempSync(path.join(os.tmpdir(), prefix));
 
@@ -59,15 +60,16 @@ test('updatePlayer: a multi-word tag matches the existing sheet-imported row by 
   const tiersFile = path.join(outRoot, 'registry', 'tiers.csv');
   const dir = makeRun(outRoot, { players: [player(101, 'Mrs Smith')] });
   // Pre-link state: no player_id yet, exactly how every sheet-imported row starts.
-  seedTiers(tiersFile, [{ game_id: '1', game_name: 'MBTL', player_id: '', startgg_tag: '', sheet_tag: 'Mrs  Smith', tier: '7', justification: 'sheet seed', notes: '', decided_on: '', source: 'sheet import', sheet_region: '', sheet_placements: '', sheet_notes: '' }]);
+  seedTiers(tiersFile, [{ game_id: '1', game_name: 'MBTL', player_id: '', startgg_tag: '', sheet_tag: 'Mrs  Smith', tier: '7', notes: '', decided_on: '', source: 'sheet import', sheet_region: '', sheet_placements: '', sheet_notes: '' }]);
 
+  // A justification sent anyway is not stored: T1 has no reason field (increment 3).
   const result = data.updatePlayer(dir, '101', { tier: 9, justification: 'retest' }, { now: new Date('2026-10-15T00:00:00Z'), tiersFile });
 
   const rows = readTiersFile(tiersFile);
   assert.strictEqual(rows.length, 1, 'the edit updated the existing row instead of forking a duplicate');
   assert.strictEqual(rows[0].player_id, '101');
   assert.strictEqual(rows[0].tier, '9');
-  assert.strictEqual(rows[0].justification, 'retest');
+  assert.ok(!('justification' in rows[0]), 'no justification column is written');
   assert.strictEqual(rows[0].source, 'app');
   assert.strictEqual(result.tier, 9);
   assert.strictEqual(result.player_id, '101');
@@ -77,7 +79,7 @@ test('updatePlayer: player_id match — once a row is linked, a second edit matc
   const outRoot = tmpDir('seeding-tiers-pid-');
   const tiersFile = path.join(outRoot, 'registry', 'tiers.csv');
   const dir = makeRun(outRoot, { players: [player(202, 'Kyuseishu')] });
-  seedTiers(tiersFile, [{ game_id: '1', game_name: 'MBTL', player_id: '202', startgg_tag: 'Kyuseishu', sheet_tag: 'Kyuseishu', tier: '3', justification: '', notes: '', decided_on: '2026-09-01', source: 'app', sheet_region: '', sheet_placements: '', sheet_notes: '' }]);
+  seedTiers(tiersFile, [{ game_id: '1', game_name: 'MBTL', player_id: '202', startgg_tag: 'Kyuseishu', sheet_tag: 'Kyuseishu', tier: '3', notes: '', decided_on: '2026-09-01', source: 'app', sheet_region: '', sheet_placements: '', sheet_notes: '' }]);
 
   // The player's displayed tag has since drifted from what's on file (casing/spacing); the
   // player_id match must still win over any tag lookup.
@@ -105,7 +107,7 @@ test('A4-2: reader and writer pick the same row for the same player -- a tag col
   const dir = makeRun(outRoot, { players: [player(500, 'Foo'), player(600, 'Foo')] });
   // Player 500's row is already linked (an earlier edit). Player 600 is a different real person
   // who happens to share the tag "Foo" -- tags collide; player_id is the only unique key.
-  seedTiers(tiersFile, [{ game_id: '1', game_name: 'MBTL', player_id: '500', startgg_tag: 'Foo', sheet_tag: 'Foo', tier: '5', justification: 'linked to 500', notes: '', decided_on: '2026-09-01', source: 'app', sheet_region: '', sheet_placements: '', sheet_notes: '' }]);
+  seedTiers(tiersFile, [{ game_id: '1', game_name: 'MBTL', player_id: '500', startgg_tag: 'Foo', sheet_tag: 'Foo', tier: '5', notes: '', decided_on: '2026-09-01', source: 'app', sheet_region: '', sheet_placements: '', sheet_notes: '' }]);
 
   // The reader: 500 reads its own linked row; 600 must NOT inherit it through the shared tag.
   const run = data.loadRun(dir);
@@ -136,7 +138,7 @@ test('updatePlayer: a player with no tiers row at all gets a new one created, li
   const outRoot = tmpDir('seeding-tiers-new-');
   const tiersFile = path.join(outRoot, 'registry', 'tiers.csv');
   const dir = makeRun(outRoot, { players: [player(303, 'Freshmeat')] });
-  seedTiers(tiersFile, [{ game_id: '1', game_name: 'MBTL', player_id: '', startgg_tag: '', sheet_tag: 'Someone Else', tier: '5', justification: '', notes: '', decided_on: '', source: 'sheet import', sheet_region: '', sheet_placements: '', sheet_notes: '' }]);
+  seedTiers(tiersFile, [{ game_id: '1', game_name: 'MBTL', player_id: '', startgg_tag: '', sheet_tag: 'Someone Else', tier: '5', notes: '', decided_on: '', source: 'sheet import', sheet_region: '', sheet_placements: '', sheet_notes: '' }]);
 
   const result = data.updatePlayer(dir, '303', { tier: 2 }, { now: new Date('2026-10-15T00:00:00Z'), tiersFile });
 
@@ -196,7 +198,7 @@ test('updatePlayer: the write is atomic (temp file + rename) — no .tmp left be
   const outRoot = tmpDir('seeding-tiers-atomic-');
   const tiersFile = path.join(outRoot, 'registry', 'tiers.csv');
   const dir = makeRun(outRoot, { players: [player(606, 'Anvil'), player(607, 'Breeze')] });
-  seedTiers(tiersFile, [{ game_id: '1', game_name: 'MBTL', player_id: '', startgg_tag: '', sheet_tag: 'Breeze', tier: '12', justification: 'carry', notes: 'n', decided_on: '2026-08-01', source: 'sheet import', sheet_region: 'NY', sheet_placements: '', sheet_notes: '' }]);
+  seedTiers(tiersFile, [{ game_id: '1', game_name: 'MBTL', player_id: '', startgg_tag: '', sheet_tag: 'Breeze', tier: '12', notes: 'n', decided_on: '2026-08-01', source: 'sheet import', sheet_region: 'NY', sheet_placements: '', sheet_notes: '' }]);
 
   data.updatePlayer(dir, '606', { tier: 1 }, { tiersFile });
   assert.ok(!fs.existsSync(tiersFile + '.tmp'), 'no leftover temp file');
@@ -232,16 +234,16 @@ test('route: POST player edit — X-Seeding-App guard, JSON body, field allow-li
   assert.strictEqual(badJson.status, 400);
   assert.match(badJson.json().error, /JSON/);
 
-  // A field not on the allow-list (tier, justification, notes) is dropped before it ever reaches
+  // A field not on the allow-list (tier, notes; increment 3 dropped justification) is dropped before it ever reaches
   // updatePlayer — it cannot override startgg_tag, source, or anything else on the row.
   const withExtra = await inject(app.handler, {
     url: API, method: 'POST', headers: { 'X-Seeding-App': '1' },
-    body: JSON.stringify({ tier: 8, justification: 'solid', source: 'hacked', startgg_tag: 'EVIL', player_id: '999' }),
+    body: JSON.stringify({ tier: 8, source: 'hacked', startgg_tag: 'EVIL', player_id: '999' }),
   });
   assert.strictEqual(withExtra.status, 200);
   const body = withExtra.json();
   assert.strictEqual(body.tier, 8);
-  assert.strictEqual(body.justification, 'solid');
+  assert.ok(!('justification' in body), 'no reason field: T1 dropped justification (oracle corrected for increment 3)');
   assert.strictEqual(body.player_id, '1', 'the URL\'s player id wins, not a body-supplied one');
   const rows = readTiersFile(tiersFile);
   assert.strictEqual(rows.length, 1);

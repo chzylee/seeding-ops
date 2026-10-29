@@ -1,0 +1,29 @@
+[package]
+name = "seeding-ops"
+version = "0.1.0"
+description = "Seeding ops for FGC tournaments: pull start.gg results, tier players, seed from one page"
+authors = ["enpicie"]
+edition = "2021"
+rust-version = "1.77.2"
+
+# The binary name becomes the installed executable name. Keep it stable: the
+# NSIS uninstaller matches on it across upgrades.
+[[bin]]
+name = "seeding-ops"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-shell = "2"
+
+# Smaller binary, and this app is a window -- compile time is irrelevant next to
+# the sidecar it ships beside.
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

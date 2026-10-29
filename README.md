@@ -285,6 +285,47 @@ node scripts/schema-check.js                     # the design's open schema ques
 node scripts/pull-schedule.js <tournament link>  # the Schedule tab's pull, from the command line
 ```
 
+## Desktop app
+
+The same server, in a window, with no Node on the machine: a Tauri shell (`src-tauri/`) that
+spawns a compiled copy of `app/server.js` and points a webview at `http://127.0.0.1:8765/`. The
+arrangement is copied from `mbaacc-stream-setup`, where it runs the stream scoreboard.
+
+**Using it in this checkout.** Take the two executables out of `Seeding-Ops-windows.zip` (the
+release download, or the artifact of any `release` workflow run) and drop them into the repo:
+
+```
+Seeding Ops.exe          the app; launch this, pin this
+app/seeding-server.exe   the server it spawns, tucked in with the server code
+```
+
+An exe sitting in a project folder serves that folder: `app/server.js` is loaded **live from the
+checkout** at launch (the startup line says `server code : live from …`), so server and page edits
+apply on the next relaunch and the exes never need rebuilding. Both files are gitignored. The
+token comes from `.env` as always; pulls land in `out/`; tiers are `registry/tiers.csv`.
+
+An unzipped copy outside a checkout works the same way with the files in the ZIP: the embedded
+server runs against the `app/`, `lib/`, `config/` and `registry/` beside the exe. An installed
+copy (the NSIS artifact) can be pointed at a checkout with a `project-path.txt` next to the exe
+whose first line is the folder to serve, or `SEEDING_PROJECT` in the environment.
+
+One server at a time: everything wants port 8765. If `npm start` is already running, the window
+simply adopts it.
+
+**Releasing.** Builds happen in GitHub Actions (`.github/workflows/release.yml`); no Rust
+toolchain is needed locally.
+
+- *Test a build*: Actions → `release` → Run workflow, `publish` unticked. The ZIP is kept as an
+  artifact; nothing reaches the Releases page.
+- *Share it*: the same with `publish` ticked. Publishes under the `tag` input, default `latest`,
+  re-pointed on every publish.
+- *Cut a version*: bump `version` in `package.json`, `src-tauri/tauri.conf.json` and
+  `src-tauri/Cargo.toml`, then push a `v*` tag.
+
+`npm run sidecar` compiles the server with Bun into `src-tauri/binaries/` (needed before
+`npm run tauri build`; CI does it for you). The app is not code signed: Windows shows
+"publisher unknown", choose **More info → Run anyway**.
+
 ## Tests
 
 ```

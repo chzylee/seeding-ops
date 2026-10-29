@@ -2243,3 +2243,34 @@ REPORT
   5. Carried: A2-5, A2-6, A4-3, A4-6, C2-3 (+ C3-4, needs a live allowance), D4-6 before sharing,
      pass 1's interpretations, drag-to-order if still wanted.
 ```
+
+---
+
+## Out-of-band: the desktop app shell (orchestrating session, 2026-10-29)
+
+Noah: *"the scoreboard control tool i built for my stream setup uses a good tauri setup that i want to
+replicate for this … copy the setup with pipeline too."* Recorded per standing rule (a). Not part of
+build A or B; the share-phase direction the spec named ("a Tauri shell"), done now on his instruction.
+
+Copied from `C:\Users\iknow\repos\mbaacc-stream-setup` with names, port and window size changed:
+
+| file | role |
+|---|---|
+| `src-tauri/` (Cargo.toml, build.rs, tauri.conf.json, capabilities/default.json, shell/index.html, src/main.rs, icons/) | the Rust shell: spawn the sidecar (`app/seeding-server.exe` beside the code, or beside the exe), open a window on a starting page, navigate to `http://127.0.0.1:8765/` once the port is up, kill the server on exit. Window 1440×900, min 900×500. Icons are the stream app's for now. |
+| `app/app-main.js` | the compiled sidecar's entry: prefers a live `app/server.js` found beside the exe, its parent, `project-path.txt` or `SEEDING_PROJECT`; else the embedded copy. Sets `SEEDING_ROOT` and calls `main([])`. |
+| `scripts/build-sidecar.mjs` | `npm run sidecar`: Bun compiles `app/app-main.js` to `src-tauri/binaries/seeding-server-<triple>.exe`. |
+| `.github/workflows/release.yml` | dispatch or `v*` tag: tests, sidecar, tauri-action build (nsis, dmg as artifacts), a portable Windows ZIP (`Seeding Ops.exe`, `app/seeding-server.exe`, app/, lib/, config/, views/, registry/tiers.csv, pull.js, seed.js, launchers, README, .env.example; never out/ or .env), published under `latest` or the tag. |
+| `package.json`, `package-lock.json` | scripts `sidecar`, `tauri`; devDependency `@tauri-apps/cli ^2` (the first dependency in the repo; dev only, for CI's `npm ci`). |
+| `.gitignore`, README §Desktop app | build output and the dropped-in exes ignored; the checkout and release workflow documented. |
+
+**Code change for the embedded case:** a compiled binary's `__dirname` is inside the bundle, so
+`app/server.js`, `lib/view/data.js`, `lib/view/majors.js`, `lib/pool.js` and `pull.js` resolve the
+project folder from `SEEDING_ROOT` when it is set (the loader sets it), and the server's static files
+come from `<root>/app/public`. From source nothing changes. Suite after: 223/223/0/0 offline.
+
+**Verified locally** (Bun 1.4.4): the sidecar compiles (110 MB); dropped into `app/` it starts in live
+mode (`server code : live from …app\server.js`), home 200, `/static/model.js` 200, `/.env` 404; from
+a bare folder without `app/server.js` it starts in embedded mode against the files beside it, same
+probes. `node:util.parseEnv` works under Bun, so `.env` loading does. **Not verified:** the Rust shell
+itself (no Rust toolchain here; CI builds it, as for the stream app), the NSIS resources list, the
+workflow end to end (the repo has no remote yet).

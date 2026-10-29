@@ -50,7 +50,10 @@ const { readSchedule } = require('../lib/schedule-pull');
 const { Jobs } = require('./jobs');
 const { createQueue } = require('./queue');
 
-const ROOT = path.join(__dirname, '..');
+// SEEDING_ROOT points the server at a project folder on disk when this file runs from inside
+// the compiled desktop sidecar (app/app-main.js sets it). From source it is simply the repo.
+const ROOT = process.env.SEEDING_ROOT ? path.resolve(process.env.SEEDING_ROOT) : path.join(__dirname, '..');
+const APP_DIR = path.join(ROOT, 'app');
 const DEFAULT_PORT = 8765;
 const HOST = '127.0.0.1';
 
@@ -59,13 +62,13 @@ const JS = 'text/javascript; charset=utf-8';
 const STATIC = {
   'model.js': [path.join(ROOT, 'lib', 'view', 'model.js'), JS],
   'render.js': [path.join(ROOT, 'lib', 'view', 'render.js'), JS],
-  'app.js': [path.join(__dirname, 'public', 'app.js'), JS],
-  'tournament.js': [path.join(__dirname, 'public', 'tournament.js'), JS],
-  'schedule.js': [path.join(__dirname, 'public', 'schedule.js'), JS],
-  'index.js': [path.join(__dirname, 'public', 'index.js'), JS],
-  'app.css': [path.join(__dirname, 'public', 'app.css'), 'text/css; charset=utf-8'],
+  'app.js': [path.join(APP_DIR, 'public', 'app.js'), JS],
+  'tournament.js': [path.join(APP_DIR, 'public', 'tournament.js'), JS],
+  'schedule.js': [path.join(APP_DIR, 'public', 'schedule.js'), JS],
+  'index.js': [path.join(APP_DIR, 'public', 'index.js'), JS],
+  'app.css': [path.join(APP_DIR, 'public', 'app.css'), 'text/css; charset=utf-8'],
 };
-const PAGE = path.join(__dirname, 'public', 'tournament.html');
+const PAGE = path.join(APP_DIR, 'public', 'tournament.html');
 
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 

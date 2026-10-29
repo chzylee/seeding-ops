@@ -4,3 +4,16 @@ node_modules/
 conflicts/out/
 registry/*.bak
 registry/*.tmp
+
+# Desktop app build output. Nothing here is authored: `npm run sidecar` rebuilds the
+# server binary and the GitHub Actions release workflow builds the app.
+src-tauri/target/
+src-tauri/binaries/
+src-tauri/gen/
+
+# The desktop app dropped into the checkout so the exe serves this folder (see README).
+# Build output, never authored here: take it from a release workflow run.
+/Seeding Ops.exe
+/seeding-server.exe
+/app/seeding-server.exe
+project-path.txt

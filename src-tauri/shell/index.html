@@ -1,0 +1,58 @@
+<!--
+	Startup page. Shown for the second or so between the window appearing and
+	the server binding, then replaced by the seeding app via navigate().
+
+	It exists so a server that never starts produces a window that explains
+	itself instead of a spinner that never resolves.
+-->
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Seeding Ops</title>
+<style>
+	:root { --ink: #121417; --text: #eef0f3; --dim: #8e95a3; --line: #2a2f38; }
+	html, body { height: 100%; margin: 0; }
+	body { background: var(--ink); color: var(--text); display: grid; place-items: center;
+	       font: 14px/1.6 "Segoe UI", system-ui, sans-serif; -webkit-user-select: none; user-select: none; }
+	.box { text-align: center; max-width: 520px; padding: 0 32px; }
+	h1 { font-size: 15px; letter-spacing: .04em; font-weight: 600; margin: 0 0 6px; }
+	p { color: var(--dim); margin: 6px 0; }
+	.dot { display: inline-block; width: 6px; height: 6px; margin: 0 3px; border-radius: 50%;
+	       background: #3b82f6; animation: pulse 1.2s infinite ease-in-out; }
+	.dot:nth-child(2) { animation-delay: .15s } .dot:nth-child(3) { animation-delay: .3s }
+	@keyframes pulse { 0%, 80%, 100% { opacity: .25 } 40% { opacity: 1 } }
+	.fail { display: none; }
+	.fail code { display: block; margin-top: 14px; padding: 10px 12px; text-align: left;
+	             background: #1a1e25; border: 1px solid var(--line); border-radius: 6px;
+	             font: 12px/1.5 ui-monospace, Consolas, monospace; color: var(--text); }
+	body.failed .starting { display: none } body.failed .fail { display: block }
+</style>
+</head>
+<body>
+	<div class="box">
+		<div class="starting">
+			<h1>Seeding Ops</h1>
+			<p>Starting the seeding server<span class="dot"></span><span class="dot"></span><span class="dot"></span></p>
+		</div>
+		<div class="fail">
+			<h1>The seeding server did not start</h1>
+			<p>Nothing is listening on port <b id="port">8765</b>.</p>
+			<p>The usual cause is another copy already running &mdash; check the
+			   system tray and Task Manager for a second <b>Seeding Ops</b> (or a
+			   <b>node app/server.js</b> started from a terminal), close it, and
+			   start this one again.</p>
+			<code id="detail">If the server starts and then stops, the folder next to the application
+is missing app/, lib/ or config/, or .env has no STARTGG_TOKEN.</code>
+		</div>
+	</div>
+<script type="module">
+	// Emitted by the Rust shell when the startup timeout elapses.
+	const { listen } = window.__TAURI__.event;
+	listen("server-failed", e => {
+		if (e.payload) document.getElementById("port").textContent = e.payload;
+		document.body.classList.add("failed");
+	});
+</script>
+</body>
+</html>

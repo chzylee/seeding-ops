@@ -1,0 +1,177 @@
+# Build the desktop app and publish it as one self-contained ZIP.
+#
+# There is deliberately no local build path for this. The Rust shell in
+# src-tauri/ is a few dozen lines that change almost never, so requiring a Rust
+# toolchain and MSVC on the seeding machine would be overhead for nothing.
+# Day-to-day work happens with `npm start`; this produces the thing people
+# actually download.
+#
+# Two triggers:
+#   workflow_dispatch  -- Actions tab -> release -> Run workflow. Builds and
+#                         keeps artifacts. Tick `publish` to also put a release
+#                         on the Releases page under `tag` (default `latest`).
+#   push tag v*        -- same build, published under that tag.
+#
+# Order matters: the Bun sidecar must exist before tauri-action runs, because
+# Tauri resolves externalBin at bundle time and fails if the binary is missing.
+#
+# Copied from mbaacc-stream-setup/.github/workflows/release.yml; names and the
+# staged file list differ.
+
+name: release
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Publish a release with the portable ZIP'
+        type: boolean
+        default: false
+      tag:
+        description: 'Release tag to publish under'
+        type: string
+        default: latest
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: windows-latest
+            target: x86_64-pc-windows-msvc
+          - platform: macos-latest
+            target: aarch64-apple-darwin
+
+    runs-on: ${{ matrix.platform }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      # Rust compiles from scratch otherwise; this is the difference between a
+      # 12 minute build and a 4 minute one.
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
+
+      - run: npm ci
+
+      # The suite is offline and fast; a release never ships code that fails it.
+      - name: Test
+        shell: bash
+        run: NODE_OPTIONS="--require ./testlib/no-network.js" node --test
+
+      - name: Build the server sidecar
+        env:
+          SIDECAR_TARGET: ${{ matrix.target }}
+        run: npm run sidecar
+
+      - uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          # Build only, never publish. tauri-action skips creating a release
+          # when tagName/releaseName are empty, which leaves the Publish step
+          # below as the single path to the Releases page.
+          tagName: ''
+          releaseName: ''
+          args: --target ${{ matrix.target }}
+
+      # Always keep the artifacts, so a dispatch run is inspectable without a
+      # release attached to it.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: seeding-ops-${{ matrix.target }}
+          path: |
+            src-tauri/target/${{ matrix.target }}/release/bundle/nsis/*-setup.exe
+            src-tauri/target/${{ matrix.target }}/release/bundle/dmg/*.dmg
+          if-no-files-found: warn
+
+      # The portable folder: everything needed to run, nothing else. Unzip it
+      # anywhere, put a start.gg token in .env, and double-click -- no installer,
+      # no Node, no repo. It is also exactly the layout a checkout wants (one
+      # visible exe at the root, the server binary tucked into app/), so the same
+      # two exes can be dropped into a working copy. Windows only -- the macOS
+      # bundle has never been run on real hardware.
+      #
+      # app/server.js ships alongside its compiled twin on purpose: the loader
+      # prefers it, so the ZIP a person receives is editable rather than opaque.
+      # Build inputs (scripts/, src-tauri/, test/, docs/) stay out. registry/
+      # ships the tiers table as committed; out/ and .env are never in the ZIP.
+      - name: Stage the portable folder
+        if: matrix.platform == 'windows-latest'
+        shell: bash
+        run: |
+          set -eu
+          P=portable
+          mkdir -p "$P/app" "$P/registry" "$P/out"
+          cp "src-tauri/target/${{ matrix.target }}/release/seeding-ops.exe" "$P/Seeding Ops.exe"
+          cp "src-tauri/binaries/seeding-server-${{ matrix.target }}.exe" "$P/app/seeding-server.exe"
+          cp -r app/. "$P/app/"
+          cp -r lib config views "$P/"
+          cp registry/tiers.csv "$P/registry/"
+          cp pull.js seed.js seed.cmd app.cmd package.json README.md .env.example "$P/"
+          echo "--- contents ---" && find "$P" -maxdepth 2 | sort
+
+      - name: Zip it
+        if: matrix.platform == 'windows-latest'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Compress-Archive -Path portable/* -DestinationPath dist/Seeding-Ops-windows.zip -Force
+
+      - uses: actions/upload-artifact@v4
+        if: matrix.platform == 'windows-latest'
+        with:
+          name: seeding-ops-windows-portable-zip
+          path: dist/Seeding-Ops-windows.zip
+
+      # One publish path for both triggers. A v* push publishes under that tag;
+      # a ticked dispatch publishes under `tag` (default `latest`, re-pointed
+      # each time so the link is stable).
+      - name: Publish release
+        if: matrix.platform == 'windows-latest' && (startsWith(github.ref, 'refs/tags/v') || inputs.publish)
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -eu
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then TAG="${GITHUB_REF_NAME}"; else TAG="${{ inputs.tag }}"; fi
+          echo "publishing to $TAG"
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" --title "Seeding Ops ($TAG)" --notes "$(cat <<'NOTES'
+          Download **Seeding-Ops-windows.zip**, unzip it anywhere you like, copy
+          `.env.example` to `.env` and paste your start.gg token after `STARTGG_TOKEN=`,
+          then run **Seeding Ops.exe**. Nothing is installed; the folder you unzip is
+          the whole application, and your pulls land in its `out/` folder.
+
+          Windows will say the publisher is unknown -- the app is not code signed.
+          Choose **More info**, then **Run anyway**.
+          NOTES
+          )"
+          fi
+          gh release upload "$TAG" dist/Seeding-Ops-windows.zip --clobber
+          gh release edit "$TAG" --draft=false
+
+          # The NSIS installer is deliberately NOT attached: it lays the same
+          # files down under %LOCALAPPDATA%\Programs, a path you did not choose,
+          # and your tiers table and pulls belong in a folder you can open. It is
+          # still built and kept as a run artifact if it is ever wanted.

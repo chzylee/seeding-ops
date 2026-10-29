@@ -88,8 +88,10 @@ async function main(argv = process.argv.slice(2), opts = {}) {
     stderr.write(USAGE + '\n');
     return EXIT_SETUP;
   }
-  const outRoot = opts.outRoot || path.join(__dirname, 'out');
-  const token = 'token' in opts ? opts.token : loadToken({ envFile: path.join(__dirname, '.env') }).token;
+  // SEEDING_ROOT: the project folder when running inside the compiled desktop sidecar.
+  const root = process.env.SEEDING_ROOT ? path.resolve(process.env.SEEDING_ROOT) : __dirname;
+  const outRoot = opts.outRoot || path.join(root, 'out');
+  const token = 'token' in opts ? opts.token : loadToken({ envFile: path.join(root, '.env') }).token;
   const io = { stderr, stdout, fetchImpl: opts.fetchImpl };
   if (args.resumeDir) return run({ resumeDir: args.resumeDir, token, outRoot, ...io });
   if (!token) return run({ url: args.urls[0], token, outRoot, ...io }); // the plain no-token message, exit 2

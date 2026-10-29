@@ -518,3 +518,189 @@ at the top of the final report.
 | B2-6 | Acknowledged: UTC "today", as `decided_on` always was. Flagged to Noah. | Consistency with existing dates. |
 | B2-8 | Fix the README list slip. | Record accuracy. |
 | item 5 above | Check whether the no-op un-✓ shows its explanation in the status line; fix if the message is never rendered. | Pass 1's own checklist promised it. |
+
+---
+
+## Pass 3 — lead engineer (repair)
+
+Seat: lead-engineer persona v0.4.0 (`personal-staff/personas/library/lead-engineer.md`, Profile block,
+loaded in-seat), a fresh job. I did not build pass 1. I treated its code as a working system and
+recorded the before-state before the first edit. Model: Opus. Branch `build/tool-a`, started at
+`1dcfec2` with a clean tree. Five code/doc commits (`d710086`, `6b670d6`, `f609c9f`, `3d669e6`,
+`bc7f0ad`) plus this record's commit. Local only, no push, nothing amended.
+
+### Terms as understood
+
+- **Scope:** dispose of every finding from pass 2 (B2-1..B2-8) plus the orchestrator's item 5. Each one is
+  FIXED (with a commit and a pinning test) or DECLINED (with reasoning). The orchestrator's rulings
+  for pass 3 are the scope, and I did not re-decide them: B2-1 option (a); B2-2 adds a `36865` list
+  and leaves `50203` on `default`; B2-3 fix; B2-4 record; B2-5 and B2-6 acknowledged; B2-8 fix;
+  item 5 check-and-fix.
+- **Binding:** `docs/dispatch-contract-tool.md` (mutation grants, prohibitions, Acceptance) and
+  `docs/design-tool.md` §T1 Rules ("A review recorded earlier is never destroyed by a click").
+- **Before-state** (recorded before the first edit, at `1dcfec2`): `node --test` gave
+  **168 / 165 / 0 / 3**, which matches the brief. `out/` held 56 files, with a combined sha1 of `5255e91…`.
+  `registry/tiers.csv` sha1 was `ffb8898…` and `.bak` was `de33fb8…`. I also kept a sorted list of the 168 test
+  names for the after comparison.
+- **Spend/process:** no skills, subagents or workflows. I made no start.gg calls and never read the token.
+  `out/` and `registry/` were read-only, and every write path ran on copies (temp folders in tests,
+  a scratch `out/` + `tiers.csv` for the live run). `registry/tiers.csv.bak` was not touched.
+- **Grounding not consulted** (the standards bank, the runbook). Every ruling here traces to the
+  orchestrator's rulings, the spec or the existing code.
+- **Increment 1's passes 2–4 remain open**, due with build B (spec §Next steps, step 4).
+
+### Assumptions I supplied
+
+1. **"The pair it displayed before the ✓" is held per page load.** The page keeps a map from each
+   player to the pair a ✓ replaced, filled only when that ✓ changed the row, and sends it with the
+   un-✓. After a reload, or from another browser, the page no longer knows the pair. It sends none,
+   and the server then clears today's review as before. The earlier review is lost in that one path.
+   Closing it needs option (c), a stored previous-review pair, which the ruling left to Noah.
+   The README says this in one clause. *Amendable.*
+2. **No pair sent means "clear both"** (the pre-B2-1 behavior), so the existing test
+   "un-✓ is a same-day undo only …" (which sends none) still holds unchanged. A pair is read from the
+   body only when `reviewed` is `false` and at least one of the two keys is present. A missing key
+   in a sent pair counts as blank, so `{ last_reviewed_on: '2026-10-16' }` alone is a 400 under
+   "both blank or both set".
+3. **The date check is a real calendar date**, not just the `YYYY-MM-DD` shape (`2026-02-30` is a
+   400). The tournament uses the route's existing `SLUG_PART` pattern.
+4. **What a forged pair can do:** it lands only on a row whose review is this tournament and today.
+   That is the click being undone, so a caller can at most give today's misclick an arbitrary
+   earlier pair. This is the cost option (a) accepted ("the route accepts review values from the body
+   for this one case only"). There is no auth surface beyond the existing `X-Seeding-App` guard and the
+   localhost bind.
+5. **B2-3's "holds nothing but this review"** means `source = app`, and every column other than
+   `game_id`, `game_name`, `player_id`, `startgg_tag`, `sheet_tag`, `source` and the review pair is
+   blank. That includes tier, notes, `decided_on`, the sheet columns and any unknown column. Such a row is
+   removed only when the undo leaves its review blank. A pre-existing empty `app` row (a leftover
+   from before this fix) is removed by the same rule on its next ✓/un-✓. That is harmless and matches the
+   intent.
+6. **Item 5: the note lives in `#status`**, the header's `role=status` line the checklist pointed at.
+   I picked it over making `#msg` visible because `#msg` sits above the table inside the scrolling pane.
+   It stays until the next action: another ✓, an editor save, or a refresh (whose own progress text
+   takes the line). No timer clears it. Errors ("Not saved: …") stay in `#msg` as before, and
+   I did not change them (see Could not verify).
+7. **The restore gets a note too** ("X: today's review undone; the review of 2026-10-16 at
+   eclipse-1st-cour is back."). Without one, a restore looks like a plain un-✓ that left the row
+   un-green, and the orchestrator's checklist needs something to read. It is small and inside item 5's ask.
+
+### Dispositions
+
+| finding | disposition | commit | test (pins it) | note |
+|---|---|---|---|---|
+| B2-1 misclick ✓ + undo erases the earlier review | **FIXED** (ruling: option (a), amendable) | `6b670d6` (server, route), `f609c9f` (page), `3d669e6` (README) | `test/review.test.js`: "B2-1: ✓ at a new tournament, then un-✓ the same day, puts the earlier review back (2026-10-16 at eclipse-1st-cour), byte for byte"; "B2-1: a blank earlier pair clears …"; "B2-1: an un-✓ over a review that is not this tournament today is a no-op, and a forged earlier pair is ignored"; "B2-1: the earlier pair is validated …"; "route: an un-✓ body carries the earlier pair …"; "item 5 and B2-1, the page: …" (source pin: the un-✓ sends `replaced.get(pid)`) | Mutation-checked: restoring blank instead of the pair fails 3 tests; dropping the today+tournament guard fails 2; dropping either validation fails the validation tests. Live: at a scratch `next-event` page, ✓ then un-✓ on Aster Laker brought back 2026-10-16 / eclipse-1st-cour, and the scratch `tiers.csv` came back byte-identical to the real file. Limit: assumption 1. |
+| B2-2 Climax of Night dropped for MBTL | **FIXED** (ruling: add `36865`, amendable; UNI2 stays `default`) | `d710086` | `test/majors.test.js` "config/majors.json as shipped: an MBTL run gets a Climax of Night column (B2-2); UNI2 stays on the default list" | Rows mirror the real Crescendo MBTL results (names, 158/142 and 85/73 entrants, dates, a UNI2 Climax bracket that must not count). Fails with the config change stashed. Real folders, read-only (`scratchpad/mbtl-check.js`, `data.loadRun`): all three MBTL runs `["Combo Breaker","Frosty Faustings","Climax of Night"]` (before: without Climax). UNI2 runs unchanged `["CEO","Evo","Combo Breaker","Frosty Faustings"]`. Eclipse unchanged. `out/` combined sha1 unchanged. |
+| B2-3 ✓ + un-✓ leaves an empty tiers row | **FIXED** | `6b670d6` | `test/review.test.js` "B2-3: ✓ then un-✓ on a player with no tiers row leaves the file as it was (the record count unchanged, no empty row)" | Covers both the no-pair and blank-pair undo. It also checks that a ✓-created row which later got a note is kept. Mutation (never remove) fails it. |
+| B2-4 a fifth changed test not listed | **FIXED** (recorded) | this record | n/a | See "Changed tests" below: `test/view-model.test.js` "model: column choice …" had its CEO rows' `event_date` set to 2026/2025/2024 in `1aeb72b`. |
+| B2-5 CLI HTML carries tiers and notes | **DECLINED, acknowledged** | none | none | The ruling acknowledges it as the orchestrator's default (Acceptance 8 requires parity) and flags it to Noah. No change asked. |
+| B2-6 "today" is the UTC date | **DECLINED, acknowledged** | none | none | The ruling: consistent with `decided_on`'s existing dates; flagged to Noah. One helper (`data.todayOf`) if he changes it. |
+| B2-7 out-of-band commit `73a085a` | **nothing to fix** | none | none | Recorded by the orchestrator in "Orchestrator verification after pass 1" (also the 09:29:36 `tiers.csv` touch: its UI check item 4). |
+| B2-8 README list slip | **FIXED** | `3d669e6` | none (doc) | `lib/view/export.js` has its own bullet under `data.js` again. `bc7f0ad` reflows the majors paragraph I lengthened in `d710086` (no content change). |
+| item 5 no-op un-✓ explanation not seen | **FIXED** | `f609c9f` | `test/review.test.js` "item 5: the ✓ note text …" (unit, `M.reviewNote`); "item 5 and B2-1, the page: the note goes to the status line and stays until the next action …" (source pin) | Root cause, from the source at `1dcfec2` (`app/public/app.js:143`): the explanation was written to `#msg`, the red box above the table inside the scrolling pane, never to `#status`. So the status line the checklist pointed at stayed empty, and `#msg` is out of view once the table is scrolled. Live after the fix: un-✓ on Aster Laker at Eclipse showed the note in `#status`, still there after 9 s. No console errors. |
+
+### Changed tests
+
+No existing test was edited in this pass. `git diff 1dcfec2 HEAD -- test` has 0 removed lines; the
+9 new tests are appended to `test/review.test.js` (8) and `test/majors.test.js` (1). Test names
+before vs after (`comm` of the sorted spec-reporter lines): 0 removed, 0 renamed, 9 added.
+
+For B2-4, pass 1's changed existing tests in full (pass 1 named four; this is the complete list):
+
+| test | changed in | change | justification |
+|---|---|---|---|
+| `test/view-model.test.js` "model: configured majors are keyed by label through the run index …" | `1aeb72b` | renamed from "… keyed by label, not name"; oracle moved to the index; adds a per-game case | spec rule 5/6: a major is a configured main event per game, not any matching name |
+| `test/data-tiers.test.js` multi-word-tag test | `1aeb72b` | justification no longer stored/returned | T1 drops `justification` |
+| `test/data-tiers.test.js` route test | `1aeb72b` | no longer sends justification through the route | same; the "sent anyway, not stored" case is covered at `updatePlayer` level |
+| `test/render.test.js` fixtures | `1aeb72b` | majors list passed in from `testlib/majors-fixture.js`; assertions unchanged | majors come from config, not `model.js` |
+| **`test/view-model.test.js` "model: column choice — majors only if someone played them …"** (the fifth) | `1aeb72b` | the three CEO rows got `event_date` 2026-06-27 / 2025-06-28 / 2024-06-29 (they shared the default date), and the index gets `majorsFor()` | rule 5's one result per year: with one shared date the three CEO tournaments fall in one year and collapse to one. The assertion (`['CEO']`) is unchanged; not a weakening |
+
+### Verification
+
+| what | command | result |
+|---|---|---|
+| suite, working tree at `bc7f0ad` | `node --test` (Node v24.14.1) | **tests 177, pass 174, fail 0, skipped 3** (before 168 / 165 / 0 / 3) |
+| suite, clean clone, offline | `git clone --branch build/tool-a . <scratch>/clone` (HEAD `bc7f0ad`), `NODE_OPTIONS="--require ./testlib/no-network.js" node --test` | **tests 177, pass 174, fail 0, skipped 3** |
+| skips | | the same 3 pre-existing `recorded:` fixtures ("not recorded yet …") |
+| `out/` untouched | sha1 of all 56 files, before and after | `5255e91…` both |
+| `registry/` untouched | sha1 | `tiers.csv` `ffb8898…`, `tiers.csv.bak` `de33fb8…`, both unchanged |
+| protected files | `git diff --stat 1dcfec2 HEAD --` usage-log, designs, contracts, increment 1/2 records, `.env`, `conflicts`, `registry`, `out` | empty |
+| live run | `SEED_TIERS_FILE=<scratch>/registry/tiers.csv node app/server.js --port 8799 --out <scratch>/out` (Eclipse folder plus a copy named `next-event__…`), in the preview browser pane | B2-1 restore and item 5 note as in the table; the scratch `tiers.csv` byte-identical to the real one after both checks; no console errors |
+
+### Could not verify
+
+- **The page's B2-1 and note wiring by unit test.** `app/public/app.js` runs only in a browser and the
+  repo has no DOM harness (no dependencies). The note text is a pure function (`M.reviewNote`,
+  unit-tested). The wiring is pinned by source and was exercised once live in the preview pane.
+  The orchestrator's checklist below is the behavioral check.
+- **Two real browser profiles** for the restore: a second profile has no remembered pair
+  (assumption 1), so its un-✓ the same day clears. I reasoned this from the code and did not observe it.
+- **`#msg` visibility for errors.** "Not saved: …" from a ✓ or an edit still goes to `#msg`, which has
+  the same out-of-view problem item 5 had. That is outside item 5's ruling (it named the no-op explanation),
+  so I report it here and did not change it.
+- **What the orchestrator saw at item 5.** I diagnosed it from the source at `1dcfec2`, not by
+  replaying its browser session.
+
+### UI checklist for the orchestrator
+
+Start the app on a scratch copy so nothing writes `registry/tiers.csv`. Make a scratch folder with
+`out/` holding the Eclipse run folder plus a copy of it renamed `next-event__bloody-fights-mbaacc-singles__20261015-0925`,
+and `registry/tiers.csv` copied in. Then run
+`SEED_TIERS_FILE=<scratch>/registry/tiers.csv node app/server.js --port 8799 --out <scratch>/out`.
+
+1. **B2-1 restore.** Open `/e/next-event/bloody-fights-mbaacc-singles`. Aster Laker's Tier cell has no
+   color, with hover "Last reviewed 2026-10-16 at eclipse-1st-cour". Click their ✓: the row turns green,
+   with hover "Last reviewed <today> at next-event (this tournament)". Click ✓ again: the row is no longer
+   green, the hover is back to "Last reviewed 2026-10-16 at eclipse-1st-cour", and the line next to
+   Compare reads "Aster Laker: today's review undone; the review of 2026-10-16 at eclipse-1st-cour is
+   back." The scratch `tiers.csv` is byte-identical to the real one (`cmp`).
+2. **Item 5 note.** Open `/e/eclipse-1st-cour/bloody-fights-mbaacc-singles`, scroll the table down a
+   screen, and click ✓ on any green row reviewed 2026-10-16 (Aster Laker). It stays green. The line next to
+   Compare reads "Aster Laker was reviewed here on 2026-10-16; a click only undoes a review made here
+   today, so that review stays." Wait 10 s: it is still there. Click ✓ on another row: the note clears.
+3. **B2-3.** There is no live target: every Eclipse registrant already has a tiers row (107 app-set + 75
+   sheet-only = 182). It is covered by the unit test named in Dispositions. To see it anyway, delete one
+   player's row from the *scratch* `tiers.csv`, then ✓ and un-✓ them. The scratch file's record count
+   comes back to what it was before the ✓.
+4. **B2-2.** Open either Crescendo MBTL event: the major columns are Combo Breaker, Frosty Faustings,
+   **Climax of Night**. UNI2 is unchanged (CEO, Evo, Combo Breaker, Frosty Faustings).
+5. **Reload limit (assumption 1), optional.** At `next-event`, ✓ Aster Laker, reload, then ✓ again.
+   Today's review clears and the 2026-10-16 review is **not** restored. This is the known limit of
+   option (a). Restore the scratch file afterward.
+
+### REPORT
+
+```
+REPORT
+- Overview: Pass 3 (lead engineer, repair) disposed of every pass-2 finding and the orchestrator's
+  item 5 on build/tool-a, final code commit bc7f0ad. An un-✓ now puts back the review the ✓
+  replaced (B2-1, option (a)). An undo removes a row that only held that review (B2-3). MBTL gets
+  Climax of Night (B2-2). The no-op explanation now shows in the status line and stays until the
+  next action (item 5). node --test: 177 tests, 174 pass, 0 fail, 3 skipped, on the working tree
+  and on a clean offline clone (before: 168/165/0/3).
+- Found: B2-1 FIXED; B2-2 FIXED; B2-3 FIXED; B2-4 FIXED (recorded); B2-5 DECLINED, acknowledged
+  per ruling; B2-6 DECLINED, acknowledged per ruling; B2-7 nothing to fix (orchestrator recorded
+  it); B2-8 FIXED; item 5 FIXED (root cause: the note went to #msg above the scrolled table, never
+  to #status).
+- Ran: d710086 (MBTL majors list + test), 6b670d6 (reviewPlayer prior-pair restore, validation,
+  empty-row removal, route + 6 tests), f609c9f (page sends the replaced pair; note in #status;
+  M.reviewNote + 2 tests), 3d669e6 (README ✓ wording, B2-8), bc7f0ad (README reflow), plus this
+  record. 9 new tests, 0 existing tests edited, 0 removed. Mutation checks on the server code each
+  fail a new test. Live run on scratch copies in the preview pane: restore and note observed.
+  out/ and registry/ hashes unchanged.
+- Attributed: core / seeding-ops increment 3 build A. STATED: dispatch-contract-tool.md,
+  design-tool.md §T1 Rules, the orchestrator's rulings for pass 3 in docs/build-record-tool.md.
+- Queued: "Not saved" errors still go to #msg, which has the same out-of-view problem as item 5.
+  It is outside item 5's ruling, so I reported it and did not fix it.
+- Spend: term = 4 passes + at most 1 repair pair; consumed pass 3 of 4. No skills, subagents or
+  workflows. start.gg requests 0. Token never read.
+- Parked: none. Tree clean at the record commit. registry/tiers.csv.bak stays until pass 4 approves.
+- Needs attention:
+  1. B2-1 (amendable, option (a)): the restore works within one page load. After a reload, or from
+     another browser, a same-day un-✓ clears today's review and the earlier one is lost. Option (c),
+     a stored previous-review pair, closes that, but it changes T1's columns.
+  2. B2-2 (amendable): MBTL now has its own list with Climax of Night. UNI2 has none (5 players of
+     data, no basis yet).
+  3. B2-5 / B2-6, for Noah's acknowledgment: the CLI HTML carries tiers and notes; review dates are
+     UTC days.
+  4. Increment 1's passes 2–4 remain open, due with build B.
+```

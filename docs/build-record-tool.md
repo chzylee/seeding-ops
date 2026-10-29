@@ -1604,3 +1604,31 @@ REPORT
   4. D2-6: an incremental pull keeps the pool's window (new players miss results since the last pull).
   5. Before 2026-11-02: the app no longer lists the old per-event pulls; add the tournament and Pull.
 ```
+
+---
+
+## Orchestrator rulings for build B pass 3 (2026-10-29)
+
+Defaults chosen by the orchestrating session under Noah's "start the whole build"; each marked amendable
+where it is a product choice. The repair pass builds to these, not to its own reading.
+
+| finding | ruling |
+|---|---|
+| D2-1 | **Fix.** A tick while a job runs is saved and the incremental pull is queued behind the running job (one queue); the status line says so ("Allegro ticked; pulling its players after the current job"). Test with the fake. |
+| D2-2 / C2-7 | **Fix.** `meta.json` counts (skipped out-of-window, no-event-container, request_count, etc.) cover carried players too: carry each player's checkpoint counts forward, or recompute from the merged results. Test: incremental and retry pulls report the same skip counts as a fresh pull of the same players. |
+| D2-3 | **Fix.** The client's timeout starts when the request is sent, after the queue wait. Make the test fake honor timeouts enough to pin it (a queued request behind a slow one is not cancelled). |
+| D2-4 | **Keep "Mark live again", amendable.** An override (Mark done) needs an undo; the orchestrator will add it to the usage log as a candidate row after pass 4. Pass 3 changes nothing here. |
+| D2-5 | **Fix the overwrite.** `pull.js` may create `state.json` only when none exists (a new tournament from the CLI) and must merge into an existing one, never overwrite the app's fields (`marked_done`, `archived`, `pushes`, `linked`). README stays true: "the app's state, which the pull never overwrites". Test. |
+| D2-6 | **Keep, amendable (Noah's).** An incremental pull keeps the pool's window; a full Refresh moves it. Document in the record and README. |
+| D2-7 | **Fix.** If deleting the old pull directory fails after the swap, the job continues (W-L runs) and reports the leftover directory; the next pull retries the delete. |
+| D2-8 | **Fix.** `pull.js --resume` on an increment 1 folder refuses with one line ("this is a per-event run folder from before the pool layout; add the tournament in the app or run a fresh pull"), exit 2, writes nothing. Test. |
+| D2-9 | **Fix.** The CLI pull uses one client and one limiter for the whole run (catalog + pull), and asks for the event list once. |
+| D2-10 | **Fix.** Tests for every post retry case (refused, started bracket, non-admin, network error: no retry; rate limit: retry). |
+| D2-11 | Acknowledged: pass 1's one-off live script exceeded 20/min by one request; the app's single queue is the only path now (D2-9 closes the CLI's second limiter). |
+| D2-12 | **Fix.** README lists `major-table-<game>.html` and `claude-prompt.txt` under `out/<t>/`, or they stop being written; pass 3 picks the smaller change and says which. |
+| D2-13 | **Fix.** An incremental pull fetches the newly ticked game's `recentStandings` for no-account (`limited`) players already in the pool. Test with the fake. |
+| C2-1, C2-2 | **Live allowance granted to pass 3:** at most **20 read-only start.gg requests in total**, never more than 10 in any rolling 60 s, through one client in one process, against `crescendo-of-night-3-episode-0` and the one user id increment 1's probe used (GeneralMidwest). Purpose: record the three recorded-fixture tests so they stop being skipped, and run the ground-truth count, the live reconcile and the token-absence check that increment 1 parked. The live kill-and-resume is done against the fake only. Write the results into `docs/build-record.md` as pass 3 of increment 1 (ids C3-n), pointed to from build B's pass 3 section. If the recorded fixtures cannot be made deterministic, say so and leave the skips with the reason. |
+| C2-3..C2-6, C2-8 | Recorded; no action this pass. C2-3 (schema questions) and C2-6 (A2-6) remain Noah's. |
+
+Before 2026-11-02 (pass 2's needs-attention 5): the app lists only the new layout, so the next event's
+tournament must be added and pulled in the app. The orchestrator will do that with Noah's go.

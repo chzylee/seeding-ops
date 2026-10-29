@@ -1017,3 +1017,300 @@ REPORT
   6. Delete registry/tiers.csv.bak; A2-5 and A2-6 still open; increment 1's passes 2-4 due with
      build B.
 ```
+
+---
+
+## Build B — Pass 1 — lead engineer
+
+Seat: lead-engineer persona v0.4.0 (`personal-staff/personas/library/lead-engineer.md`, Profile block,
+loaded in-seat). Model: Opus. Branch `build/tool-b`, started at `ca107e8` with a clean tree. Code and test
+commits `59f817c`, `f07748b`, `760377d`, `fb0d49d`, `8773dd1`, plus this record's commit. Local only, no
+push, no remote, nothing amended. No skills, subagents or workflows.
+
+### Terms as understood
+
+- **Scope:** contract `docs/dispatch-contract-tool-b.md` Acceptance 1–13 (14 is the auditor's increment 1
+  audit in pass 2; 15 is pass 4's). Spec steps 4, 5 and 6 of `docs/design-tool.md` §Next steps: the
+  tournament pool and page, the lifecycle, the outputs. Drag-to-order ("builds last … only if Noah still
+  wants it") is not in the contract's Acceptance list and was not built.
+- **Binding:** `docs/design-tool.md` §T2, §T3, §Pages, §Lifecycle, §Outputs, §Open questions defaults,
+  §Rulings, §Reviewer Concerns; `docs/design.md` (increment 1) for the pull except where §T2 changes it;
+  build A's record (✓ semantics option (a) with the in-page restore, the majors config, the review
+  columns) as behavior to keep.
+- **Grants used:** files under `seeding-ops/` except the protected docs, `.env`, `registry/tiers.csv`
+  (only through the existing reader/writer; the real file was never written) and the existing `out/`
+  run folders (never read, moved or deleted). `conflicts/` was moved into `lib/` and `app/public/`;
+  `conflicts/linked.json` stays as the legacy source of side-tournament links.
+- **Prohibitions:** live start.gg calls only against `crescendo-of-night-3-episode-0`: 50 requests in
+  total (below). **One breach: 21 requests fell in one rolling 60 s window, one over the limit of 20**
+  (Needs attention 1). The seeding post (`updatePhaseSeeding`) was never sent live; it ran against the
+  fake only. The token was read only by `lib/token.js` from `.env` or the environment, and never
+  printed, logged or committed.
+- **Before-state** (recorded before the first edit, at `ca107e8`): `node --test` → **177 / 174 / 0 / 3**
+  (the brief's figure). `out/`: 56 files, combined sha1 `5255e91…`. `registry/tiers.csv` sha1
+  `ffb8898…`. `registry/tiers.csv.bak` no longer exists (pass 4 said it could be deleted). Sorted test
+  names saved for the after comparison.
+- **Grounding not consulted** (the standards bank, the runbook): the contract fixes the process. Every
+  ruling below traces to the spec, the contract, build A's record or the existing code.
+- **Provenance:** the persona was loaded from the library file named above; the design doc is Noah's
+  approved `docs/design-tool.md`; I did not author it.
+
+### Assumptions I supplied
+
+Open-questions defaults used (spec §Open questions; the contract asks to name each one):
+
+1. **A4-3** (time-budget error in the CLI pull): **keep current**. It fails that one player and the pull
+   goes on; pinned by the existing `test/run.test.js` A4-3 test, behavior unchanged.
+2. **Which phase receives the push:** **first by `phaseOrder`**, named in the dry run (a phase with no
+   order sorts last, then by id).
+3. **Archive standings:** **on request** (a button; never automatic at done).
+4. **A4-6's two standing rules** (record out-of-band changes; things that must agree come from one source
+   or are pinned by a test): adopted. The two numberings (export, push) are one function,
+   `lib/view/model.js` `seedSequence`, pinned by test; the CLI/app/export parity test is unchanged.
+5. Build A's defaults (recency bands, tier 0, main event, A2-5, A2-6) are untouched.
+
+Interpretations where the spec is silent or loose (each amendable):
+
+6. **A tab's players** are the pool players who entered one of that game's ticked events
+   (`players.csv` `events`). Their results in every game are on the tab; `is_event_game` is computed per
+   row as `game_id === tab game` (T2: "each tab computes"). Two ticked events of one game share a tab;
+   the push is per event (a dry-run button per event on that tab).
+7. **`state.json` also keeps the catalog:** the tournament (slug, name, start, timezone) and its events
+   (slug, id, name, game, start, entrants, singles, phases) from the add-tournament request, plus
+   `version`. The spec's list for `state.json` doesn't name it, but the picker must show the events
+   before any pull exists, and the pull may not write `state.json`. Re-adding refreshes the catalog and
+   keeps every decision.
+8. **Incremental pull** (a newly ticked event with a pool present) re-reads every ticked event's
+   registrants (one request per 100 entrants), carries every player the live pull has as `complete` or
+   `limited` (rows unchanged), fetches only the rest (new players, and previously `failed` ones), and
+   **keeps the pool's `run_at` and window**, so the pool has one window; `meta.incremental` records
+   `{at, from, carried, fetched}`. Players in no ticked event drop out at this pull too, not only at the
+   next full Refresh (stricter than the spec's sentence, since the registrants are re-read anyway).
+9. **Retrying failed players** (a resume of a finished pull with failures) writes a NEW pull folder that
+   carries everyone else, then swaps, instead of rewriting the live files in place. Increment 1 rewrote
+   them; with a live pointer that would let a reader see a new `players.csv` beside an old
+   `results.csv`, which T2's swap rule exists to prevent.
+10. **After a swap** the replaced pull and every OLDER pull folder (an abandoned unfinished one) are
+    deleted; a NEWER folder (another pull in progress) is left alone.
+11. **The app's Refresh resumes** an unfinished (or finished but never swapped) pull newer than
+    `current` whose seeded events equal the ticked set; otherwise it starts a full pull.
+12. **The CLI** (`pull.js`): event URLs of one tournament tick those events in `state.json` (written by
+    `pull.js`, the tool layer, never by `lib/run.js`) and pull every ticked event; a tournament URL
+    re-pulls the ticked events. A tournament not yet added costs one extra request for its catalog.
+    `seed.js` groups pasted links by tournament; resuming an unfinished pull ignores newly pasted
+    events of that tournament (they are ticked on the next run).
+13. **Status with nothing ticked:** the tournament's own start time stands in. The pull's `meta.json`
+    start times win over the catalog's when both exist (fresher).
+14. **Mark live again** (an undo of Mark done) was added: an override with no undo is a misclick trap.
+    One button, shown only while `marked_done` is set.
+15. **Archive and Delete are refused server-side while live** (409), the same table the page uses
+    (`pool.controlsFor`). Delete needs the page's confirm dialog and, server-side, `confirm: <slug>` in
+    the body; it refuses while a job runs for that tournament.
+16. **Export seeds CSV:** columns in the spec's order `tier, tag, player_id, proposed_seed`. "The table's
+    current order" is the page's row order (`data-i`, so pinned rows count at their sorted place), sent
+    as `?order=`; without one, the page's default order. The *Needs tier only* filter does not shrink the
+    export. `tag` is the start.gg gamer tag without the team prefix.
+17. **Push:** a seed is unmappable when it has no entrant, or not exactly one participant with a player.
+    "Crosses a tier boundary" means the seed changes places with a seed of another group (tier value,
+    untiered, unmappable) relative to start.gg's current order. The post sends every seed of the phase.
+    Before posting, the server re-reads the seeds and refuses (409, "run the dry run again") if the dry
+    run's fingerprint no longer matches. The post is never retried except on a rate limit.
+18. **Failure modes** are classified by message patterns (`lib/startgg.js` `pushFailure`); start.gg's
+    actual wording for a started bracket or a non-admin token is NOT verified (model knowledge).
+19. **Singles** = start.gg `Event.type === 1` and no teams word in the name (2v2, 3v3, doubles, team(s),
+    crew(s)); without a type, the name alone. `Event.type` was accepted by the live query.
+20. **T3:** only `out/<t>/schedule.json` is written (the old CSV/TXT side files are no longer written;
+    their pure functions stay, tested). Side tournaments live in `state.json` `linked`, edited on the
+    Schedule tab; `conflicts/linked.json` is read once, when a tournament is first added, so Eclipse's
+    link survives. `conflicts/out/` is not read.
+21. **The CLI view** (`views/major-table.js`) renders one game tab of a pool into
+    `out/<t>/major-table-<game>.html` and refuses anything else; it no longer writes into run folders.
+22. **Increment 1/2's `views/notes.json` seeds** are not carried into pools (T2: three tables; notes live
+    in T1). The page's per-viewer settings (pins, freeze, compare) are keyed per tab now, so earlier
+    per-event browser settings start fresh. Build A's line that removes the old `seeding:seeded:<slug>`
+    key is kept as pinned; with the new key it removes nothing.
+23. **"Both of its events"** (Acceptance 3's live pull) = `andante-uni2-pc` and `allegro-mbtl-pc`, the two
+    events Noah seeded (the old `out/` folder names). The tournament has a third singles event, "A
+    capriccio (MBAACC)", which was not ticked.
+24. **The live pull went to a scratch `out/`** (the session scratchpad), not the repo's `out/`, so Noah's
+    `out/` stayed byte-identical and the orchestrator's own UI check starts clean.
+
+### Engineer's-choice rulings
+
+| ruling | options considered | picked, and why |
+|---|---|---|
+| How a tab reuses increment 2's table | (a) new per-game view code; (b) slice the pool into a run-shaped source and run the existing model and render unchanged | (b) `data.tabSource` + `readSource` in `lib/view/data.js`. Every build A behavior (✓, majors per game, recency, compare, editor, export, CLI parity) runs on the same code paths. `model.js` and `render.js` changed only for B4-3, the seed numbering and the dry-run table. |
+| Tabs as page loads or in-page switching | (a) one page swapping tabs in JS; (b) tabs as links (`/t/<t>?tab=<game>`), one shell, the tab's script loaded per load | (b). A stable URL per tab, a reload shows that tab, and `app.js` keeps its single-tab structure (its pinned tests still hold). Cost: a tab switch is a page load. |
+| The single queue | (a) serialize at the job level; (b) one fetch queue under every client | (b) `app/queue.js`: one request in flight (the response body is read inside the queue), the existing `limit-fetch.js` ceiling under it, per-caller send records. Jobs keep their own pacing and retry; a backoff sleep happens outside the queue. |
+| `current` safety | (a) trust the file; (b) accept only a well-formed `pull-…` name of a finished pull | (b) `output.readCurrent`. A bad or stale pointer reads as "no live pull", never as a path outside the tournament folder. |
+| Push re-check before posting | (a) post the dry run the page holds; (b) re-read start.gg and compare a fingerprint | (b). What the confirm showed and what is posted cannot silently differ. Cost: one more seeds read (one request per 100 seeds). |
+| Old routes | (a) keep `/api/e/<t>/<e>/…` as aliases; (b) replace them with `/api/t/<t>/…` and keep only the `/e/` page redirect | (b). The spec names the redirect only; aliases would keep an old-layout surface alive. |
+| Error status | (a) keep `err.status` for both kinds; (b) handle `StartggError` first | (b). Found by test: a start.gg error carries start.gg's HTTP status (200), which the handler returned as its own. Fixed in `f07748b`. |
+| Retrying a refused post | (a) the client's default (a GraphQL error with a `path` is retryable, 5 tries); (b) a per-request no-retry option | (b) `request(…, { retry: false })` for `updatePhaseSeeding`. Rate limits still retry (spec: "queued like everything else"); anything else fails on the first try. Found by test (`f07748b`). |
+
+### Acceptance
+
+Suite: `node --test` → **tests 207, pass 204, fail 0, skipped 3** (before: 177 / 174 / 0 / 3). The 3 skips
+are the same pre-existing `recorded:` fixtures. Clean clone (`git clone --branch build/tool-b` at
+`fb0d49d`), `NODE_OPTIONS="--require ./testlib/no-network.js" node --test` → 206 / 203 / 0 / 3; the one
+test added after it (`8773dd1`) passes on the working tree.
+
+| # | item | met | evidence |
+|---|---|---|---|
+| 1 | `node --test` clean clone, offline, no regression | yes | Above. 30 tests added, 0 removed; every changed existing test is listed under "Changed tests" with the spec sentence that changes the behavior. |
+| 2 | Pool layout, swap, crash, resume | yes | `test/pool.test.js`: "pool layout: out/<t>/pull-<stamp>/ …"; "the swap: a second pull is written beside the live one …" (`current` still names the old pull during the new pull; the old pull is deleted after); "a crash mid-pull leaves the old pull live and the app serving it; --resume finishes from the new pull's _work/ without refetching, then swaps" (a real SIGKILL via `testlib/fake-pull.js`; `check-requests` refetched = []). `test/output.test.js`: "current: written atomically …". |
+| 3 | One pull per tournament | yes | `test/pool.test.js`: "one pull per tournament …" (16 players from 15 + 3 with 2 shared; users 9001 and 9008 fetched once); "Refresh re-pulls everyone and carries the W-L cache by event id: the second refresh repeats no set lookup"; "ticking a new event is incremental …" (UserEvents only for the one new player). **Live:** CoN3 Ep0 with both events: **47 requests** (TournamentEvents 1, EventEntrants 2, UserEvents 44), 24 players all `complete`, 2,192 results, query complexity max 841, exit 0, `scripts/reconcile.js` 18/18 PASS. No player entered both events, so the live run shows the union (24 = 3 + 21) but not the dedup; the fake shows the dedup. |
+| 4 | Pages | yes | `test/tournament.test.js`: "add a tournament: an event URL makes ONE synchronous events request …" (singles-only picker; ticking a teams event is a 400); "GET / lists tournaments live first, then done, then archived; old run folders are never listed or read"; "GET /e/<t>/<e> redirects … only when out/<t>/ exists, else 404 with an add link …"; "tabs: one per seeded game …". Build A on tabs: the retargeted `test/review.test.js` and `test/data-tiers.test.js` route tests; `test/parity.test.js` and `test/majors.test.js` unchanged and passing. Exercised in the browser pane (below). |
+| 5 | W-L summary-first across the union; partial W-L on reload | yes | `test/tournament.test.js` "W-L is fetched summary-first across the union of all tabs' summary columns" (both games' summary rows come before any other row); retargeted `test/app.test.js` "the data endpoint during a W-L fetch returns the W-L fetched so far (a reload shows partial W-L)". |
+| 6 | T3 on the single queue | yes | `test/tournament.test.js` "T3: the schedule pull writes out/<t>/schedule.json with the side tournaments linked in state.json, through the same single request queue as the pool pull (never two in flight)": a pool refresh and a schedule pull run at once, max in flight 1, their requests interleave, every call went through the queue. Retargeted `test/conflicts-schedule.test.js`. |
+| 7 | Lifecycle | yes | `test/tournament.test.js`: "status is computed from the latest ticked event's startAt …"; "lifecycle: Mark done; done blocks nothing; Archive standings makes one standings fetch per ticked event; Delete (confirmed) removes out/<t>/ only and never touches T1" (EventStandings exactly twice for two events; the tiers file's sha1 unchanged; an old run folder and another tournament untouched). |
+| 8 | Export CSV in seed order, no request | yes | `test/outputs.test.js`: "seedSequence: …"; "export seeds CSV: …" (fetch spy: 0 calls); "the export and the push number with the same function (one source) …". |
+| 9 | Push: dry run, a click to post, failure modes, fake only | yes | `test/outputs.test.js`: "push: the target phase is the first by phaseOrder"; "push dry run (pure): …"; "push dry run against the fake: …" (one PhaseSeeds request, no mutation); "push post: only on a confirmed click with the dry run's fingerprint; re-checked …; recorded in state.json.pushes"; "push failure modes are one status line, no retry …"; "the page: posting needs a click on a dry run and a confirm …". **The post was never sent live.** The live dry run (read-only, allowed) ran once per event: 2 PhaseSeeds requests; phases `2413289` and `2413291` "Bracket"; 3 and 21 seeds, all mapped to the pool, 0 tiered (T1 holds MBAACC tiers only), 0 moves. |
+| 10 | T1 only through the reader/writer; ✓ writes the tournament slug | yes | `test/tournament.test.js` "Acceptance 10: a ✓ on a tournament page writes T1 through the existing writer with the tournament slug …". The writer is build A's `editTierRow`, unchanged. The real `registry/tiers.csv` is unchanged (`ffb8898…`). |
+| 11 | `.env` never served; nothing outside `out/` and static; `state.json` and `current` never raw | yes | Retargeted `test/app.test.js` ".env is never served; nothing under out/ is served as a file (state.json and current included) …": 39 probe paths are 404 and none leaks the token or pool state; `/api/t/<t>` returns a projection (no event ids or phases). |
+| 12 | README | yes | `fb0d49d`: add a tournament, tabs, Schedule, Refresh, lifecycle, export, push with dry run; "The per-event folder layout is retired." Partly pinned by "B4-1 wording …". |
+| 13 | Build A follow-ups | yes | B4-2: "Not saved" through the status line in the error style, plus a red flash on the ✓ or edited cell (`notSaved` in `app.js`); test "B4-2 …". B4-3: `recencyTitle` names the sheet only for non-`app` rows, and `readNotes` carries `source`; test "B4-3 …". B4-5: the CLI header rewritten; test "B4-5 …". B4-1 wording: README and `reviewPlayer`'s comment; test "B4-1 wording …". |
+
+**Live request record.** Scratch script `live-pull.js` in the session scratchpad; every send went through
+`app/limit-fetch.js` at `max: 20`, and send times were appended to `live-sends.jsonl`.
+
+| stage | requests | what |
+|---|---|---|
+| catalog | 1 | TournamentEvents (the add-tournament request) |
+| pull | 47 | the pool pull, both events |
+| dry run | 2 | PhaseSeeds, one per event (read-only) |
+| **total** | **50** | over 307 s. **Max in any rolling 60 s: 21**: the catalog request at 15:34:13.658Z and the pull's first 20 sends fell within 60 s of each other. Each ran in its own process, and each limiter knew only its own sends. Within the pull alone: 20 actual sends (the pull's own request log, stamped before the limiter's wait, shows 21). |
+
+**Live run in the browser pane** (directive 12; not a substitute for the orchestrator's check):
+`node app/server.js --port 8799 --out <scratch>` with `NODE_OPTIONS` preloading `testlib/no-network.js`
+and `testlib/fake-global-fetch.js` (the fake start.gg, offline), `STARTGG_TOKEN=FAKE-SENTINEL`, and
+`SEED_TIERS_FILE` on a scratch copy. Add by event URL → the picker had that event pre-ticked, the teams
+event greyed, no tabs. Tick the second event, Pull → the page reloaded into tabs `MBAACC | Melee |
+Schedule`, W-L "Done: 105 W-L fetched". Melee tab: 3 players; ✓ turned the row green with the "this
+tournament" hover; the seeds export link carried the table order. MBAACC tab: Push → dry run (phase
+"Bracket", groups, 5 cross-tier flags) → the confirm text named the cross-tier moves → posted to the fake
+and recorded. Schedule tab: linked a side tournament, Refresh schedule → 16 players with the side game.
+Archive standings → "archived". Delete (confirmed) → back to an empty list. Every request returned
+200/202 except the designed 404 "no schedule pull yet". **Screenshots timed out (the pane never drew)**,
+so clicks were sent as DOM `click()` and results read from the DOM; nothing was checked visually.
+
+### Changed tests
+
+Every change retargets a test to the new layout because the spec changed the behavior. No assertion was
+weakened, and none was skipped or deleted. Spec sentences cited: **T2-layout** = "A pull writes
+players.csv, results.csv, meta.json and its own _work/ into out/<t>/pull-<stamp>/ … writes the new
+directory's name into out/<t>/current … and deletes the previous pull directory"; **T2-col** =
+"`is_event_game` is dropped … each tab computes game_id === tab.game_id"; **T2-W-L** = "set-records.json
+… live at out/<t>/, outside any pull directory"; **Pages** = "GET /t/<tournament-slug> is the page … GET
+/e/<t>/<e> redirects … Old … run folders … are left alone and not read"; **T3** = "Moves next to the pool
+it belongs to".
+
+| file | test(s) | change | cites |
+|---|---|---|---|
+| `test/run.test.js` | the `freshRun` helper; "full fake run …"; "a schema error mid-run …"; "kill + resume …"; "resume: a finished run with a failed player …" | runDir is the live (or newest) pull in `out/<t>/`. The folder-name assertion became the pull name plus `current`. "Other games kept" checks `game_id` instead of `is_event_game`. The schema-error test also asserts nothing was swapped in. Kill + resume finds the unfinished pull in `out/<t>/` and runs its clean comparison in a separate `out/` (a second pull would replace the first). The retry test reconciles the new swapped-in pull and asserts the old one is gone. Names unchanged. | T2-layout, T2-col |
+| `test/output.test.js` | "runFolderName …" → "pullFolderName: pull-YYYYMMDD-HHMMSS"; "createRunFolder …" → "createPullFolder: a same-second second pull gets its own folder" | renamed and retargeted | T2-layout |
+| `test/seed.test.js` | "seed: folderPrefix matches lib/output.js runFolderName" → "seed: pullsFor lists the tournament's lib/output.js pull folders …"; the resume tests use pull folders and `findUnfinishedPull`; "claude-prompt.txt is written only for a finished run …" → "… only for a live (finished) pull, from its meta.json, into out/<t>/" | renamed and retargeted | T2-layout |
+| `test/app.test.js` | 6 tests: "GET / lists each event once …" → "… each tournament once; its tab always serves the live pull …"; ".env is never served …" → "… nothing under out/ is served as a file (state.json and current included) …" (probes added); "refresh makes a new run, merges the previous cache …" → "… a new pull, carries the pool's W-L cache …"; "the data endpoint during a W-L fetch …" (+ "(a reload shows partial W-L)"); "a pull that cannot start …" and "a refresh never sends more than SEED_APP_MAX_PER_MIN …" ("run" → "pull") | routes are `/api/t/<t>/…`. "The old run is kept" became "the old pull is deleted after the swap". The `views/notes.json` carry-forward assertion was dropped (notes live in T1; a pool has no notes.json). The cache file is `out/<t>/set-records.json`; `refresh-sends.json` and the W-L log are in the pull's `_work/`. | Pages, T2-layout, T2-W-L |
+| `test/export.test.js` | "export: GET /api/e/<t>/<e>/export.csv …" → "export: GET /api/t/<t>/g/<game>/export.csv …" | the route; the filename stamp is the pull's `HHMMSS`; a 404 for a game that is not a tab was added | Pages |
+| `test/wl.test.js` | the `fakeRun` helper; "views/major-table.js: renders a fake run end to end …" → "… a fake pool's game tab end to end …" | the pull is in `out/<t>/`; `is_event_game` is computed in the helper for the event's game; the CLI is called on `out/<t>` with `--game`, and its HTML and cache live in `out/<t>/` | T2-layout, T2-col, T2-W-L |
+| `test/conflicts-schedule.test.js` | requires `lib/schedule`; "schedule app: page, data (latest pull wins) …" → "schedule app: the Schedule tab's data (out/<t>/schedule.json), refresh runs one schedule pull at a time"; the seedsOnly pull test asserts the file is `out/<t>/schedule.json` | routes and paths | T3, Pages |
+| `test/data-tiers.test.js` | "route: POST player edit …" | builds a pool for the same players; URL `/api/t/tour/g/1/player/<id>`; assertions unchanged | Pages |
+| `test/review.test.js` | the route tests ("route: POST …/player/<id>/review …", "a tier edit still stamps decided_on …", "route: an un-✓ body carries the earlier pair …") | `setup` and `setupNext` also build a pool with the same players; URLs `/api/t/<t>/g/<game>/…`; assertions unchanged | Pages |
+
+Test names before vs after (`comm` of the sorted spec-reporter lines): 13 names changed (the renames
+above), 0 tests removed, 30 added.
+
+### Could not verify
+
+- **The seeding post against real start.gg.** Prohibited in this build; tested against the fake only.
+  The mutation and its input type come from start.gg's docs (spec §Landscape), not from a run.
+- **start.gg's real messages** for a started bracket, a locked phase or a non-admin token. The patterns
+  in `pushFailure` are model knowledge; anything else is shown with start.gg's own message.
+- **The standings query live** (`EventStandings` field names): fake only.
+- **Visual rendering.** The browser pane never drew (screenshots timed out), so layout, colors, the tab
+  bar and the push panel were not seen; behavior was checked through the DOM only.
+- **Two browser profiles; Explorer and Notepad opening from `seed.cmd`; `pull.js`'s event-URL path end to
+  end** (its no-token, usage and resume paths are tested; ticking and pulling through the CLI against
+  the fake is not).
+- **The live dedup:** no CoN3 Ep0 player entered both events.
+- **Increment 1's audit** is pass 2's (Acceptance 14).
+
+### UI checklist for the orchestrator
+
+Start the app (`npm start`). The home page now lists tournaments from the new layout only: the
+existing Eclipse and Crescendo pulls (old per-event folders) **do not appear**, by design (Needs
+attention 2). **Every Pull, Refresh, Archive or schedule pull is a live start.gg run** and counts against
+your budget. Do not press the push's post button against a real event in this build.
+
+1. **Add a tournament:** paste `https://www.start.gg/tournament/crescendo-of-night-3-episode-0/event/allegro-mbtl-pc`.
+   One request. The page opens with *Seeded events* open, Allegro pre-ticked, three singles events, no
+   tabs and a Pull button.
+2. **Tick events:** also tick Andante (UNI2), then press **Pull**. The status line shows progress; when
+   it's done the page reloads into tabs **Melty Blood: Type Lumina | Under Night In-Birth II Sys:Celes |
+   Schedule** (about 47 requests for this tournament, then W-L).
+3. **Tabs:** the MBTL tab shows 21 players with build A's columns (✓; Team | Player | Region | Tier
+   frozen; majors Combo Breaker, Frosty Faustings, Climax of Night; series; Other series; Other games;
+   Notes). The UNI2 tab shows 3 players with UNI2's default majors. ✓ on a row turns it green, with
+   "this tournament" on hover. This writes `registry/tiers.csv`: undo it the same day, or point
+   `SEED_TIERS_FILE` at a copy.
+4. **Schedule tab:** press *Refresh schedule*; every player's blocks appear. *Conflicts first* works.
+5. **Refresh swap:** on a game tab press *Refresh data*. While it runs, the table keeps showing the old
+   pull; when the new pull lands, the table switches by itself. `out/crescendo-of-night-3-episode-0/`
+   then holds one `pull-…` folder, and `current` names it. W-L already fetched is not fetched again.
+6. **Lifecycle:** the tournament is in the past, so the pill reads **done**, with *Archive standings* and
+   *Delete tournament data* showing and *Mark done* hidden. Archive → one request per ticked event → the
+   pill reads **archived**. (Delete removes the folder after a confirm; `registry/tiers.csv` must be
+   unchanged afterwards.)
+7. **Export CSV:** sort the MBTL table by any column, then *Export seeds CSV*: tiered players first by
+   tier, the table's order within a tier, untiered after; no start.gg request (watch the server log).
+8. **Push dry run, NO post:** *Push to start.gg…* → *Dry run: Allegro (MBTL) - PC*. It names phase
+   "Bracket" and shows 21 seeds, grouped (all "No tier" unless MBTL tiers exist), with moves and flags.
+   **Do not press "Post this seeding to start.gg".**
+9. **Old links:** `/e/crescendo-of-night-3-episode-0/allegro-mbtl-pc` redirects to the MBTL tab once the
+   tournament is added; `/e/eclipse-1st-cour/bloody-fights-mbaacc-singles` is a 404 with an *Add the
+   tournament* link until Eclipse is added.
+
+### REPORT
+
+```
+REPORT
+- Overview: Build B pass 1 is built and committed on build/tool-b (final code commit 8773dd1). The pull
+  is one per tournament into out/<t>/pull-<stamp>/, swapped in through out/<t>/current. The app is one
+  page per tournament with a tab per seeded game and a Schedule tab, and every start.gg call goes
+  through one queue. The lifecycle (computed done, Mark done, Archive standings, Delete) and the outputs
+  (seeds CSV, push dry run and a confirmed post, fake only) are in. node --test: 207 tests, 204 pass,
+  0 fail, 3 skipped (before 177/174/0/3); clean clone offline 206/203/0/3 at fb0d49d. One prohibition
+  breach: 21 live requests in one rolling 60 s window (limit 20).
+- Found: Acceptance 1-13, all doable in-window and done (14 and 15 belong to passes 2 and 4). My own
+  tests found two defects, fixed in f07748b: a refused post was retried 5 times, and a start.gg error's
+  HTTP status leaked into the app's response status.
+- Ran: 59f817c (pool layout, pull, pages, queue, push, T3 move, tests retargeted), f07748b (push
+  no-retry, error status), 760377d (30 new tests: test/pool, tournament, outputs), fb0d49d (README,
+  scripts), 8773dd1 (legacy linked test), plus this record. Live: 50 start.gg requests against
+  crescendo-of-night-3-episode-0 (1 catalog, 47 for the pull with both events, 2 read-only dry-run
+  seeds reads), into a scratch out/; no post. Browser pane: the full flow against the fake start.gg,
+  driven through the DOM (the pane never drew). The out/ and registry/tiers.csv hashes are unchanged.
+- Attributed: core / seeding-ops increment 3 build B. STATED: dispatch-contract-tool-b.md,
+  design-tool.md §T2, §T3, §Pages, §Lifecycle, §Outputs.
+- Queued: drag-to-order (spec step 6, "only if Noah still wants it"; not in the contract's list).
+  Nothing else stopped.
+- Spend: term = 4 passes + at most 1 repair pair; consumed pass 1 of 4. No skills, subagents or
+  workflows. start.gg: 50 requests, max 21 in a rolling 60 s (one over the limit). Token never printed.
+- Parked: none. The tree is clean at the record commit. Scratch artifacts (live-out/,
+  live-sends.jsonl, the clone, the UI out/) are in this session's scratchpad.
+- Needs attention:
+  1. Budget breach: 21 requests in one rolling 60 s window against CoN3 Ep0 (limit 20). The catalog
+     request and the pull's first 20 ran in two processes 12 s apart, and each limiter only knew its own
+     sends. The app can't repeat this (one process, one queue); a future live script must seed its
+     limiter with earlier sends or run everything in one process.
+  2. After this build the app no longer shows the Eclipse and Crescendo pulls (old per-event folders,
+     unread by design). For the week of 2026-11-02, add the new tournament and Pull. Eclipse's
+     side-game link comes back from conflicts/linked.json if Eclipse is added.
+  3. Interpretations to confirm (all amendable): incremental keeps the pool's window; a tab = the players
+     who entered that game's events; state.json also holds the event catalog; "Mark live again" added;
+     the push re-reads start.gg and refuses on a changed fingerprint; the export ignores the "Needs tier
+     only" filter.
+  4. Increment 1's audit (Acceptance 14) is due in pass 2.
+  5. Carried from build A for Noah: B4-1's closing option ((b) a server-remembered pair or (c) a stored
+     pair), the B2-5/B2-6 acknowledgements, A2-5, A2-6.
+```

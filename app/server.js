@@ -12,8 +12,9 @@
 //   GET  /api/e/<t>/<e>/status      { pulling, wl: {done,total,summaryDone,summaryTotal}, lastRunAt, error, ... }
 //   GET  /api/e/<t>/<e>/export.csv  the summary table as a CSV for Google Sheets (lib/view/export.js)
 //   POST /api/e/<t>/<e>/player/<id>         edit tier / notes in registry/tiers.csv (body { tier?, notes? })
-//   POST /api/e/<t>/<e>/player/<id>/review  the ✓ review mark (body { reviewed: true|false }): writes
-//                                           last_reviewed_on / last_reviewed_tournament (data.reviewPlayer)
+//   POST /api/e/<t>/<e>/player/<id>/review  the ✓ review mark (body { reviewed: true|false }, and on an
+//                                           un-✓ the earlier last_reviewed_on / last_reviewed_tournament
+//                                           to restore): writes the review pair (data.reviewPlayer)
 //   GET  /static/<file>             the page's JS/CSS (a fixed list; nothing else is served)
 //   GET  /schedule/<t>              conflicts: every player's schedule (pools, waves, start times)
 //   GET  /api/schedule/<t>/data     the latest schedule pull (conflicts/out/<t>__*/schedule.json)
@@ -196,7 +197,14 @@ function createApp(opts = {}) {
         try { fields = JSON.parse(body || '{}'); } catch { return json(res, 400, { error: 'Body must be JSON.' }); }
         if (!fields || typeof fields !== 'object' || Array.isArray(fields)) return json(res, 400, { error: 'Body must be a JSON object.' });
         try {
-          if (review) return json(res, 200, data.reviewPlayer(latest.dir, pid, { reviewed: fields.reviewed, now: nowDate(), tiersFile }));
+          if (review) {
+            // An un-✓ carries the review the page showed before the ✓ (B2-1); reviewPlayer validates it
+            // and restores it only over a review made here today. A ✓ takes nothing from the body but
+            // "reviewed": the date is the server's and the tournament is this URL's.
+            const sent = fields.reviewed === false && ('last_reviewed_on' in fields || 'last_reviewed_tournament' in fields);
+            const prior = sent ? { last_reviewed_on: fields.last_reviewed_on, last_reviewed_tournament: fields.last_reviewed_tournament } : undefined;
+            return json(res, 200, data.reviewPlayer(latest.dir, pid, { reviewed: fields.reviewed, prior, now: nowDate(), tiersFile }));
+          }
           // Tier and notes only: T1 has no reason field, and nothing else on the row is the client's to set.
           const allowed = Object.fromEntries(Object.entries(fields).filter(([k]) => ['tier', 'notes'].includes(k)));
           return json(res, 200, data.updatePlayer(latest.dir, pid, allowed, { now: nowDate(), tiersFile }));

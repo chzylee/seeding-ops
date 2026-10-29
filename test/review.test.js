@@ -209,3 +209,117 @@ test('a tier edit still stamps decided_on when the tier changes, through the rou
   assert.strictEqual(r.json().decided_on, '2026-11-03');
   assert.ok(!('justification' in readRows(tiersFile)[0]));
 });
+
+// ---- B2-1 (ruled option (a), amendable): an un-✓ puts back the review the page showed before the ✓.
+// The page sends that pair; the server restores it only over a review made here today, and
+// otherwise does nothing. B2-3: an undo that leaves a ✓-created row holding nothing removes it.
+const NEXT = 'next-event';
+const ECLIPSE_REVIEW = { last_reviewed_on: '2026-10-16', last_reviewed_tournament: T };
+function setupNext(rows, players = [player(1, 'Kouryuu'), player(2, 'Ono'), player(3, 'Fresh')]) {
+  const s = setup(rows, players);
+  return { ...s, next: makeRun(s.outRoot, { t: NEXT, players }) };
+}
+
+test('B2-1: ✓ at a new tournament, then un-✓ the same day, puts the earlier review back (2026-10-16 at eclipse-1st-cour), byte for byte', () => {
+  const { tiersFile, next } = setupNext([tierRow({ player_id: '1', sheet_tag: 'Kouryuu', tier: '8', source: 'app', decided_on: '2026-10-16', ...ECLIPSE_REVIEW })]);
+  const before = fs.readFileSync(tiersFile, 'utf8');
+  let out = data.reviewPlayer(next, '1', { reviewed: true, now: day('2026-11-02'), tiersFile });
+  assert.deepStrictEqual([out.last_reviewed_on, out.last_reviewed_tournament, out.changed], ['2026-11-02', NEXT, true]);
+  out = data.reviewPlayer(next, '1', { reviewed: false, prior: ECLIPSE_REVIEW, now: day('2026-11-02'), tiersFile });
+  assert.deepStrictEqual([out.last_reviewed_on, out.last_reviewed_tournament, out.changed], ['2026-10-16', T, true]);
+  assert.strictEqual(fs.readFileSync(tiersFile, 'utf8'), before, 'the file is as it was before the misclick');
+  // The next event's page shows the Eclipse review again (within 6 months, not reviewed there).
+  const notes = data.readNotes(next, data.loadRun(next).players, GAME.id, tiersFile);
+  assert.strictEqual(M.recency(notes['1'], { tournament: NEXT, today: '2026-11-02' }), 'recent');
+});
+
+test('B2-1: a blank earlier pair clears today\'s review; with no pair sent, the undo clears as before; a tiered row is never removed', () => {
+  const { tiersFile, dir } = setup([tierRow({ player_id: '1', sheet_tag: 'Kouryuu', tier: '8' }), tierRow({ player_id: '2', sheet_tag: 'Ono', tier: '6' })]);
+  const before = fs.readFileSync(tiersFile, 'utf8');
+  data.reviewPlayer(dir, '1', { reviewed: true, now: day('2026-11-03'), tiersFile });
+  const out = data.reviewPlayer(dir, '1', { reviewed: false, prior: { last_reviewed_on: '', last_reviewed_tournament: '' }, now: day('2026-11-03'), tiersFile });
+  assert.deepStrictEqual([out.last_reviewed_on, out.last_reviewed_tournament, out.changed, out.tier], ['', '', true, 8]);
+  data.reviewPlayer(dir, '2', { reviewed: true, now: day('2026-11-03'), tiersFile });
+  assert.strictEqual(data.reviewPlayer(dir, '2', { reviewed: false, now: day('2026-11-03'), tiersFile }).last_reviewed_on, '');
+  assert.strictEqual(fs.readFileSync(tiersFile, 'utf8'), before, 'both rows are back as they were');
+});
+
+test('B2-1: an un-✓ over a review that is not this tournament today is a no-op, and a forged earlier pair is ignored', () => {
+  const { tiersFile, dir } = setup([
+    tierRow({ player_id: '1', sheet_tag: 'Kouryuu', tier: '8', source: 'app', decided_on: '2026-10-16', ...ECLIPSE_REVIEW }),
+    tierRow({ player_id: '2', sheet_tag: 'Ono', tier: '6', source: 'app', last_reviewed_on: '2026-11-03', last_reviewed_tournament: 'another-tournament' }),
+  ]);
+  const before = fs.readFileSync(tiersFile, 'utf8');
+  const forged = { last_reviewed_on: '2020-01-01', last_reviewed_tournament: 'forged-tournament' };
+  // Reviewed here, but on an earlier day: not today's click, so nothing to undo.
+  let out = data.reviewPlayer(dir, '1', { reviewed: false, prior: forged, now: day('2026-11-03'), tiersFile });
+  assert.deepStrictEqual([out.last_reviewed_on, out.last_reviewed_tournament, out.changed], ['2026-10-16', T, false]);
+  // Reviewed today, but at another tournament: a mismatch, nothing to undo from this page.
+  out = data.reviewPlayer(dir, '2', { reviewed: false, prior: forged, now: day('2026-11-03'), tiersFile });
+  assert.deepStrictEqual([out.last_reviewed_on, out.last_reviewed_tournament, out.changed], ['2026-11-03', 'another-tournament', false]);
+  assert.strictEqual(fs.readFileSync(tiersFile, 'utf8'), before, 'neither no-op wrote the file');
+  // A pair sent with a ✓ is not read: the ✓ records today and this page's tournament.
+  out = data.reviewPlayer(dir, '1', { reviewed: true, prior: forged, now: day('2026-11-04'), tiersFile });
+  assert.deepStrictEqual([out.last_reviewed_on, out.last_reviewed_tournament], ['2026-11-04', T]);
+  data.reviewPlayer(dir, '1', { reviewed: false, prior: ECLIPSE_REVIEW, now: day('2026-11-04'), tiersFile });
+  assert.strictEqual(fs.readFileSync(tiersFile, 'utf8'), before);
+});
+
+test('B2-1: the earlier pair is validated (both blank or both set, a YYYY-MM-DD date, a tournament slug), else 400 and nothing written', () => {
+  const { tiersFile, dir } = setup([tierRow({ player_id: '1', sheet_tag: 'Kouryuu', tier: '8' })]);
+  data.reviewPlayer(dir, '1', { reviewed: true, now: day('2026-11-03'), tiersFile });
+  const mid = fs.readFileSync(tiersFile, 'utf8');
+  const bads = [
+    { last_reviewed_on: '2026-10-16', last_reviewed_tournament: '' },
+    { last_reviewed_on: '', last_reviewed_tournament: T },
+    { last_reviewed_on: '2026-10-16' },
+    { last_reviewed_on: '16/10/2026', last_reviewed_tournament: T },
+    { last_reviewed_on: '2026-02-30', last_reviewed_tournament: T },
+    { last_reviewed_on: '2026-13-01', last_reviewed_tournament: T },
+    { last_reviewed_on: '2026-10-16', last_reviewed_tournament: '../x' },
+    { last_reviewed_on: '2026-10-16', last_reviewed_tournament: 'has space' },
+    { last_reviewed_on: 20261016, last_reviewed_tournament: T },
+    'eclipse', [],
+  ];
+  for (const prior of bads) {
+    assert.throws(() => data.reviewPlayer(dir, '1', { reviewed: false, prior, now: day('2026-11-03'), tiersFile }), (err) => err.status === 400, JSON.stringify(prior));
+  }
+  assert.strictEqual(fs.readFileSync(tiersFile, 'utf8'), mid, 'no invalid pair wrote anything');
+});
+
+test('B2-3: ✓ then un-✓ on a player with no tiers row leaves the file as it was (the record count unchanged, no empty row)', () => {
+  const { tiersFile, dir } = setup([tierRow({ sheet_tag: 'Someone Else', tier: '3' })]);
+  const before = fs.readFileSync(tiersFile, 'utf8');
+  const count = readRows(tiersFile).length;
+  for (const prior of [undefined, { last_reviewed_on: '', last_reviewed_tournament: '' }]) {
+    data.reviewPlayer(dir, '3', { reviewed: true, now: day('2026-11-03'), tiersFile });
+    assert.strictEqual(readRows(tiersFile).length, count + 1, 'the ✓ created a row');
+    const out = data.reviewPlayer(dir, '3', { reviewed: false, prior, now: day('2026-11-03'), tiersFile });
+    assert.deepStrictEqual(out, { player_id: '3', tier: null, notes: '', decided_on: '', last_reviewed_on: '', last_reviewed_tournament: '', changed: true });
+    assert.strictEqual(readRows(tiersFile).length, count, 'the undo removed the row it created');
+    assert.strictEqual(fs.readFileSync(tiersFile, 'utf8'), before);
+  }
+  // A ✓-created row that later got a note keeps the row on undo: it holds more than the review.
+  data.reviewPlayer(dir, '3', { reviewed: true, now: day('2026-11-03'), tiersFile });
+  data.updatePlayer(dir, '3', { notes: 'watch this one' }, { now: day('2026-11-03'), tiersFile });
+  data.reviewPlayer(dir, '3', { reviewed: false, now: day('2026-11-03'), tiersFile });
+  assert.strictEqual(readRows(tiersFile).length, count + 1);
+  assert.strictEqual(readRows(tiersFile).find((r) => r.player_id === '3').notes, 'watch this one');
+});
+
+test('route: an un-✓ body carries the earlier pair (B2-1); a bad pair is a 400; a ✓ ignores body review values', async () => {
+  const { outRoot, tiersFile } = setupNext([tierRow({ player_id: '1', sheet_tag: 'Kouryuu', tier: '8', source: 'app', decided_on: '2026-10-16', ...ECLIPSE_REVIEW })]);
+  const app = createApp({ outRoot, tiersFile, getToken: () => 'unused', now: () => day('2026-11-02').getTime() });
+  const URL = `/api/e/${NEXT}/${E}/player/1/review`;
+  const post = (body) => inject(app.handler, { url: URL, method: 'POST', headers: { 'X-Seeding-App': '1' }, body: JSON.stringify(body) });
+  const before = fs.readFileSync(tiersFile, 'utf8');
+  let r = await post({ reviewed: true, last_reviewed_on: '2020-01-01', last_reviewed_tournament: 'spoofed' });
+  assert.deepStrictEqual([r.json().last_reviewed_on, r.json().last_reviewed_tournament], ['2026-11-02', NEXT]);
+  r = await post({ reviewed: false, last_reviewed_on: '2026-10-16', last_reviewed_tournament: '' });
+  assert.strictEqual(r.status, 400);
+  assert.strictEqual(readRows(tiersFile)[0].last_reviewed_tournament, NEXT, 'a rejected undo changed nothing');
+  r = await post({ reviewed: false, ...ECLIPSE_REVIEW });
+  assert.strictEqual(r.status, 200);
+  assert.deepStrictEqual([r.json().last_reviewed_on, r.json().last_reviewed_tournament, r.json().changed], ['2026-10-16', T, true]);
+  assert.strictEqual(fs.readFileSync(tiersFile, 'utf8'), before);
+});

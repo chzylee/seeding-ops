@@ -263,3 +263,15 @@ test('B4-1 wording: the README and reviewPlayer\'s comment say the undo restores
   assert.match(dataSrc, /lost on that path \(B4-1/);
   assert.ok(!/never destroyed by a click, including by a ✓ at a new\s+\/\/ tournament followed by its undo/.test(dataSrc));
 });
+
+test('README (build B pass 3): the Output table lists every file the tool writes in out/<t>/ (D2-12), the CLI never overwrites the app state (D2-5) and must not run beside the app (D2-9), and an incremental pull keeps the window (D2-6)', () => {
+  const readme = fs.readFileSync(path.join(ROOT, 'README.md'), 'utf8');
+  const table = readme.slice(readme.indexOf('## Output'), readme.indexOf('In a pull folder:'));
+  for (const f of ['`current`', '`pull-<YYYYMMDD-HHMMSS>/`', '`state.json`', '`set-records.json`', '`schedule.json`', '`standings.json`', '`major-table-<game id>.html`', '`claude-prompt.txt`']) {
+    assert.ok(table.includes(`| ${f} |`), `${f} listed in the out/<t>/ table`);
+  }
+  assert.match(table, /The pull never writes it\. `pull\.js <event link>` ticks events in it .*without overwriting the app's fields/);
+  assert.match(readme, /Don't run a command-line pull while the app is pulling or\s+fetching W-L/);
+  assert.match(readme, /keeps the pool's two-year window where it is/);
+  assert.match(readme, /`requests_this_pull`/);
+});

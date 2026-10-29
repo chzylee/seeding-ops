@@ -6,7 +6,12 @@
 //   node pull.js <tournament URL>               re-pull the tournament's ticked events (Refresh)
 //   node pull.js --resume <pull folder | out/<t>>  finish an unfinished pull
 // The pull writes out/<t>/pull-<stamp>/ and swaps it in through out/<t>/current. Increment 1's
-// per-event folders (out/<t>__<e>__<stamp>/) are retired: nothing writes them any more.
+// per-event folders (out/<t>__<e>__<stamp>/) are retired: nothing writes them any more, and
+// --resume refuses one (D2-8).
+// One client, so one limiter, for the whole run: the catalog request (when one is needed) and the
+// pull share it, and the tournament's events are asked for once (D2-9). Do not run a CLI pull
+// while the app is pulling: they are two processes on one token (README, "Pulling from the command
+// line").
 // Progress goes to stderr, the summary to stdout. See README.md.
 
 const path = require('node:path');
@@ -31,51 +36,70 @@ function parseArgs(argv) {
 
 // Tick the URLs' events in state.json (the tool's record of what is seeded; the pull itself never
 // writes it). A tournament not added yet, or an event its catalog does not know, costs one request
-// for the tournament's events.
-async function tickFromUrls({ urls, token, outRoot, fetchImpl, stderr = process.stderr }) {
+// for the tournament's events, made with `client` (the run's one client) and returned as `apiT` so
+// the pull does not ask again.
+// D2-5: state.json is shared with the app, which may save a tick, a link, a lifecycle mark or a
+// push record while this runs. It is created only when none exists; otherwise this merges into
+// the file as it is at write time (lib/pool updateState), changing only the catalog and `ticked`,
+// never `marked_done`, `archived`, `pushes` or `linked`.
+async function tickFromUrls({ urls, token, outRoot, fetchImpl, client, stderr = process.stderr }) {
   const say = (s) => stderr.write(s + '\n');
   const ts = [...new Set(urls.map((u) => sgg.parseTournamentSlug(u)))];
   if (ts.length !== 1 || !ts[0]) { say(ts.length > 1 ? 'All links must be from one tournament.' : 'That is not a start.gg tournament or event URL.'); return null; }
   const t = ts[0];
   const events = urls.map((u) => sgg.parseEventSlug(u)).filter((p) => !p.error).map((p) => pool.shortSlug(p.slug));
   const tDir = path.join(outRoot, t);
-  let state = pool.readState(tDir);
-  if (!state || events.some((e) => !state.events.some((x) => x.slug === e))) {
-    const client = sgg.createClient({ token, fetchImpl });
-    let apiT;
-    try { apiT = await sgg.fetchTournamentEvents(client, t); } catch (err) {
+  const known = pool.readState(tDir);
+  let apiT = null;
+  let catalog = null;
+  if (!known || events.some((e) => !known.events.some((x) => x.slug === e))) {
+    try { apiT = await sgg.fetchTournamentEvents(client || sgg.createClient({ token, fetchImpl }), t); } catch (err) {
       say(err.kind === 'bad-token' ? 'start.gg rejected the token. Check STARTGG_TOKEN (environment or .env) and try again.' : err.message);
       return null;
     }
-    const catalog = pool.catalogOf(apiT);
-    state = state ? { ...state, tournament: catalog.tournament, events: catalog.events } : pool.newState(catalog);
+    catalog = pool.catalogOf(apiT);
   }
+  const catalogEvents = catalog ? catalog.events : known.events;
   for (const e of events) {
-    const ev = state.events.find((x) => x.slug === e);
-    if (!ev) { say(`No event "${e}" in ${state.tournament.name}.`); return null; }
+    const ev = catalogEvents.find((x) => x.slug === e);
+    if (!ev) { say(`No event "${e}" in ${(catalog || known).tournament.name}.`); return null; }
     if (!ev.singles) { say(`${ev.name} is a teams event; only singles events can be seeded.`); return null; }
   }
-  const ticked = new Set([...(state.ticked || []), ...events]);
-  state.ticked = state.events.map((e) => e.slug).filter((s) => ticked.has(s));
-  pool.writeState(tDir, state);
+  const tick = (s) => {
+    if (catalog) { s.tournament = catalog.tournament; s.events = catalog.events; }
+    const want = new Set([...(s.ticked || []), ...events]);
+    s.ticked = s.events.map((e) => e.slug).filter((x) => want.has(x));
+  };
+  let state;
+  if (pool.readState(tDir)) state = pool.updateState(tDir, tick);
+  else if (catalog) { state = pool.newState(catalog); tick(state); pool.writeState(tDir, state); }
+  else { say(`${t}'s data was deleted while this ran; run the command again.`); return null; }
   if (!state.ticked.length) { say(`No events are ticked for ${t}. Pass an event URL, or tick events on the tournament's page.`); return null; }
-  return { t, events: state.ticked };
+  return { t, events: state.ticked, apiT };
 }
 
-async function main() {
-  const args = parseArgs(process.argv.slice(2));
-  if (args.help) { process.stdout.write(USAGE + '\n'); return 0; }
+// opts (tests): outRoot, token (overrides .env), fetchImpl, stderr, stdout.
+async function main(argv = process.argv.slice(2), opts = {}) {
+  const stderr = opts.stderr || process.stderr;
+  const stdout = opts.stdout || process.stdout;
+  const args = parseArgs(argv);
+  if (args.help) { stdout.write(USAGE + '\n'); return 0; }
   if ((!args.urls.length && !args.resumeDir) || (args.urls.length && args.resumeDir) || args.resumeDir === '') {
-    process.stderr.write(USAGE + '\n');
+    stderr.write(USAGE + '\n');
     return EXIT_SETUP;
   }
-  const outRoot = path.join(__dirname, 'out');
-  const { token } = loadToken({ envFile: path.join(__dirname, '.env') });
-  if (args.resumeDir) return run({ resumeDir: args.resumeDir, token, outRoot });
-  if (!token) return run({ url: args.urls[0], token, outRoot }); // the plain no-token message, exit 2
-  const picked = await tickFromUrls({ urls: args.urls, token, outRoot });
+  const outRoot = opts.outRoot || path.join(__dirname, 'out');
+  const token = 'token' in opts ? opts.token : loadToken({ envFile: path.join(__dirname, '.env') }).token;
+  const io = { stderr, stdout, fetchImpl: opts.fetchImpl };
+  if (args.resumeDir) return run({ resumeDir: args.resumeDir, token, outRoot, ...io });
+  if (!token) return run({ url: args.urls[0], token, outRoot, ...io }); // the plain no-token message, exit 2
+  // D2-9: one client for the catalog request and the pull. Its records before the pull folder
+  // exists are handed to run(), which logs them in the pull's request log.
+  const records = [];
+  const client = sgg.createClient({ token, fetchImpl: opts.fetchImpl, onRequest: (r) => records.push(r) });
+  const picked = await tickFromUrls({ urls: args.urls, outRoot, client, stderr });
   if (!picked) return EXIT_SETUP;
-  return run({ tournament: picked.t, events: picked.events, url: args.urls[0], token, outRoot });
+  return run({ tournament: picked.t, events: picked.events, url: args.urls[0], token, outRoot, client, apiT: picked.apiT, records, ...io });
 }
 
 if (require.main === module) {
@@ -88,4 +112,4 @@ if (require.main === module) {
   );
 }
 
-module.exports = { tickFromUrls, parseArgs };
+module.exports = { tickFromUrls, parseArgs, main };

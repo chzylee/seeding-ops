@@ -325,3 +325,59 @@ test('D2-7: if the old pull folder cannot be deleted after the swap, the pull st
   assert.ok(!fs.existsSync(first.dir));
   assert.deepStrictEqual(out.listPulls(first.tDir).map((p) => p.name), [path.basename(report.pullDir)]);
 });
+
+test("D2-5: the CLI's tick merges into state.json as it is at write time; the app's fields saved meanwhile survive, and a state.json is created only when none exists", async () => {
+  const { tickFromUrls } = require('../pull');
+  const outRoot = tmp();
+  const world = buildWorld(START / 1000);
+  const tDir = addTournament(outRoot, world, [E_SLUG]);
+  // A stale catalog (no Melee event yet), so the CLI must ask start.gg for the events; while that
+  // request is out, the app saves a lifecycle mark, a link and a push record.
+  pool.updateState(tDir, (s) => { s.events = s.events.filter((e) => e.slug !== E2_SLUG); });
+  const fake = createFakeFetch(world);
+  const appWrites = { marked_done: '2026-10-29T12:00:00.000Z', linked: ['cb-side-games'], pushes: [{ event: E_SLUG, phase_id: '5001', at: '2026-10-29T12:00:00.000Z', seed_count: 16 }] };
+  const fetchImpl = async (u, init) => {
+    if (opOf(init) === 'TournamentEvents') pool.updateState(tDir, (s) => Object.assign(s, appWrites));
+    return fake(u, init);
+  };
+  const picked = await tickFromUrls({ urls: [`https://www.start.gg/tournament/${T_SLUG}/event/${E2_SLUG}`], token: TOKEN, outRoot, fetchImpl, stderr: sink() });
+  assert.deepStrictEqual(picked.events, [E_SLUG, E2_SLUG]);
+  assert.ok(picked.apiT, 'the catalog response goes on to the pull (D2-9)');
+  const s = pool.readState(tDir);
+  assert.deepStrictEqual([s.marked_done, s.linked, s.pushes], [appWrites.marked_done, appWrites.linked, appWrites.pushes], "the app's fields are never overwritten");
+  assert.deepStrictEqual(s.ticked, [E_SLUG, E2_SLUG]);
+  assert.strictEqual(s.events.length, 3, 'the catalog is refreshed');
+  // No state.json yet: the CLI creates it.
+  const o2 = tmp();
+  const p2 = await tickFromUrls({ urls: [`https://www.start.gg/tournament/${T_SLUG}/event/${E_SLUG}`], token: TOKEN, outRoot: o2, fetchImpl: createFakeFetch(world), stderr: sink() });
+  assert.deepStrictEqual(p2.events, [E_SLUG]);
+  assert.deepStrictEqual(pool.readState(path.join(o2, T_SLUG)).ticked, [E_SLUG]);
+});
+
+test("D2-9: a CLI pull uses one client (one limiter) for the catalog request and the pull, asks for the tournament's events once, and logs that request in the pull's request log", async () => {
+  const { main } = require('../pull');
+  const sgg = require('../lib/startgg');
+  const world = buildWorld(START / 1000);
+  for (const withState of [false, true]) {
+    const outRoot = tmp();
+    if (withState) addTournament(outRoot, world, []); // the catalog is known: the pull asks once
+    const fake = createFakeFetch(world);
+    const real = sgg.createClient;
+    let made = 0;
+    sgg.createClient = (o) => { made++; return real(o); };
+    let code;
+    try {
+      code = await main([`https://www.start.gg/tournament/${T_SLUG}/event/${E_SLUG}`, `https://www.start.gg/tournament/${T_SLUG}/event/${E2_SLUG}`],
+        { outRoot, token: TOKEN, fetchImpl: fake, stderr: sink(), stdout: sink() });
+    } finally { sgg.createClient = real; }
+    assert.strictEqual(code, 0, `withState ${withState}`);
+    assert.strictEqual(made, 1, `one client for the whole run (withState ${withState})`);
+    assert.strictEqual(fake.calls.filter((c) => c.op === 'TournamentEvents').length, 1, `the events asked for once (withState ${withState})`);
+    const tDir = path.join(outRoot, T_SLUG);
+    const dir = path.join(tDir, out.readCurrent(tDir));
+    const m = JSON.parse(fs.readFileSync(path.join(dir, 'meta.json'), 'utf8'));
+    assert.strictEqual(m.request_count, fake.calls.length, 'every request of the run is counted, the catalog request included');
+    assert.strictEqual(out.readRequestLog(dir)[0].op, 'TournamentEvents');
+    assert.deepStrictEqual(pool.readState(tDir).ticked, [E_SLUG, E2_SLUG]);
+  }
+});

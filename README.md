@@ -35,7 +35,12 @@ never changes, and a **browser reload** shows the newest data. Old event links
 - **A tab per game.** Each ticked event's game gets a tab: the seeding table for that game, sliced
   from the one pool. A player's results in another of your games show under *Other games* on this
   tab and as "this game" on that one's. Ticking another event later adds a tab and pulls **only the
-  players not already in the pool**. Unticking hides a tab (no pull).
+  players not already in the pool** (a player with no start.gg account who is already in it gets the
+  new game's results added). That pull keeps the pool's two-year window where it is, so the new
+  players are read over the same dates as everyone else; press **Refresh** to move the window to
+  today for everyone. If a pull, W-L fetch or archive is already running, the tick is saved and the
+  status line says the new players are pulled after the current job; they are, without another
+  click. Unticking hides a tab (no pull).
 - **The Schedule tab** shows every player's pools and start times across all the tournament's
   events, plus side tournaments you link (type their start.gg slugs under *Side tournaments* and
   save; the next *Refresh schedule* pulls them). *Conflicts first* puts players with two pools at the
@@ -194,6 +199,11 @@ re-pulls its ticked events (the app's Refresh). Links work with or without `http
 parts like `/overview`, or as bare `tournament/<t>/event/<e>` slugs. Only singles events can be
 seeded.
 
+The command line uses one start.gg client for its whole run (the tournament's events are asked for
+once), and ticking from it never overwrites what the app saved in `state.json` (Mark done, archive,
+side tournaments, push records). **Don't run a command-line pull while the app is pulling or
+fetching W-L:** they are two processes on one token, each with its own limiter.
+
 **The per-event folder layout is retired.** Increment 1 wrote one folder per event,
 `out/<tournament>__<event>__<stamp>/`. Nothing writes those any more, and the app doesn't read them;
 any you still have are left as they are, and you can delete them whenever you like.
@@ -230,10 +240,12 @@ One folder per tournament: `out/<tournament>/`.
 |---|---|
 | `current` | One line: the name of the live pull folder. Written atomically once a pull is complete. |
 | `pull-<YYYYMMDD-HHMMSS>/` | One pull (local time): `players.csv`, `results.csv`, `meta.json` and `_work/`. The previous pull folder is deleted once a new one is live. |
-| `state.json` | What you decided: the tournament's events (from start.gg when you added it), which are ticked, linked side tournaments, `marked_done`, `archived`, and one entry per seed push. The pull never writes it. |
+| `state.json` | What you decided: the tournament's events (from start.gg when you added it), which are ticked, linked side tournaments, `marked_done`, `archived`, and one entry per seed push. The pull never writes it. `pull.js <event link>` ticks events in it (and creates it for a tournament not added yet) without overwriting the app's fields. |
 | `set-records.json` | The W-L cache, one entry per player per event (`<player_id>:<event_id>`), shared by every tab and kept across pulls. |
 | `schedule.json` | The Schedule tab's data: every player's pools and start times. |
 | `standings.json` | Only after *Archive standings*: each ticked event's final placements. |
+| `major-table-<game id>.html` | Only if you run `node views/major-table.js out/<tournament> --game <id>`: one game tab as a single HTML file. Derived; safe to delete. |
+| `claude-prompt.txt` | Written by `seed.cmd` after a pull: the prompt to paste when handing the files to Claude. Derived; safe to delete. |
 
 In a pull folder:
 
@@ -241,7 +253,7 @@ In a pull folder:
 |---|---|
 | `players.csv` | One row per registrant of any ticked event, **including players with no results**. Columns: `player_id` (the join key; never join on tag), `gamer_tag`, `prefix`, `user_slug` (blank if no start.gg account), `region_state`, `region_country` (from the account's public location; blank if hidden or no account), `result_count`, `history_status`, `team_entry`, `events` (the ticked events they entered, by event slug, separated by `;`). |
 | `results.csv` | One row per player per past event, all games, newest first within each player. Columns: `player_id`, `gamer_tag`, `event_date` (YYYY-MM-DD, UTC), `game_id`, `game_name`, `tournament_name`, `event_name`, `event_slug`, `event_id`, `num_entrants`, `placement` (blank if start.gg has none), `is_online`. There is no `is_event_game` column: a tab compares `game_id` with its own game. |
-| `meta.json` | The tournament (slug, name, start, timezone), its seeded events (slug, name, game, start, phases), `run_at`, the window, `mode` (`full`, `incremental` or `retry`), counts (registrants, results, `history_status`, `team_entries_split`, `region_coverage`, registrants in two events), `request_count`, `query_complexity_max`, everything skipped (`out_of_window`, `no_event_container`), and `failed_players` with each one's last error. |
+| `meta.json` | The tournament (slug, name, start, timezone), its seeded events (slug, name, game, start, phases), `run_at`, the window, `mode` (`full`, `incremental` or `retry`), counts (registrants, results, `history_status`, `team_entries_split`, `region_coverage`, registrants in two events), `request_count` (every request behind the pull's rows, including the earlier requests that fetched players an incremental or retry pull carried over), `requests_this_pull` (what this pull itself sent; the same as `request_count` for a full pull), `query_complexity_max`, everything skipped (`out_of_window`, `no_event_container`), and `failed_players` with each one's last error. |
 | `_work/` | The pull's working state: `run.json` (what a resume needs), `checkpoint.jsonl` (one line per finished player), `requests.jsonl` (one line per request: time, query, player, status, complexity; no token), and the app's W-L request log. You don't need these files for analysis. |
 
 `history_status` means:

@@ -275,3 +275,54 @@ test('README (build B pass 3): the Output table lists every file the tool writes
   assert.match(readme, /keeps the pool's two-year window where it is/);
   assert.match(readme, /`requests_this_pull`/);
 });
+
+test('D2-10: the post\'s retry rule, every case: refused, bracket started, not an admin, a server error, a network error and a timeout are sent ONCE; a rate limit and the time budget are retried, then posted', async () => {
+  const ok = { status: 200, body: { data: { updatePhaseSeeding: { id: 5001 } } } };
+  const gql = (message, withPath = true) => ({ status: 200, body: { errors: [{ message, ...(withPath ? { path: ['updatePhaseSeeding'] } : {}) }] } });
+  const scripted = (responses) => {
+    const calls = [];
+    const f = async (u, init) => {
+      calls.push(JSON.parse(init.body).query);
+      const r = responses[Math.min(calls.length - 1, responses.length - 1)];
+      if (r === 'throw') throw new Error('socket hang up');
+      if (r === 'timeout') throw Object.assign(new Error('The operation was aborted due to timeout'), { name: 'TimeoutError' });
+      const text = JSON.stringify(r.body);
+      return { status: r.status, ok: r.status < 300, headers: { get: () => null }, text: async () => text };
+    };
+    f.calls = calls;
+    return f;
+  };
+  const mapping = [{ seedId: 400000, seedNum: 1 }];
+  const once = [
+    ['refused (a GraphQL error while resolving)', gql('Seeding could not be updated'), 'other'],
+    ['bracket started', gql('Phase has already started'), 'locked'],
+    ['phase locked', gql('This phase is locked'), 'locked'],
+    ['not an admin (GraphQL auth message)', gql('You are not authorized to edit this tournament'), 'not-admin'],
+    ['not an admin (HTTP 400 auth body)', { status: 400, body: { success: false, message: 'Invalid authentication token' } }, 'not-admin'],
+    ['server error 5xx', { status: 503, body: { message: 'Service Unavailable' } }, 'other'],
+    ['network error', 'throw', 'other'],
+    ['timeout', 'timeout', 'other'],
+  ];
+  for (const [name, response, kind] of once) {
+    const clock = virtualClock(START);
+    const f = scripted([response, ok]);
+    const c = sgg.createClient({ token: 'T', fetchImpl: f, now: clock.now, sleep: clock.sleep });
+    let err = null;
+    try { await sgg.updatePhaseSeeding(c, '5001', mapping); } catch (e) { err = e; }
+    assert.ok(err, `${name}: refused`);
+    assert.strictEqual(f.calls.length, 1, `${name}: sent once, never retried`);
+    assert.strictEqual(sgg.pushFailure(err).kind, kind, `${name}: status line kind`);
+  }
+  const retried = [
+    ['rate limit (HTTP 429)', { status: 429, body: { message: 'Rate limit exceeded - api-token' } }],
+    ['time budget', gql('You have gone over the threshold for recent request time. Please wait before sending another request.', false)],
+  ];
+  for (const [name, response] of retried) {
+    const clock = virtualClock(START);
+    const f = scripted([response, ok]);
+    const c = sgg.createClient({ token: 'T', fetchImpl: f, now: clock.now, sleep: clock.sleep });
+    assert.deepStrictEqual(await sgg.updatePhaseSeeding(c, '5001', mapping), { id: 5001 }, `${name}: posted after the retry`);
+    assert.strictEqual(f.calls.length, 2, `${name}: retried once, then posted`);
+    assert.ok(f.calls.every((q) => /mutation UpdatePhaseSeeding/.test(q)));
+  }
+});

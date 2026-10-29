@@ -1,0 +1,26 @@
+{
+  "_source": "recorded from start.gg by scripts/record-fixtures.js",
+  "_recorded_on": "2026-10-29",
+  "_variables": {
+    "slug": "tournament/crescendo-of-night-3-episode-0/event/allegro-mbtl-pc"
+  },
+  "data": {
+    "event": {
+      "id": 1721814,
+      "slug": "tournament/crescendo-of-night-3-episode-0/event/allegro-mbtl-pc",
+      "name": "Allegro (MBTL) - PC",
+      "startAt": 1792024200,
+      "numEntrants": 21,
+      "videogame": {
+        "id": 36865,
+        "name": "Melty Blood: Type Lumina"
+      },
+      "tournament": {
+        "name": "Crescendo of Night 3 - Episode 0"
+      }
+    }
+  },
+  "extensions": {
+    "queryComplexity": 5
+  }
+}

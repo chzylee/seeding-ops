@@ -1,0 +1,55 @@
+{
+  "_source": "recorded from start.gg by scripts/record-fixtures.js",
+  "_recorded_on": "2026-10-29",
+  "_variables": {
+    "playerId": 2282067,
+    "videogameId": 36865
+  },
+  "data": {
+    "player": {
+      "recentStandings": [
+        {
+          "placement": 17,
+          "container": {
+            "__typename": "Event",
+            "id": 1721814,
+            "slug": "tournament/crescendo-of-night-3-episode-0/event/allegro-mbtl-pc",
+            "name": "Allegro (MBTL) - PC",
+            "startAt": 1792024200,
+            "numEntrants": 21,
+            "isOnline": true,
+            "videogame": {
+              "id": 36865,
+              "name": "Melty Blood: Type Lumina"
+            },
+            "tournament": {
+              "name": "Crescendo of Night 3 - Episode 0"
+            }
+          }
+        },
+        {
+          "placement": 17,
+          "container": {
+            "__typename": "Event",
+            "id": 1693882,
+            "slug": "tournament/lunar-exam-14/event/lunar-exam",
+            "name": "Lunar Exam",
+            "startAt": 1788048000,
+            "numEntrants": 25,
+            "isOnline": true,
+            "videogame": {
+              "id": 36865,
+              "name": "Melty Blood: Type Lumina"
+            },
+            "tournament": {
+              "name": "Lunar Exam #14"
+            }
+          }
+        }
+      ]
+    }
+  },
+  "extensions": {
+    "queryComplexity": 15
+  }
+}

@@ -1,0 +1,234 @@
+{
+  "_source": "recorded from start.gg by scripts/record-fixtures.js",
+  "_recorded_on": "2026-10-29",
+  "_variables": {
+    "eventId": 1721814,
+    "page": 1,
+    "perPage": 10
+  },
+  "data": {
+    "event": {
+      "entrants": {
+        "pageInfo": {
+          "total": 21,
+          "totalPages": 3
+        },
+        "nodes": [
+          {
+            "id": 24996184,
+            "participants": [
+              {
+                "id": 22849551,
+                "player": {
+                  "id": 2282067,
+                  "gamerTag": "IceManual",
+                  "prefix": "",
+                  "user": {
+                    "id": 1492375,
+                    "slug": "user/ef60eeec",
+                    "location": {
+                      "state": "NY",
+                      "country": "United States"
+                    }
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "id": 24996067,
+            "participants": [
+              {
+                "id": 22849452,
+                "player": {
+                  "id": 4103044,
+                  "gamerTag": "umbraDiviner",
+                  "prefix": null,
+                  "user": {
+                    "id": 2638760,
+                    "slug": "user/53bb1c94",
+                    "location": {
+                      "state": "BC",
+                      "country": "Canada"
+                    }
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "id": 24995755,
+            "participants": [
+              {
+                "id": 22849199,
+                "player": {
+                  "id": 220599,
+                  "gamerTag": "Crystal愛",
+                  "prefix": "RED HOOD",
+                  "user": {
+                    "id": 136267,
+                    "slug": "user/9c659a33",
+                    "location": {
+                      "state": "PA",
+                      "country": "United States"
+                    }
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "id": 24995754,
+            "participants": [
+              {
+                "id": 22849198,
+                "player": {
+                  "id": 354723,
+                  "gamerTag": "SeaBurn",
+                  "prefix": "",
+                  "user": {
+                    "id": 241995,
+                    "slug": "user/fd5a19ec",
+                    "location": {
+                      "state": "NJ",
+                      "country": "United States"
+                    }
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "id": 24994926,
+            "participants": [
+              {
+                "id": 22848570,
+                "player": {
+                  "id": 2105669,
+                  "gamerTag": "illish",
+                  "prefix": "GAS LEAK",
+                  "user": {
+                    "id": 1359127,
+                    "slug": "user/852e611c",
+                    "location": {
+                      "state": "CT",
+                      "country": "United States"
+                    }
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "id": 24994583,
+            "participants": [
+              {
+                "id": 22848262,
+                "player": {
+                  "id": 1314876,
+                  "gamerTag": "MadeInHeaven",
+                  "prefix": "TF",
+                  "user": {
+                    "id": 826108,
+                    "slug": "user/0ad2799b",
+                    "location": {
+                      "state": "MN",
+                      "country": "United States"
+                    }
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "id": 24994508,
+            "participants": [
+              {
+                "id": 22848203,
+                "player": {
+                  "id": 4168230,
+                  "gamerTag": "DubKun",
+                  "prefix": "MNFGC",
+                  "user": {
+                    "id": 2681923,
+                    "slug": "user/9b2ca0f4",
+                    "location": {
+                      "state": "MN",
+                      "country": "United States"
+                    }
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "id": 24994260,
+            "participants": [
+              {
+                "id": 22847990,
+                "player": {
+                  "id": 4087155,
+                  "gamerTag": "garrahaz",
+                  "prefix": "ROOST",
+                  "user": {
+                    "id": 2626601,
+                    "slug": "user/31029a30",
+                    "location": {
+                      "state": null,
+                      "country": null
+                    }
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "id": 24992657,
+            "participants": [
+              {
+                "id": 22846569,
+                "player": {
+                  "id": 3298693,
+                  "gamerTag": "Jarraffe",
+                  "prefix": "PSA",
+                  "user": {
+                    "id": 2120457,
+                    "slug": "user/4bb51c4d",
+                    "location": {
+                      "state": "NC",
+                      "country": "United States"
+                    }
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "id": 24992016,
+            "participants": [
+              {
+                "id": 22846009,
+                "player": {
+                  "id": 3984146,
+                  "gamerTag": "TrackerNivrig",
+                  "prefix": null,
+                  "user": {
+                    "id": 2560643,
+                    "slug": "user/95dec54b",
+                    "location": {
+                      "state": "NY",
+                      "country": "United States"
+                    }
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    }
+  },
+  "extensions": {
+    "queryComplexity": 41
+  }
+}

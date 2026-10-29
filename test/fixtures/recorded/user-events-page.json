@@ -1,0 +1,224 @@
+{
+  "_source": "recorded from start.gg by scripts/record-fixtures.js",
+  "_recorded_on": "2026-10-29",
+  "_variables": {
+    "userId": "302490",
+    "page": 1,
+    "perPage": 10
+  },
+  "data": {
+    "user": {
+      "events": {
+        "pageInfo": {
+          "total": 428,
+          "totalPages": 43
+        },
+        "nodes": [
+          {
+            "id": 1741167,
+            "slug": "tournament/cfg-tuesday-trials-264-strive-entoo-greatness/event/street-fighter-6",
+            "name": "Street Fighter 6",
+            "startAt": 1793140200,
+            "numEntrants": 16,
+            "isOnline": false,
+            "videogame": {
+              "id": 43868,
+              "name": "Street Fighter 6"
+            },
+            "tournament": {
+              "name": "CFG Tuesday Trials 264: Strive entoo Greatness!"
+            },
+            "userEntrant": {
+              "standing": {
+                "placement": 13
+              }
+            }
+          },
+          {
+            "id": 1741172,
+            "slug": "tournament/cfg-tuesday-trials-264-strive-entoo-greatness/event/virtua-fighter-5-r-e-v-o",
+            "name": "Virtua Fighter 5 R.E.V.O.",
+            "startAt": 1793142000,
+            "numEntrants": 19,
+            "isOnline": false,
+            "videogame": {
+              "id": 89755,
+              "name": "Virtua Fighter 5 R.E.V.O."
+            },
+            "tournament": {
+              "name": "CFG Tuesday Trials 264: Strive entoo Greatness!"
+            },
+            "userEntrant": {
+              "standing": {
+                "placement": 13
+              }
+            }
+          },
+          {
+            "id": 1741166,
+            "slug": "tournament/cfg-tuesday-trials-264-strive-entoo-greatness/event/uni-2",
+            "name": "UNI 2",
+            "startAt": 1793142900,
+            "numEntrants": 16,
+            "isOnline": false,
+            "videogame": {
+              "id": 50203,
+              "name": "Under Night In-Birth II Sys:Celes"
+            },
+            "tournament": {
+              "name": "CFG Tuesday Trials 264: Strive entoo Greatness!"
+            },
+            "userEntrant": {
+              "standing": {
+                "placement": 9
+              }
+            }
+          },
+          {
+            "id": 1738616,
+            "slug": "tournament/donatos-fight-night-10-21-26/event/mbaacc",
+            "name": "MBAACC",
+            "startAt": 1792619100,
+            "numEntrants": 9,
+            "isOnline": false,
+            "videogame": {
+              "id": 22407,
+              "name": "Melty Blood Actress Again Current Code"
+            },
+            "tournament": {
+              "name": "Donatos Fight Night - 10/21/26"
+            },
+            "userEntrant": {
+              "standing": {
+                "placement": 7
+              }
+            }
+          },
+          {
+            "id": 1738617,
+            "slug": "tournament/donatos-fight-night-10-21-26/event/soul-calibur-6",
+            "name": "Soul Calibur 6",
+            "startAt": 1792619100,
+            "numEntrants": 8,
+            "isOnline": false,
+            "videogame": {
+              "id": 904,
+              "name": "SOULCALIBUR VI"
+            },
+            "tournament": {
+              "name": "Donatos Fight Night - 10/21/26"
+            },
+            "userEntrant": {
+              "standing": {
+                "placement": 4
+              }
+            }
+          },
+          {
+            "id": 1738614,
+            "slug": "tournament/donatos-fight-night-10-21-26/event/tekken-8",
+            "name": "Tekken 8",
+            "startAt": 1792619100,
+            "numEntrants": 11,
+            "isOnline": false,
+            "videogame": {
+              "id": 49783,
+              "name": "TEKKEN 8"
+            },
+            "tournament": {
+              "name": "Donatos Fight Night - 10/21/26"
+            },
+            "userEntrant": {
+              "standing": {
+                "placement": 9
+              }
+            }
+          },
+          {
+            "id": 1738619,
+            "slug": "tournament/donatos-fight-night-10-21-26/event/doa4",
+            "name": "DOA4",
+            "startAt": 1792619100,
+            "numEntrants": 6,
+            "isOnline": false,
+            "videogame": {
+              "id": 5214,
+              "name": "Dead or Alive 4"
+            },
+            "tournament": {
+              "name": "Donatos Fight Night - 10/21/26"
+            },
+            "userEntrant": {
+              "standing": {
+                "placement": 5
+              }
+            }
+          },
+          {
+            "id": 1733450,
+            "slug": "tournament/donatos-fight-night-10-14-26/event/mbaacc",
+            "name": "MBAACC",
+            "startAt": 1792014300,
+            "numEntrants": 10,
+            "isOnline": false,
+            "videogame": {
+              "id": 22407,
+              "name": "Melty Blood Actress Again Current Code"
+            },
+            "tournament": {
+              "name": "Donatos Fight Night - 10/14/26"
+            },
+            "userEntrant": {
+              "standing": {
+                "placement": 9
+              }
+            }
+          },
+          {
+            "id": 1733449,
+            "slug": "tournament/donatos-fight-night-10-14-26/event/dragonball-fighterz",
+            "name": "Dragonball FighterZ",
+            "startAt": 1792014300,
+            "numEntrants": 5,
+            "isOnline": false,
+            "videogame": {
+              "id": 287,
+              "name": "DRAGON BALL FighterZ"
+            },
+            "tournament": {
+              "name": "Donatos Fight Night - 10/14/26"
+            },
+            "userEntrant": {
+              "standing": {
+                "placement": 5
+              }
+            }
+          },
+          {
+            "id": 1733451,
+            "slug": "tournament/donatos-fight-night-10-14-26/event/soul-calibur-6",
+            "name": "Soul Calibur 6",
+            "startAt": 1792014300,
+            "numEntrants": 8,
+            "isOnline": false,
+            "videogame": {
+              "id": 904,
+              "name": "SOULCALIBUR VI"
+            },
+            "tournament": {
+              "name": "Donatos Fight Night - 10/14/26"
+            },
+            "userEntrant": {
+              "standing": {
+                "placement": 3
+              }
+            }
+          }
+        ]
+      }
+    }
+  },
+  "extensions": {
+    "queryComplexity": 71
+  }
+}

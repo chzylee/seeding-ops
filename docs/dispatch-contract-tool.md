@@ -21,7 +21,7 @@ DISPATCH
 - Directive: "want to polish it up for next use" / "reliable for me, then i share" / "don't
   overcomplicate it. it's 3 tables" / "results speak for themselves" (no justification field) /
   majors per game, main-event only (docs/design-tool.md §Display rules 5-9)
-- Surfaces: C:\Users\iknow\repos\seeding-script (read/write per grants) · docs/design-tool.md
+- Surfaces: C:\Users\iknow\repos\seeding-ops (read/write per grants) · docs/design-tool.md
   (BINDING; its Open questions table's defaults apply unless Noah has ruled) · docs/usage-log.md
   "Requirements surfaced" Ratified rows (BINDING, read-only) · docs/design-webapp.md and
   docs/design.md (prior increments; design-tool.md wins where they differ)
@@ -48,7 +48,7 @@ the build record for that.
 
 ## Mutation grants
 
-- Under `C:\Users\iknow\repos\seeding-script\`: create/modify/delete anything **except**
+- Under `C:\Users\iknow\repos\seeding-ops\`: create/modify/delete anything **except**
   `docs/usage-log.md`, `docs/design-tool.md`, `docs/design-webapp.md`, `docs/design.md`,
   `docs/dispatch-contract*.md`, increment 1's and 2's build records, `.env`, `conflicts/` (build B's),
   and **existing `out/` run folders** (read-only).

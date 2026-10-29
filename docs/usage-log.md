@@ -1,6 +1,6 @@
 # Usage log — seeding with the MVP
 
-> **What this is:** a running record of using `seeding-script` to seed real events. It records the
+> **What this is:** a running record of using `seeding-ops` (named `seeding-script` until 2026-10-29) to seed real events. It records the
 > pull, the transformations Noah asks Claude for, what drove each seeding decision, and where it
 > hurt. **This log shapes the eventual tool**: requirements come from what actually happens here,
 > not from guesses. Entries are Noah's observations unless marked *(Claude)*. Interpretations are

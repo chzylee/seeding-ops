@@ -1,0 +1,4 @@
+{
+  "_comment": "Main tournament slug -> side-games tournament slugs. Every schedule pull of the main tournament (CLI or the app's Refresh) also pulls these and adds their entries to the main tournament's players.",
+  "eclipse-1st-cour": ["2-on-block-presents-eclipse-community-games"]
+}

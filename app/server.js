@@ -12,6 +12,12 @@
 //   GET  /api/e/<t>/<e>/status      { pulling, wl: {done,total,summaryDone,summaryTotal}, lastRunAt, error, ... }
 //   GET  /api/e/<t>/<e>/export.csv  the summary table as a CSV for Google Sheets (lib/view/export.js)
 //   GET  /static/<file>             the page's JS/CSS (a fixed list; nothing else is served)
+//   GET  /schedule/<t>              conflicts: every player's schedule (pools, waves, start times)
+//   GET  /api/schedule/<t>/data     the latest schedule pull (conflicts/out/<t>__*/schedule.json)
+//   POST /api/schedule/<t>/refresh  re-pull the schedule from start.gg in the background; 202, or 409.
+//                                   ?only=seeds re-pulls just this tournament's pools and seeds and
+//                                   carries the side games over from the latest pull
+//   GET  /api/schedule/<t>/status   { running, kind: 'full'|'seeds', error, startedAt, finishedAt }
 // Env: SEED_APP_MAX_PER_MIN caps the app's start.gg requests per rolling 60 s (default 75, the
 // pull's own pace). PORT overrides the port. SEED_TIERS_FILE overrides registry/tiers.csv (the
 // tier/notes editor's write path, lib/view/data.js) — mainly so tests never touch the real file.
@@ -24,6 +30,7 @@ const { loadToken } = require('../lib/token');
 const pacing = require('../lib/pacing');
 const data = require('../lib/view/data');
 const { Jobs } = require('./jobs');
+const schedulePull = require('../conflicts/lib/pull');
 
 const ROOT = path.join(__dirname, '..');
 const DEFAULT_PORT = 8765;
@@ -37,6 +44,7 @@ const STATIC = {
   'app.css': [path.join(__dirname, 'public', 'app.css'), 'text/css; charset=utf-8'],
 };
 const PAGE = path.join(__dirname, 'public', 'event.html');
+const SCHEDULE_PAGE = path.join(ROOT, 'conflicts', 'public', 'schedule.html');
 
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
@@ -47,7 +55,7 @@ function send(res, status, body, type = 'text/plain; charset=utf-8', extra = {})
 const json = (res, status, obj) => send(res, status, JSON.stringify(obj), 'application/json; charset=utf-8');
 const notFound = (res) => send(res, 404, 'Not found');
 
-function indexPage(outRoot, jobs) {
+function indexPage(outRoot, jobs, scheduleRoot) {
   const events = data.listEvents(outRoot);
   const items = events.map((ev) => {
     const m = ev.latest && ev.latest.meta;
@@ -62,7 +70,19 @@ function indexPage(outRoot, jobs) {
 <title>Seeding events</title><link rel="stylesheet" href="/static/app.css">
 <body class="index"><main><h1>Seeding events</h1>
 <p class="dim">Each event's page always shows its latest pull. Pull a new event with <code>seed.cmd</code> or <code>node pull.js &lt;event link&gt;</code>; it appears here.</p>
-<ul class="events">${items || '<li class="dim">No pulls in out/ yet.</li>'}</ul></main></body></html>`;
+<ul class="events">${items || '<li class="dim">No pulls in out/ yet.</li>'}</ul>
+<h1>Schedules</h1>
+<p class="dim">Every player's pools and start times across a tournament's events. Pull one with <code>npm run schedule -- &lt;tournament link&gt;</code>.</p>
+<ul class="events">${scheduleItems(scheduleRoot) || '<li class="dim">No schedule pulls in conflicts/out/ yet.</li>'}</ul></main></body></html>`;
+}
+
+function scheduleItems(scheduleRoot) {
+  const seen = new Set();
+  return schedulePull.listSchedules(scheduleRoot).filter((x) => !seen.has(x.slug) && seen.add(x.slug)).map((x) => {
+    let name = x.slug, at = '';
+    try { const j = JSON.parse(fs.readFileSync(path.join(x.dir, 'schedule.json'), 'utf8')); name = j.tournament.name; at = j.pulled_at; } catch { /* listed by slug */ }
+    return `<li><a href="/schedule/${esc(x.slug)}">${esc(name)}</a><div class="dim">pulled ${esc(String(at).slice(0, 16).replace('T', ' '))} UTC</div></li>`;
+  }).join('');
 }
 
 // A same-origin request from the app's own page. Blocks other sites' pages from POSTing to the
@@ -75,10 +95,15 @@ function trustedHost(req) {
 
 function createApp(opts = {}) {
   const outRoot = opts.outRoot || path.join(ROOT, 'out');
+  const scheduleRoot = opts.scheduleRoot || schedulePull.OUT_ROOT;
+  const pullSchedule = opts.pullSchedule || schedulePull.pullSchedule;
+  const getToken = opts.getToken || (() => loadToken({ envFile: path.join(ROOT, '.env') }).token);
+  // One schedule pull at a time per tournament. Small (about 10 requests), so it doesn't wait on the seeding job.
+  const scheduleJobs = new Map();
   const tiersFile = opts.tiersFile; // undefined => data.js's own default (SEED_TIERS_FILE or registry/tiers.csv)
   const jobs = new Jobs({
     outRoot,
-    getToken: opts.getToken || (() => loadToken({ envFile: path.join(ROOT, '.env') }).token),
+    getToken,
     fetchImpl: opts.fetchImpl, now: opts.now, sleep: opts.sleep, pull: opts.pull,
     maxPerMinute: opts.maxPerMinute || Number(process.env.SEED_APP_MAX_PER_MIN) || pacing.MAX_REQUESTS,
   });
@@ -92,13 +117,53 @@ function createApp(opts = {}) {
       try { p = decodeURIComponent(url.pathname); } catch { return notFound(res); }
       const method = req.method;
 
-      if (p === '/' && method === 'GET') return send(res, 200, indexPage(outRoot, jobs), 'text/html; charset=utf-8');
+      if (p === '/' && method === 'GET') return send(res, 200, indexPage(outRoot, jobs, scheduleRoot), 'text/html; charset=utf-8');
 
       let m = /^\/static\/([a-z.]+)$/.exec(p);
       if (m && method === 'GET') {
         const s = STATIC[m[1]];
         if (!s) return notFound(res);
         return send(res, 200, fs.readFileSync(s[0]), s[1]);
+      }
+
+      m = /^\/schedule\/([^/]+)\/?$/.exec(p);
+      if (m && method === 'GET') {
+        if (!data.SLUG_PART.test(m[1])) return notFound(res);
+        return send(res, 200, fs.readFileSync(SCHEDULE_PAGE), 'text/html; charset=utf-8');
+      }
+
+      m = /^\/api\/schedule\/([^/]+)\/(data|status|refresh)$/.exec(p);
+      if (m) {
+        const [, t, what] = m;
+        if (!data.SLUG_PART.test(t)) return notFound(res);
+        const status = () => {
+          const j = scheduleJobs.get(t);
+          return j ? { running: j.running, kind: j.kind, error: j.error, startedAt: j.startedAt, finishedAt: j.finishedAt } : { running: false, error: null };
+        };
+        if (what === 'status' && method === 'GET') return json(res, 200, status());
+        if (what === 'data' && method === 'GET') {
+          const latest = schedulePull.latestSchedule(scheduleRoot, t);
+          if (!latest) return json(res, 404, { error: 'No schedule pull for this tournament yet.', status: status() });
+          const body = JSON.parse(fs.readFileSync(path.join(latest.dir, 'schedule.json'), 'utf8'));
+          body.status = status();
+          return json(res, 200, body);
+        }
+        if (what === 'refresh' && method === 'POST') {
+          if (req.headers['x-seeding-app'] !== '1') return send(res, 403, 'Missing X-Seeding-App header');
+          const cur = scheduleJobs.get(t);
+          if (cur && cur.running) return json(res, 409, status());
+          const token = getToken();
+          if (!token) return json(res, 400, { error: 'No STARTGG_TOKEN. Paste it into .env first.' });
+          const seedsOnly = url.searchParams.get('only') === 'seeds';
+          const job = { running: true, kind: seedsOnly ? 'seeds' : 'full', error: null, startedAt: new Date().toISOString(), finishedAt: null };
+          scheduleJobs.set(t, job);
+          job.promise = Promise.resolve()
+            .then(() => pullSchedule({ slug: t, token, seedsOnly, outRoot: scheduleRoot, fetchImpl: opts.fetchImpl, now: opts.now, sleep: opts.sleep }))
+            .catch((err) => { job.error = (err && err.message) || String(err); })
+            .finally(() => { job.running = false; job.finishedAt = new Date().toISOString(); });
+          return json(res, 202, status());
+        }
+        return send(res, 405, 'Method not allowed');
       }
 
       m = /^\/e\/([^/]+)\/([^/]+)\/?$/.exec(p);
@@ -157,7 +222,7 @@ function createApp(opts = {}) {
       return send(res, 500, `Server error: ${err && err.message}`);
     }
   }
-  return { handler, jobs, outRoot };
+  return { handler, jobs, outRoot, scheduleJobs };
 }
 
 function openBrowser(url) {

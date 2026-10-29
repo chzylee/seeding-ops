@@ -1,0 +1,288 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Player schedules</title>
+<link rel="stylesheet" href="/static/app.css">
+<!-- conflicts/public/schedule.html — served at /schedule/<tournament> by app/server.js.
+     One row per player, one column per wave; each cell names the event and pool they play then. -->
+<style>
+  body.schedule { display: flex; flex-direction: column; height: 100%; }
+  .s-head { padding: var(--s-3) var(--s-4) var(--s-2); background: var(--cell); border-bottom: 1px solid var(--line); }
+  .s-head h1 { font-size: 18px; margin: 0; display: inline; }
+  .s-head .back { margin-right: var(--s-3); }
+  .s-sub { color: var(--dim); margin-top: 2px; }
+  .s-bar { display: flex; flex-wrap: wrap; gap: var(--s-3); align-items: center; margin-top: var(--s-2); }
+  .s-bar button, .s-bar select, .s-bar input { height: var(--ctl-h); border: 1px solid var(--line-strong); border-radius: var(--radius-sm);
+    background: var(--cell); padding: 0 var(--s-2); font: inherit; }
+  .s-bar button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .s-bar button:disabled { opacity: .6; cursor: default; }
+  .s-status { color: var(--dim); }
+  .s-status.err { color: var(--err); }
+  .s-wrap { flex: 1 1 0; overflow: auto; min-height: 80px; }
+  /* Block view: a second copy of the table in the lower half with its own column sort. */
+  #lower { flex: 1 1 0; display: flex; flex-direction: column; min-height: 80px; border-top: 2px solid var(--split); }
+  .lower-bar { display: flex; gap: var(--s-3); align-items: center; padding: var(--s-1) var(--s-4); background: var(--accent-weak); }
+  .lower-bar strong { font-weight: 600; }
+  .lower-bar button { margin-left: auto; height: 26px; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background: var(--cell); padding: 0 var(--s-2); }
+  #sched2 thead th { cursor: pointer; user-select: none; }
+  #sched2 thead th:hover { background: var(--head-hover); }
+  th .cnt { font-weight: 400; color: var(--dim); }
+  #lowerToggle[aria-pressed="true"] { background: var(--accent-weak-2); border-color: var(--split); color: var(--accent-ink); }
+  table.sched { border-collapse: separate; border-spacing: 0; font-variant-numeric: tabular-nums; min-width: 100%; }
+  table.sched th, table.sched td { border-bottom: 1px solid var(--line); border-right: 1px solid var(--line); padding: var(--s-1) var(--s-2);
+    text-align: left; vertical-align: top; background: var(--cell); white-space: nowrap; }
+  table.sched thead th { position: sticky; top: 0; z-index: var(--z-head); background: var(--head); font-weight: 600; }
+  table.sched thead th .t { display: block; font-weight: 400; color: var(--dim); font-size: 12px; }
+  table.sched th.player, table.sched td.player { position: sticky; left: 0; z-index: var(--z-cell); }
+  table.sched thead th.player { z-index: var(--z-head-frozen); }
+  table.sched td.player .pre { color: var(--dim); }
+  table.sched td.player .n { color: var(--dim); font-size: 12px; margin-left: var(--s-1); }
+  table.sched tbody tr:hover td { background: var(--row-hover); }
+  /* Conflicts first: red = two main-tournament pools at the same time; orange = only clashes with a side game. */
+  table.sched tbody tr.clash td { background: #fde4e4; }
+  table.sched tbody tr.clash:hover td { background: #fbd5d5; }
+  table.sched tbody tr.clash-side td { background: #feead6; }
+  table.sched tbody tr.clash-side:hover td { background: #fddcbd; }
+  .chip .seed { opacity: .7; margin-left: 3px; }
+  .chip.side { background: #fff; color: var(--ink-2); border: 1px dashed var(--line-strong); line-height: 18px; }
+  #clashToggle[aria-pressed="true"] { background: #fde4e4; border-color: #e3a3a3; color: #7a1d1d; }
+  .chip { display: inline-block; padding: 0 6px; border-radius: var(--radius-sm); margin: 1px 2px 1px 0; font-size: 13px; line-height: 20px; }
+  .ev0 { background: #e3ecfa; color: #183d73; } .ev1 { background: #fde8d7; color: #6b3410; }
+  .ev2 { background: #e6f2e1; color: #24502a; } .ev3 { background: #f1e4f6; color: #55276a; }
+  .ev4 { background: #eceef1; color: #33363c; } .ev5 { background: #fdf3c8; color: #5a4600; }
+  #msg { padding: var(--s-4); }
+</style>
+<body class="schedule">
+<header class="s-head">
+  <a href="/" class="back" title="All events">◂ Events</a>
+  <h1 id="title">Loading…</h1>
+  <div id="sub" class="s-sub"></div>
+  <div class="s-bar">
+    <button id="refresh" class="primary" type="button" title="Pull every event's entrants and pools again from start.gg">Refresh from start.gg</button>
+    <button id="refreshSeeds" type="button" title="Re-pull only this tournament's pools and seeds (about 10 requests). Side games are kept from the last full refresh.">Refresh seeds</button>
+    <button id="clashToggle" type="button" aria-pressed="false" title="Move players with two pools at the same time to the top. Red: two main-event pools clash. Orange: the only clash is with a side game.">Conflicts first</button>
+    <button id="lowerToggle" type="button" aria-pressed="false" title="Open a second copy of the table below, sortable by any column">▤ Block view</button>
+    <span id="status" class="s-status" role="status" aria-live="polite"></span>
+    <label>Players in <select id="eventFilter"><option value="">any event</option></select></label>
+    <label>Find <input id="find" placeholder="type a tag" autocomplete="off" spellcheck="false"></label>
+    <span id="count" class="s-status"></span>
+  </div>
+</header>
+<div class="s-wrap">
+  <div id="msg"></div>
+  <table class="sched" id="sched"><thead></thead><tbody></tbody></table>
+</div>
+<section id="lower" hidden aria-label="Block view">
+  <div class="lower-bar"><strong>Block view</strong><span id="lowerNote" class="s-status"></span>
+    <button id="lowerClose" type="button">Close</button></div>
+  <div class="s-wrap"><table class="sched" id="sched2"><thead></thead><tbody></tbody></table></div>
+</section>
+<script>
+'use strict';
+const slug = decodeURIComponent(location.pathname.replace(/^\/schedule\//, '').replace(/\/$/, ''));
+const API = '/api/schedule/' + encodeURIComponent(slug);
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const shortName = (name) => { const m = String(name).match(/\]\s*([A-Z0-9]{2,})\b/); return m ? m[1] : String(name); };
+let D = null;
+let fmt = (s) => '';
+
+function columns(d) {
+  // One column per wave (in start order); pools with a time but no wave get a column per time;
+  // anything without a time goes last.
+  const cols = new Map();
+  const add = (key, wave, startAt) => { if (!cols.has(key)) cols.set(key, { key, wave, startAt }); };
+  for (const b of d.blocks) if (b.startAt) add(b.wave ? 'w' + b.wave : 't' + b.startAt, b.wave, b.startAt);
+  for (const p of d.players) for (const e of p.entries) {
+    if (e.startAt) add(e.wave ? 'w' + e.wave : 't' + e.startAt, e.wave, e.startAt);
+    else add(colKey(e), null, null);
+  }
+  const last = { side: 1, none: 2 };
+  return [...cols.values()].sort((a, b) => (a.startAt ?? Infinity) - (b.startAt ?? Infinity) || (last[a.key] || 0) - (last[b.key] || 0));
+}
+// p.conflict comes from the pull (conflicts/lib/schedule.js conflictOf): 'main', 'side' or null.
+const RANK = { main: 2, side: 1 };
+let clashFirst = false;
+
+const colKey = (e) => (e.startAt ? (e.wave ? 'w' + e.wave : 't' + e.startAt) : e.side ? 'side' : 'none');
+
+function filteredRows(d) {
+  const evF = $('eventFilter').value;
+  const q = $('find').value.trim().toLowerCase();
+  return d.players.filter((p) => (!evF || p.entries.some((e) => e.eventId === evF))
+    && (!q || p.tag.toLowerCase().includes(q) || (p.prefix || '').toLowerCase().includes(q)));
+}
+
+function headHtml(cols, opts = {}) {
+  // opts.sort: { key, dir } marks the sorted column; opts.counts: Map(colKey -> players in it).
+  const arrow = (key) => (opts.sort && opts.sort.key === key ? (opts.sort.dir > 0 ? ' ▲' : ' ▼') : '');
+  const count = (key) => (opts.counts && key !== 'player' ?` <span class="cnt">(${opts.counts.get(key) || 0})</span>` : '');
+  const th = (key, label, sub, cls = '') => `<th data-key="${esc(key)}"${cls ? ` class="${cls}"` : ''}>${label}${count(key)}${arrow(key)}${sub ? `<span class="t">${sub}</span>` : ''}</th>`;
+  return '<tr>' + th('player', 'Player', '', 'player') + cols.map((c) =>
+    c.key === 'none' ? th(c.key, 'No time set', '')
+      : c.key === 'side' ? th(c.key, 'Side games', 'no time on start.gg')
+      : th(c.key, c.wave ? 'Wave ' + esc(c.wave) : 'No wave', esc(fmt(c.startAt)))).join('') + '</tr>';
+}
+
+function byColumn(p) {
+  const by = new Map();
+  for (const e of p.entries) { const k = colKey(e); if (!by.has(k)) by.set(k, []); by.get(k).push(e); }
+  return by;
+}
+
+function rowHtml(p, cols, ctx) {
+  const by = byColumn(p);
+  const nEv = new Set(p.entries.filter((e) => !e.side).map((e) => e.eventId)).size;
+  const nSideEv = new Set(p.entries.filter((e) => e.side).map((e) => e.eventId)).size;
+  const cells = cols.map((c) => '<td>' + (by.get(c.key) || []).map((e) => e.side
+    ? `<span class="chip side" title="Side game: ${esc(e.eventName)}${e.pool ? ' · ' + esc(e.phaseName || '') + ' ' + esc(e.pool) : ' · no bracket yet'}">${esc(e.eventName)}${e.pool ? ' ' + esc(e.pool) : ''}</span>`
+    : `<span class="chip ev${(ctx.evIdx.get(e.eventId) ?? 4) % 6}" title="${esc(e.eventName)} · ${esc(e.phaseName || '')} ${esc(e.pool || '(no pool)')}${e.seedNum ? ' · seed ' + e.seedNum : ''}${e.poolSeedNum ? ' (' + e.poolSeedNum + ' in pool)' : ''}${e.team ? ' · team ' + esc(e.team) : ''}">`
+    + `${esc(ctx.evShort.get(e.eventId))} ${esc(e.pool ?? '(no pool)')}${e.seedNum ? `<span class="seed">#${e.seedNum}</span>` : ''}</span>`).join('') + '</td>').join('');
+  const who = (p.prefix ? `<span class="pre">${esc(p.prefix)} | </span>` : '') + esc(p.tag);
+  const link = p.userSlug ? `<a href="https://www.start.gg/${esc(p.userSlug)}" target="_blank" rel="noopener">${who}</a>` : who;
+  const cls = clashFirst && p.conflict ? (p.conflict === 'main' ? ' class="clash"' : ' class="clash-side"') : '';
+  const n = `${nEv} event${nEv === 1 ? '' : 's'}${nSideEv ? ` + ${nSideEv} side` : ''}`;
+  return `<tr${cls}><td class="player">${link}<span class="n">${n}</span></td>${cells}</tr>`;
+}
+
+// Block view sort. Player: by tag. A block column: everyone with something in that block first,
+// grouped by event, pool, then seed (the arrow flips that order); everyone else after, by tag.
+const byTag = (a, b) => a.tag.localeCompare(b.tag, undefined, { sensitivity: 'base' });
+function cmpEntry(x, y, ctx) {
+  return (x.side - y.side)
+    || String(ctx.evShort.get(x.eventId)).localeCompare(String(ctx.evShort.get(y.eventId)))
+    || String(x.pool ?? '').localeCompare(String(y.pool ?? ''))
+    || (x.seedNum ?? Infinity) - (y.seedNum ?? Infinity);
+}
+function sortForBlock(rows, sort, ctx) {
+  if (sort.key === 'player') return rows.sort((a, b) => sort.dir * byTag(a, b));
+  const first = (p) => (byColumn(p).get(sort.key) || []).slice().sort((x, y) => cmpEntry(x, y, ctx))[0];
+  const keyed = rows.map((p) => ({ p, e: first(p) }));
+  keyed.sort((a, b) => {
+    if (!a.e || !b.e) return (!a.e - !b.e) || byTag(a.p, b.p);
+    return sort.dir * cmpEntry(a.e, b.e, ctx) || byTag(a.p, b.p);
+  });
+  return keyed.map((k) => k.p);
+}
+
+// Per-viewer conveniences: whether the block view is open and how it's sorted.
+const store = {
+  get(k, dflt) { try { const v = localStorage.getItem('schedule:' + slug + ':' + k); return v == null ? dflt : JSON.parse(v); } catch { return dflt; } },
+  set(k, v) { try { localStorage.setItem('schedule:' + slug + ':' + k, JSON.stringify(v)); } catch { /* fine without it */ } },
+};
+let lowerOpen = store.get('lowerOpen', false);
+let lowerSort = store.get('lowerSort', { key: 'player', dir: 1 });
+
+function render() {
+  const d = D;
+  const ctx = {
+    evIdx: new Map(d.events.map((e, i) => [e.id, i])),
+    evShort: new Map(d.events.map((e) => [e.id, e.short || shortName(e.name)])),
+  };
+  const cols = columns(d);
+  const rows = filteredRows(d);
+
+  // Top table: tag order, or conflicts first. Stable: main conflicts, then side-only, then everyone else.
+  const top = rows.slice();
+  if (clashFirst) top.sort((a, b) => (RANK[b.conflict] || 0) - (RANK[a.conflict] || 0));
+  const nMain = rows.filter((p) => p.conflict === 'main').length;
+  const nSide = rows.filter((p) => p.conflict === 'side').length;
+  $('clashToggle').textContent = `Conflicts first (${nMain} + ${nSide} side-only)`;
+  $('sched').tHead.innerHTML = headHtml(cols);
+  $('sched').tBodies[0].innerHTML = top.map((p) => rowHtml(p, cols, ctx)).join('');
+  $('count').textContent = `${rows.length} of ${d.players.length} players`;
+
+  $('lower').hidden = !lowerOpen;
+  $('lowerToggle').setAttribute('aria-pressed', String(lowerOpen));
+  if (!lowerOpen) return;
+  if (lowerSort.key !== 'player' && !cols.some((c) => c.key === lowerSort.key)) lowerSort = { key: 'player', dir: 1 };
+  const counts = new Map(cols.map((c) => [c.key, rows.filter((p) => p.entries.some((e) => colKey(e) === c.key)).length]));
+  const bottom = sortForBlock(rows.slice(), lowerSort, ctx);
+  $('sched2').tHead.innerHTML = headHtml(cols, { sort: lowerSort, counts });
+  $('sched2').tBodies[0].innerHTML = bottom.map((p) => rowHtml(p, cols, ctx)).join('');
+  const col = cols.find((c) => c.key === lowerSort.key);
+  const colName = !col ? '' : col.key === 'side' ? 'side games' : col.key === 'none' ? 'no time set'
+    : (col.wave ? 'Wave ' + col.wave : 'start') + ' (' + fmt(col.startAt) + ')';
+  $('lowerNote').textContent = !col ? 'Sorted by player. Click a block header to list everyone in it first.'
+    : `Sorted by ${colName}: ${counts.get(col.key) || 0} of ${rows.length} players have something there, listed first by event, pool and seed.`;
+}
+
+async function load() {
+  const r = await fetch(API + '/data', { cache: 'no-store' });
+  const body = await r.json();
+  if (!r.ok) {
+    $('title').textContent = slug;
+    $('msg').textContent = body.error + ' Click "Refresh from start.gg" to pull it.';
+    return body.status;
+  }
+  D = body;
+  $('msg').textContent = '';
+  document.title = `${D.tournament.name} · Schedules`;
+  $('title').textContent = `${D.tournament.name} · Player schedules`;
+  const tz = D.tournament.timezone || 'UTC';
+  const f = new Intl.DateTimeFormat('en-US', { timeZone: tz, weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  fmt = (s) => (s ? f.format(new Date(s * 1000)) : '');
+  const when = (iso) => new Date(iso).toLocaleString('en-US', { weekday: 'short', hour: 'numeric', minute: '2-digit', month: 'short', day: 'numeric' });
+  const pulled = when(D.pulled_at);
+  const inSide = D.players.filter((p) => p.entries.some((e) => e.side)).length;
+  const sides = (D.side_tournaments || []).map((s) => s.name).join(', ');
+  $('sub').textContent = `${D.players.length} players · ${D.events.filter((e) => e.numEntrants && !e.side).map((e) => `${e.short || shortName(e.name)} ${e.numEntrants}`).join(' · ')}`
+    + (sides ? ` · ${inSide} also in side games (${sides})` : '') + ` · pulled ${pulled}`
+    + (D.sides_pulled_at && D.sides_pulled_at !== D.pulled_at ? ` (side games ${when(D.sides_pulled_at)})` : '') + ` · times in ${tz}`;
+  const sel = $('eventFilter');
+  const keep = sel.value;
+  sel.innerHTML = '<option value="">any event</option>' + D.events.filter((e) => e.numEntrants && !e.side)
+    .map((e) => `<option value="${esc(e.id)}">${esc(e.short || shortName(e.name))}</option>`).join('');
+  sel.value = keep;
+  render();
+  return body.status;
+}
+
+function showStatus(st) {
+  const s = $('status');
+  s.classList.toggle('err', !!(st && st.error));
+  $('refresh').disabled = $('refreshSeeds').disabled = !!(st && st.running);
+  s.textContent = st && st.running ? (st.kind === 'seeds' ? 'Pulling seeds from start.gg…' : 'Pulling from start.gg…') : st && st.error ? 'Refresh failed: ' + st.error : '';
+}
+
+async function poll() {
+  const st = await (await fetch(API + '/status', { cache: 'no-store' })).json();
+  showStatus(st);
+  if (st.running) return setTimeout(poll, 1500);
+  if (!st.error) { await load(); $('status').textContent = 'Updated.'; }
+}
+
+async function startRefresh(query, kind) {
+  const r = await fetch(API + '/refresh' + query, { method: 'POST', headers: { 'X-Seeding-App': '1' } });
+  const st = await r.json();
+  if (r.status === 400) return showStatus({ error: st.error });
+  showStatus({ running: true, kind: st.kind || kind });
+  setTimeout(poll, 1000);
+}
+$('refresh').addEventListener('click', () => startRefresh('', 'full'));
+$('refreshSeeds').addEventListener('click', () => startRefresh('?only=seeds', 'seeds'));
+$('eventFilter').addEventListener('change', () => D && render());
+$('find').addEventListener('input', () => D && render());
+function setLower(open) { lowerOpen = open; store.set('lowerOpen', open); if (D) render(); }
+$('lowerToggle').addEventListener('click', () => setLower(!lowerOpen));
+$('lowerClose').addEventListener('click', () => setLower(false));
+$('sched2').tHead.addEventListener('click', (ev) => {
+  const th = ev.target.closest('th[data-key]');
+  if (!th) return;
+  const key = th.dataset.key;
+  lowerSort = lowerSort.key === key ? { key, dir: -lowerSort.dir } : { key, dir: 1 };
+  store.set('lowerSort', lowerSort);
+  render();
+});
+$('clashToggle').addEventListener('click', () => {
+  clashFirst = !clashFirst;
+  $('clashToggle').setAttribute('aria-pressed', String(clashFirst));
+  if (D) render();
+});
+
+load().then((st) => { if (st && st.running) { showStatus(st); setTimeout(poll, 1500); } })
+  .catch((err) => { $('msg').textContent = 'Could not load: ' + err.message; });
+</script>
+</body>
+</html>

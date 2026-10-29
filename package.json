@@ -1,8 +1,8 @@
 {
-  "name": "seeding-script",
+  "name": "seeding-ops",
   "version": "0.1.0",
   "private": true,
-  "description": "Pull two years of start.gg results for every registrant of an event, and a local app to seed from them.",
+  "description": "Seeding ops for FGC tournaments: pull two years of start.gg results for every registrant, tier players, and seed from one local page.",
   "type": "commonjs",
   "engines": {
     "node": ">=24"
@@ -13,6 +13,7 @@
     "app": "node app/server.js",
     "test": "node --test",
     "pull": "node pull.js",
-    "seed": "node seed.js"
+    "seed": "node seed.js",
+    "schedule": "node conflicts/pull-schedule.js"
   }
 }

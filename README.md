@@ -1,4 +1,4 @@
-# seeding-script
+# seeding-ops
 
 ## Quick start (seeding a bracket)
 

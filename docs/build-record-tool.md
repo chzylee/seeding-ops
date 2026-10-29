@@ -1314,3 +1314,29 @@ REPORT
   5. Carried from build A for Noah: B4-1's closing option ((b) a server-remembered pair or (c) a stored
      pair), the B2-5/B2-6 acknowledgements, A2-5, A2-6.
 ```
+
+---
+
+## Orchestrator verification after build B pass 1 (2026-10-29)
+
+Run in the session's browser pane and with curl against the app started on a **scratch copy** of pass 1's
+live Crescendo pull (`--out` a copy of the scratchpad `live-out/`, `SEED_TIERS_FILE` a copy of
+`registry/tiers.csv`). No real file was written. Live start.gg calls made by the orchestrator: the
+schedule pull (about 10 requests) and one push dry run (2 read-only requests), through the app's queue,
+well under 20 in any minute. **No post was sent.**
+
+| item | result |
+|---|---|
+| Routes | `/` 200 and lists the tournament; `/t/crescendo-of-night-3-episode-0` 200; `/e/crescendo-of-night-3-episode-0/allegro-mbtl-pc` 302; `/e/eclipse-1st-cour/bloody-fights-mbaacc-singles` 404 (not added); `/.env` 404; `/out/<t>/state.json` 404. |
+| 3 Tabs | Tabs: Under Night In-Birth II Sys:Celes, Melty Blood: Type Lumina, Schedule. UNI2 tab: 3 players, majors CEO, Evo, Combo Breaker, Frosty Faustings; MBTL tab: 21 players, majors Combo Breaker, Frosty Faustings, Climax of Night; build A's columns (✓, Team, Player, Region, Tier frozen; series with counts; Other series; Other games; Notes) present. |
+| 4 Schedule | `POST …/schedule/refresh` → 202, finished in about 1 s: 43 players, 3 events, `schedule.json` written beside the pool. |
+| 6 Lifecycle | Pill reads **done**; Archive standings and Delete tournament data visible; Mark done hidden; Mark live again present but hidden. Archive and Delete not pressed. |
+| 7 Export | `seeds.csv` for both games: header `tier, tag, player_id, proposed_seed`, 1..N, all untiered (no MBTL/UNI2 tiers exist); `export.csv` header carries the tab's columns plus the player id. No request logged. |
+| 8 Push dry run | Dialog "Dry run: Allegro (MBTL) - PC, phase "Bracket". Nothing has been sent." 21 seeds: 0 tiered, 21 without a tier, 0 unmappable, 0 would move; table of current vs proposed; the post button is present and was **not pressed**. Closed. |
+| 2, 5 Pull / Refresh | Not run (47+ live requests each); covered by pass 1's live pull record and the fake-API tests. |
+
+**Pass 1's disclosed breach:** 21 requests in one rolling 60 s during pass 1's one-off live script (the
+catalog request and the pull ran in two processes, each with its own limiter). Not repeatable by the app
+(one process, one queue). Recorded here; the auditor should confirm the app's queue is the only path.
+
+Screenshots were not possible (the pane did not draw); all checks were DOM and API reads.

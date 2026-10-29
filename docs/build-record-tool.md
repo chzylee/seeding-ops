@@ -722,3 +722,298 @@ on the live app on 8765 (no writes: item 2 is a no-op click).
 | 5 reload limit | Not exercised; pass 3 states it (option (a) restores only within one page load). Handed to pass 4 to judge. |
 
 Pass 3's queued item ("Not saved" errors still go to `#msg`, out of view when scrolled) is also handed to pass 4.
+
+---
+
+## Pass 4 — engineering auditor (closing re-review)
+
+Seat: engineering-auditor persona v0.2.0 (`personal-staff/personas/library/engineering-auditor.md`,
+Profile block), a fresh job. Model: Opus. Report-only: no source, test, config or data file edited, and
+this section is the only commit. Reviewed `build/tool-a` at `b9985a0` (clean tree). The artifact is the
+code at `bc7f0ad`; nothing but this record changed after it (`git diff --stat bc7f0ad b9985a0` lists
+only this file). No skills, subagents or workflows. No start.gg calls, and the token was never read:
+every script ran under `testlib/no-network.js` or touched no client, and the app was built with a
+`getToken` that throws. Every write path ran on copies in a scratch folder. `out/`, `registry/tiers.csv`
+and `registry/tiers.csv.bak` were only read.
+
+### Terms as understood
+
+- **Comparand:** `docs/dispatch-contract-tool.md` Acceptance 1–12 (12 is this pass's to give or
+  withhold), the spec `docs/design-tool.md` §T1 Rules, §Display rules 5–9 and the §Open questions
+  defaults. The caller's rulings for pass 3 (B2-1 option (a), B2-2 MBTL list, both amendable) are the
+  scope pass 3 was held to. I did not re-decide them.
+- **Loop:** 4 passes plus at most one extra repair/re-review pair. This is pass 4. If I withhold item 12,
+  the extra pair is available, and I must say exactly what the repair has to do.
+- **Two items the caller handed me to judge:** (a) B2-1's reload limit, and (b) pass 3's queued item,
+  that "Not saved" errors go to `#msg`.
+- **Assumption I supplied:** I judged "user impact at the next event" as Noah seeding alone, mostly
+  in one tab, with a second browser possible. The spec's success criteria include "Clicking ✓ in one
+  browser shows as reviewed in another", so the two-browser path is a real use, not a corner case.
+
+### What I re-ran
+
+| what | command / method | result |
+|---|---|---|
+| suite, working tree | `node --test` (Node v24.14.1) at `b9985a0` | tests 177, pass 174, fail 0, skipped 3 |
+| suite, clean clone, offline | `git clone --branch build/tool-a` into scratch (HEAD `b9985a0`), `NODE_OPTIONS="--require ./testlib/no-network.js" node --test` | 177 / 174 / 0 / 3, as claimed. The skips are the 3 `recorded:` fixtures ("not recorded yet …") |
+| test names, pass 3 | sorted pass/skip lines at `1dcfec2` vs now, `comm` | 9 added, 0 removed, 0 renamed. `git diff 1dcfec2 bc7f0ad -- test` has 0 removed lines |
+| test names, whole build | the same at `e388fcc` vs now | 144 → 177. The one name gone is pass 1's documented rename (`… keyed by label, not name` → `… through the run index …`) |
+| mutation checks, pass 3's fixes | 15 single-line mutations in the clone, each run against `test/review.test.js`, restored with `git checkout --` after each (clone clean at the end, full suite 177/174/0/3 after) | 14 of 15 fail a named test (table below). The survivor is an equivalent mutant: letting a ✓ body's pair through the route changes nothing, because `reviewPlayer` ignores `prior` when `reviewed` is true |
+| mutation, B2-2 | `36865` deleted from `config/majors.json` in the clone | "config/majors.json as shipped: an MBTL run gets a Climax of Night column (B2-2) …" fails; restored, it passes |
+| B2-1 paths on real data | `data.reviewPlayer` on a scratch copy of the Eclipse run plus a copy renamed `next-event__…`, and a scratch `tiers.csv`; "now" 2026-11-02 | in-page undo (pair sent): Aster Laker back to `2026-10-16 @ eclipse-1st-cour`, file byte-identical. Reload / other-browser undo (no pair): review blank, band `never`, file differs (B4-1). Tag-only row: ✓ + in-page undo restores the review but leaves the row linked (B4-4) |
+| migration, column by column | my own raw CSV splitter on `registry/tiers.csv.bak` vs `registry/tiers.csv` (read only) | BOM on both; 713 records each; 13 → 14 columns (`justification` out; `last_reviewed_on`, `last_reviewed_tournament` in); **0** raw-field differences in any carried column; 0 line-ending differences (CRLF); 0 unquoted fields; 0 non-empty justifications in the `.bak`; 107 `app` rows with `decided_on`, and exactly those 107 backfilled with `last_reviewed_on = decided_on` and `eclipse-1st-cour` |
+| `.bak` is the pre-migration file | LF-normalized sha1 of `.bak` vs `git show e388fcc:registry/tiers.csv` | equal (`b8f2d3b…`) |
+| `tiers.csv` history | `git log e388fcc..HEAD -- registry/tiers.csv` | one commit, `e23581b` (the migration) |
+| routes | `createApp` over a scratch copy of all of `out/`, via `testlib/inject.js`, offline | `GET /` 200 with 3 event links; each event's page, `data` and `export.csv` 200. `/.env`, `/static/../.env`, `/%2e%2e/.env`, `/static/.env`, `/static/%2e%2e/%2e%2e/.env`, `/..%5c.env`, `/registry/tiers.csv`, `/out/x`, `/config/majors.json` all 404 |
+| every run folder | `viewModel`, `summaryExport` and the CLI's `renderHtml` on scratch copies of all 6 folders | all render. Majors: MBTL ×3 `Combo Breaker, Frosty Faustings, Climax of Night`; UNI2 ×2 `CEO, Evo, Combo Breaker, Frosty Faustings`; Eclipse `Combo Breaker, Frosty Faustings, Climax of Night` |
+| Eclipse recount | export of the Eclipse table (scratch copy); "two in a year" = a player with two results of one year in one column | Combo Breaker 77 players / 77 lines / 0; Frosty Faustings 61 / 79 / 0; Climax of Night 83 / 124 / 0; no CEO column. Same as pass 1 and pass 2. The CLI HTML: 107 `rec-here`, 75 `rec-never`. Players with an app-set tier: 107; without the Eclipse color: 0 |
+| protected files | `git diff --stat e388fcc HEAD --` usage-log, the three designs, the contracts, increment 1/2 records, `.env`, `conflicts`, `out`, `lib/run.js`, `lib/output.js`, `lib/startgg.js`, `pull.js`, `seed.js` | empty |
+| `out/` untouched | sha1 of all 56 files, combined | `5255e91…`, before and after my work, and the same as pass 3's |
+| `registry/` untouched | sha1 | `tiers.csv` `ffb8898…`, `.bak` `de33fb8…`, both unchanged; working tree clean |
+
+Mutation detail (each row: what I broke, and what failed):
+
+| fix | mutation | tests failed |
+|---|---|---|
+| B2-1 restore | restore blank instead of the sent pair | 3 (the two-click test, the forged-pair test, the route test) |
+| B2-1 guard | drop the "this tournament" check; separately, drop the "today" check | 2 each (the pre-existing same-day test and the forged-pair test) |
+| B2-1 validation | drop both-or-neither; the calendar-date check; the slug check | 2; 1; 1 |
+| B2-1 route | never pass the pair to `reviewPlayer` | 1 (route test) |
+| B2-1 route | let a ✓ carry a body pair | 0 (equivalent: `reviewPlayer` ignores `prior` on a ✓) |
+| B2-1 page | un-✓ sends no pair; the ✓ never remembers the pair | 1 each (the page source pin) |
+| B2-3 | never remove the row; remove even a tiered row | 1; 3 |
+| item 5 | note to `#msg` instead of the status line; empty no-op text; status refresh drops the note | 1 each |
+
+### Findings
+
+**On pass 3's dispositions.** Every one holds on the artifact.
+
+| # | pass 3 said | holds? | evidence |
+|---|---|---|---|
+| B2-1 | FIXED, option (a) | **holds within its ruled limit** | Two-click test passes; mutations fail it. In-page undo restores the earlier review byte for byte on real data. The limit is B4-1. |
+| B2-2 | FIXED | holds | `36865` list in `config/majors.json`; its test fails without it; all three MBTL folders now show Climax of Night; UNI2 unchanged. |
+| B2-3 | FIXED | holds | Test passes; "never remove" fails it; "remove a tiered row too" fails 3 tests, so a tiered row is protected. |
+| B2-4 | FIXED (recorded) | holds | Pass 3's "Changed tests" lists the fifth test and its reason. |
+| B2-5 | DECLINED, acknowledged | holds | The ruling it cites is in "Orchestrator verification after pass 1", rulings table, row B2-5. |
+| B2-6 | DECLINED, acknowledged | holds | Same table, row B2-6. |
+| B2-7 | nothing to fix | holds | Recorded under "Out-of-band change (B2-7)". |
+| B2-8 | FIXED | holds | `README.md`: `lib/view/export.js` has its own bullet under `data.js`. |
+| item 5 | FIXED | holds | The note goes to `#status` (`role=status`) and stays until the next action; three mutations each fail a test. The orchestrator saw it live after pass 3. |
+
+**B4-1 — FINDING, Noah's call; not a RETURN — the reload limit of B2-1 (the caller's item (a)).**
+Reproduced on scratch copies. Aster Laker was reviewed `2026-10-16` at `eclipse-1st-cour`. At
+`next-event` on 2026-11-02: ✓, then a reload (or the same row in another browser), then ✓ again. The
+review is now blank. The Tier cell goes grey, and the hover reads "Never reviewed (tier from the sheet
+import)", which is wrong twice: the review existed, and the tier was set in the app. The tier, notes
+and `decided_on` survive. Only the date and tournament of the earlier review are lost.
+
+My ruling: **acceptable with findings for this build.** The reasons:
+
+- **Contract 3's wording is met.** Its mechanic is "un-✓ clears both only when they equal this
+  tournament and today". The no-pair fallback is exactly that mechanic. The spec is what is
+  inconsistent: its own rule text ("clears both fields") is what breaks its principle ("A review
+  recorded earlier is never destroyed by a click") once a ✓ at a new tournament has replaced an older
+  review. Option (a) shrank the gap to one path. Closing it fully needs a choice between product
+  shapes, and that choice is Noah's (directive 6), not the repair loop's.
+- **The path is narrow at the next event.** It needs a misclick on a player reviewed at an earlier
+  tournament, then a reload or a second browser, then the undo on the same day. The usual misclick is
+  caught in the same page, and that path now restores the review. The page's own Refresh does not
+  reload the page (`app/public/app.js` has no `location.reload`), so the remembered pair survives it.
+- **The loss is small and recoverable.** It is one player's review date and tournament, never the
+  tier. `registry/tiers.csv` is tracked, so until Noah commits, `git diff registry/tiers.csv` shows
+  the lost pair and `git checkout` restores it.
+
+What would close it, ranked by my judgment. Each is Noah's pick, and none is needed to approve this
+build:
+
+1. **The server remembers the replaced pair for the day** (option (b), together with (a)). There is
+   no T1 change. It covers a reload and a second browser, and loses only a server restart between the
+   misclick and the undo. It costs a small map in `app/server.js` or `data.js` keyed by tiers file,
+   game and player, plus a test. The pass-3 ruling rejected (b) because it does not survive a restart,
+   but (a) does not survive a reload, and a reload is more common than a restart.
+2. **Option (c), a stored previous-review pair.** This closes the gap completely, but it adds T1
+   columns. That needs the spec amended and the migration extended.
+3. **Un-✓ does nothing when the page holds no pair.** I do not recommend it. After a reload, a
+   misclicked ✓ on a player who was never reviewed could not be undone that day. B2-3's empty-row
+   cleanup would also stop working after a reload. It trades one wrong state for another.
+
+Two text fixes belong with this finding, whichever option Noah picks. Neither blocks approval. (i) The
+README sentence "after a reload the undo clears today's review" (`README.md:47-48`) is accurate but
+understated. It should say the earlier review is lost on that path. (ii) The `reviewPlayer` comment
+in `lib/view/data.js` says a review is "never destroyed by a click, including by a ✓ at a new
+tournament followed by its undo (B2-1)". That is true only within one page load.
+
+**B4-2 — NOTE — "Not saved" errors go to `#msg`, out of view when the table is scrolled (the
+caller's item (b)).** `#msg` sits inside `#pane`, above the table, and `#pane` is the scrolling
+element (`app/public/event.html:44`, `app/public/app.css:92`). The error is a note, not a finding:
+
+- For a tier or notes edit, this is increment 2's behavior (`git show e388fcc:app/public/app.js`,
+  line 606). The failed cell also flashes red for 2.5 s and keeps its old value, so the failure is
+  visible even when the reason is not.
+- For the ✓, it is new surface in build A, because the ✓ could not fail to save before it wrote to
+  the server. A failed ✓ shows nothing in view: the row just does not turn green, and the ✓ cell gets
+  no red flash.
+
+User impact at the event is low. A save fails only if the server is down or the request is
+malformed, and a stopped server also breaks every other action in view. The repair is small: send
+"Not saved: …" through the status line in its error style (`showNote` plus the `err` class), and
+flash the ✓ cell the way the editor does. It fits build B or a follow-up. It is outside this
+contract's Acceptance list, so it is not a reason to withhold item 12.
+
+**B4-3 — NOTE — the grey hover says "tier from the sheet import" for tiers set in the app.**
+`lib/view/render.js:203` gives every `never` band the text "Never reviewed (tier from the sheet
+import)". The spec's band is "never reviewed (sheet-only): grey". From the next event on, any tier
+Noah sets in the app without clicking ✓ is grey, and its hover names the wrong source. The B4-1 path
+does the same. The color is right by the spec's bands. Only the parenthetical is wrong for
+`source = app` rows. The fix is one line: drop the parenthetical, or show it only when the row's
+source is not `app`.
+
+**B4-4 — NOTE — "byte for byte" holds for linked rows only.** If a player matches a `tiers.csv` row
+by tag only (blank `player_id`, which is 530 of the MBAACC rows), the ✓ links the row to the
+player's id, and the undo restores the review but keeps the link. The file then differs from before
+in that one field. This is the same linking every edit does (A4-2's shared matcher), and the link is
+correct, so no action is needed. But the test name's "byte for byte" and the record's
+"byte-identical" describe the linked case, which is every Eclipse registrant. They do not describe the
+first ✓ on a new registrant who has a sheet row.
+
+**B4-5 — NOTE — a stale header comment in the CLI.** `views/major-table.js:10` still says "seed and
+notes from views/notes.json". Since pass 1, the CLI reads tiers, notes and review marks from
+`registry/tiers.csv` (the change B2-5 flagged). One line.
+
+**Literal ask, both directions.** Short of it: nothing. Every Acceptance item is met (below). Beyond
+it: nothing I would pull back. The files changed since `e388fcc` are all inside spec steps 2 and 3,
+plus this record and the orchestrator's `launch.json` port (B2-7, recorded). `lib/run.js`,
+`lib/output.js`, `app/jobs.js` and the pull are untouched, and nothing prepares build B's layout. Three
+pieces of work go past the literal list, and each was ruled in pass 2 or by the caller: the `default`
+majors list, the CLI reading tiers (required by Acceptance 8's parity), and the writer keeping unknown
+columns. Pass 3's restore note ("today's review undone; … is back") is inside item 5's ruling.
+
+**Comprehension.** Pass 3's diff is 307 lines in 8 files, and it reads in one sitting. The restore is
+one function (`checkPrior`) and three lines in `reviewPlayer`. The page side is one `Map`. I could
+follow every disposition from the code to the test that pins it.
+
+### Acceptance
+
+| # | item | met | my evidence |
+|---|---|---|---|
+| 1 | `node --test` on a clean clone, offline, no regression | **yes** | 177 / 174 / 0 / 3 on a clean clone with `no-network.js`. Every test from `e388fcc` still passes except the one renamed in place. Pass 3 added 9 tests and removed 0 lines from tests. |
+| 2 | T1 migration | **yes** | My raw diff: 0 carried-field differences, BOM, quoting and CRLF kept, the 107 backfilled rows exactly right. The `.bak` equals the pre-pass committed file. `tiers.csv` changed in one commit only (`e23581b`). Idempotence and the 712/107 shape are covered by `test/tiers-migrate.test.js` (passing). Pass 2 replayed the migration byte for byte, and the file is unchanged since (`ffb8898…`). |
+| 3 | ✓ semantics | **yes, with B4-1** | ✓ writes today and the URL's tournament through `matchTierRow`. Un-✓ changes a row only when its review is this tournament and today, and otherwise does nothing (mutations of either guard fail tests). A review from another tournament is never cleared by a single click. Unit and route tests pass. Browser storage was removed and is never read. The two-click case restores within a page load. The reload path is B4-1. |
+| 4 | reviewed row display | **yes** | Green only when `last_reviewed_tournament` equals the page's tournament. Recency bands and hover are covered by the bands test. On Eclipse: 107 `here`, 75 `never` in the CLI output. Sort grouping is covered by its test and the orchestrator's browser check (item 6). Hover wording: B4-3. |
+| 5 | editor: no reason prompt; `decided_on` on tier change | **yes** | No `reason`/`justification` in `app/public/app.js`. The route allow-list is tier and notes. The `decided_on` tests pass. The orchestrator saw one field in the browser. |
+| 6 | majors per game | **yes** | `config/majors.json`: MBAACC's six with the right kinds, the exclusion list, `default`, and now `36865`. The logic is in `lib/view/model.js`. The named tests pass: Frosty GG main + MBAACC side gives no cell; Climax column for MBAACC; one per year; main event across the run; the four ratified rules on summary, compare panel and export; A4-1 header/row parity. |
+| 7 | real-data check | **yes** | Recounted on a scratch copy of Eclipse: no two-in-a-year results in any major column (Frosty 61/79/0, before 61/103/20), every major cell is MBAACC, and 0 of 107 app-tier players lack the Eclipse color. |
+| 8 | `GET /`, event pages, CLI parity | **yes** | `GET /` and all 3 event pages, data and exports 200. All 6 run folders render through the view model, the export and the CLI. Parity is pinned: "parity: the CLI view prints exactly the app's summary cells …" and "the Sheets export has the CLI's columns …". |
+| 9 | `.env` never served; 404s | **yes** | 9 probe paths 404, including `/config/majors.json` and `/registry/tiers.csv`. `test/app.test.js` passes unchanged. |
+| 10 | README | **yes, with B4-1's text fix** | App section: ✓ as review (with the reload limit stated), recency colors, no reason field, `config/majors.json` (where it lives, how to add a game or a major, MBTL's id). B2-8's slip is fixed. |
+| 11 | `docs/usage-log.md` not edited | **yes** | `git diff e388fcc HEAD -- docs/usage-log.md` is empty. |
+| 12 | closing approval on the actual artifact | **given** | This verdict, on the code at `bc7f0ad`. |
+
+### Could not verify
+
+- **Browser behavior myself.** I did not open a browser. The ✓ across two profiles, colors, hover,
+  sort clicks, the editor and the status-line note rest on the orchestrator's two checklists in this
+  record and on the source pins. In particular, the page's `replaced` map and note wiring are pinned
+  by source only. The repo has no DOM harness.
+- **The reload path in a real browser** (B4-1). I reproduced it at the data layer, which is what the
+  page calls. Neither the orchestrator nor I observed it in a browser.
+- **Midnight in Noah's timezone** (B2-6). I reasoned it from `todayOf`, as pass 2 did.
+- **The A2-6 Sheets import**, still untried.
+- **Visual design** of the colors, and whether the status-line note is noticed in practice.
+
+### Open items that belong to Noah
+
+Every amendable default and acknowledgement in this record, plus this pass's:
+
+1. **B2-1 / B4-1 — what un-✓ restores (amendable; default option (a)).** Today the undo restores the
+   earlier review within one page load. After a reload or from another browser, the earlier review's
+   date and tournament are lost (recoverable from git until you commit `tiers.csv`). Keep it as is,
+   or pick (b) the server remembers the pair for the day (no table change; my recommendation if you
+   want it closed), or (c) a stored previous-review pair (a T1 change; needs the spec amended).
+2. **B2-2 — Climax of Night for MBTL (amendable; default: an `36865` list with it).** UNI2 (`50203`)
+   stays on the default four, because 5 players is no basis. Confirm, or edit `config/majors.json`.
+3. **B2-5 — the CLI's HTML file now carries your tiers, notes and review marks** (acknowledged by the
+   orchestrator as a default). Know it before you send `views/major-table.html` to anyone.
+4. **B2-6 — "today" is the UTC date** (acknowledged as a default). A ✓ after 8 pm EDT / 7 pm EST is
+   stamped tomorrow, and the same-day undo follows the UTC day. Changing it is one helper
+   (`data.todayOf`); dates already written stay UTC.
+5. **Pass 1's interpretations, still unconfirmed by you:** exclusions match the tournament name or
+   the event name; major patterns are anchored to the start of the tournament name; the main event is
+   judged across all registrants; CEO disappears from the Eclipse table (every CEO result there was a
+   "Community Tournaments" side event).
+6. **B4-2 / B4-3 / B4-5 — small text and display fixes** for build B or a follow-up: "Not saved"
+   errors into the status line with a failed-✓ flash; the grey hover's "(tier from the sheet import)"
+   only for sheet rows; the CLI header comment. Plus B4-1's README and code-comment wording.
+7. **`registry/tiers.csv.bak`** may now be deleted (the contract keeps it "until pass 4 approves").
+   That is your action or the orchestrator's. This seat does not touch it.
+8. **Carried from earlier increments:** A2-5 (the "(N of 182)" series headers and counts under "no
+   aggregate counts"), A2-6 (the Sheets import of `= + - @` tags), and increment 1's passes 2–4, which
+   are still open and due with build B.
+
+### Verdict: APPROVE WITH NOTES
+
+**Acceptance item 12 is given.** The extra repair/re-review pair is not needed, and none is requested.
+
+**What it covers:** Acceptance 1–11 on the code at `bc7f0ad`, checked on the artifact, not the record.
+I re-ran the suite on the working tree and on a clean offline clone. I ran 16 mutation checks on pass
+3's fixes. I diffed the migrated `tiers.csv` column by column against its `.bak` with my own parser. I
+probed the routes over a copy of `out/`, rendered all six run folders through the app's model, the
+export and the CLI, and recounted the Eclipse majors and recency. Every pass-2 finding holds as pass
+3 dispositioned it. The build stays inside steps 2 and 3, with no work on build B's layout.
+
+**Why notes and not a return:** the one open defect, B4-1, is the spec's own literal un-✓ rule
+showing through on one narrow path. Contract 3 is met, the loss is a date and tournament and is
+recoverable from git, and closing it fully is a product choice that belongs to Noah. It goes to him
+ranked above, not to a repair pass. The four notes are small text and display fixes with no
+contract miss among them.
+
+**What it could not judge:** anything only a browser shows, which rests on the orchestrator's two
+checklists; the reload path in a real browser; midnight in Noah's timezone; the Sheets import; visual
+design. Increment 1's passes 2–4 remain open and are due with build B.
+
+### REPORT
+
+```
+REPORT
+- Overview: Pass 4 (engineering auditor, closing re-review) of build A at b9985a0 (code bc7f0ad).
+  Verdict: APPROVE WITH NOTES; Acceptance item 12 is given and the extra repair pair is not
+  needed. Every pass-3 disposition holds on the artifact. Suite 177/174/0/3 on the working tree
+  and a clean offline clone. 14 of 15 mutations of pass 3's fixes fail a named test (the 15th is
+  an equivalent mutant), and the B2-2 mutation fails its test. tiers.csv vs .bak: 0 carried-field
+  differences, 107 backfilled exactly. out/ and registry/ hashes are unchanged.
+- Found: B4-1 FINDING, Noah's call, not a RETURN (B2-1's reload limit: after a reload or from
+  another browser, a same-day undo loses the earlier review's date and tournament; contract 3
+  met; recoverable from git). B4-2 NOTE ("Not saved" in #msg is out of view when scrolled; new
+  surface for the ✓ only). B4-3 NOTE (grey hover says "tier from the sheet import" for app-set
+  tiers). B4-4 NOTE (✓ + undo leaves a tag-only row linked; "byte for byte" holds for linked
+  rows). B4-5 NOTE (stale CLI header comment). Acceptance 1-11 met; 12 given.
+- Ran: node --test on the working tree and a clean offline clone; test-name diffs vs 1dcfec2 and
+  e388fcc; 16 mutation checks in the clone, restored with git checkout; B2-1 scenarios on scratch
+  copies of Eclipse plus a renamed next-event run; my own raw CSV column diff of tiers.csv vs
+  .bak; route probes and all-six-run rendering (app model, export, CLI) over a copy of out/;
+  Eclipse majors and recency recount. Evidence: this section of docs/build-record-tool.md, one
+  commit.
+- Attributed: core / seeding-ops increment 3 build A, pass 4. STATED: dispatch-contract-tool.md
+  (Passes table, Acceptance 12), design-tool.md, the caller's pass-4 dispatch.
+- Queued: B4-1's closing option (b/c) waits on Noah's ruling: a product choice (impact) that the
+  repair loop may not make. B4-2/B4-3/B4-5 and B4-1's text fixes are small, outside the Acceptance
+  list, and suit build B or a follow-up.
+- Spend: term = 4 passes + at most 1 repair pair; consumed pass 4 of 4; the extra pair is unused.
+  No skills, subagents or workflows. start.gg requests 0. Token never read. out/ and registry/
+  read only; all writes on scratch copies.
+- Parked: none. Tree clean at the record commit. registry/tiers.csv.bak may now be deleted
+  (Noah's or the orchestrator's action). The scratch clone and copies are in this session's
+  scratchpad.
+- Needs attention:
+  1. B2-1/B4-1 (amendable, default (a)): keep the in-page-only restore, or pick (b) the server
+     remembers the pair for the day (recommended if you want it closed) or (c) a stored pair (T1
+     change).
+  2. B2-2 (amendable): MBTL has Climax of Night; UNI2 on the default four.
+  3. B2-5 / B2-6: acknowledge that the CLI HTML carries your tiers and notes, and that review
+     dates are UTC days.
+  4. Pass 1's interpretations: exclusions on tournament or event name, anchored patterns, main
+     event across all registrants, CEO gone from Eclipse.
+  5. Small fixes for later: B4-2, B4-3, B4-5, B4-1's README and comment wording.
+  6. Delete registry/tiers.csv.bak; A2-5 and A2-6 still open; increment 1's passes 2-4 due with
+     build B.
+```

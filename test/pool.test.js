@@ -223,3 +223,105 @@ test('T3: side tournaments linked before increment 3 (conflicts/linked.json) see
   assert.strictEqual(pool.isSingles({ type: 1, name: 'MBAACC 2v2' }), false, 'a 2v2 named event is not seedable even if typed 1');
   assert.strictEqual(pool.isSingles({ name: 'UNI2 Singles' }), true, 'no type: by name');
 });
+
+// ---- Build B pass 3 (repairs) --------------------------------------------------------------------
+
+const metaOf = (dir) => JSON.parse(fs.readFileSync(path.join(dir, 'meta.json'), 'utf8'));
+const rowsOf = (dir, pid) => csv(dir, 'results.csv').filter((x) => x.player_id === pid).map((x) => x.event_id).sort();
+// The fake world plus: the no-account player (104) also entered the Melee event, with one Melee
+// standing in the window and one out of it (D2-13).
+function worldGuestInBoth() {
+  const w = buildWorld(START / 1000);
+  const guest = w.players.find((p) => p.id === 104);
+  w.entrantsByEvent[2000].push({ id: 79999, participants: [guest] });
+  const melee = (id, daysAgo) => ({ __typename: 'Event', id, slug: `tournament/t-${id}/event/e-${id}`, name: `Melee ${id}`, startAt: START / 1000 - daysAgo * 86400,
+    numEntrants: 12, isOnline: false, videogame: OTHER_GAME, tournament: { name: `Melee T ${id}` } });
+  guest.standings.push({ placement: 2, container: melee(98765, 15) }, { placement: 5, container: melee(98766, 800) });
+  return w;
+}
+
+test('D2-2 / D2-13: an incremental pull reports the same skip and request counts as a fresh pull of the same players, and asks a carried no-account player about the newly seeded game only', async () => {
+  const fresh = await pull(tmp(), { world: worldGuestInBoth() });
+  assert.strictEqual(fresh.code, 0, fresh.err);
+  const outRoot = tmp();
+  const world = worldGuestInBoth();
+  const first = await pull(outRoot, { world, events: [E_SLUG] });
+  assert.strictEqual(first.code, 0, first.err);
+  const inc = await pull(outRoot, { world, events: [E_SLUG, E2_SLUG], mode: 'incremental', at: START + HOUR });
+  assert.strictEqual(inc.code, 0, inc.err);
+  const rs = inc.fetchImpl.calls.filter((c) => /^RecentStandings/.test(c.op)).map((c) => [String(c.variables.playerId), String(c.variables.videogameId)]);
+  assert.deepStrictEqual(rs, [['104', String(OTHER_GAME.id)]], 'the guest is asked about Melee only; the MBAACC answer is carried');
+  assert.deepStrictEqual(inc.fetchImpl.calls.filter((c) => c.op === 'UserEvents').map((c) => String(c.variables.userId)), ['9016']);
+  assert.deepStrictEqual(rowsOf(inc.dir, '104'), rowsOf(fresh.dir, '104'), "the guest's rows are those of a fresh pull of both games");
+  assert.ok(rowsOf(inc.dir, '104').includes('98765'));
+  const [m, f] = [metaOf(inc.dir), metaOf(fresh.dir)];
+  assert.strictEqual(m.mode, 'incremental');
+  assert.deepStrictEqual([m.incremental.carried, m.incremental.fetched, m.incremental.topped_up], [15, 1, 1]);
+  assert.deepStrictEqual(m.skipped, f.skipped, 'skips of carried players are still counted (design.md: nothing dropped without being counted)');
+  assert.ok(f.skipped.out_of_window > 0 && f.skipped.no_event_container > 0);
+  assert.deepStrictEqual([m.registrant_count, m.result_count, m.history_status], [f.registrant_count, f.result_count, f.history_status]);
+  assert.strictEqual(m.request_count, f.request_count, "request_count covers the carried players' requests");
+  assert.strictEqual(m.requests_this_pull, inc.fetchImpl.calls.length, "requests_this_pull is this pull's own sends");
+  assert.ok(m.requests_this_pull < m.request_count);
+  assert.strictEqual(f.requests_this_pull, f.request_count, 'equal for a full pull');
+  assert.deepStrictEqual(reconcile(inc.dir).checks.filter((c) => !c.ok), []);
+  // And the counts survive a second incremental step: carried entries keep their skips and requests.
+  const again = await pull(outRoot, { world, events: [E_SLUG, E2_SLUG], mode: 'incremental', at: START + 2 * HOUR });
+  assert.deepStrictEqual([metaOf(again.dir).skipped, metaOf(again.dir).request_count], [f.skipped, f.request_count]);
+  assert.deepStrictEqual(again.fetchImpl.calls.filter((c) => /^(RecentStandings|UserEvents)/.test(c.op)), [], 'nothing left to fetch');
+});
+
+test("D2-2: a retry pull (resume of a finished pull with a failed player) reports the same skips as a fresh pull; its request_count counts the carried players' requests", async () => {
+  const clean = await pull(tmp());
+  const outRoot = tmp();
+  const failed = await pull(outRoot, { fetchOpts: { serverErrorPlayer: 9003 } });
+  assert.strictEqual(failed.code, 1);
+  const clock = virtualClock(START + HOUR);
+  const fetchImpl = createFakeFetch(buildWorld(START / 1000));
+  assert.strictEqual(await run({ resumeDir: failed.dir, token: TOKEN, fetchImpl, now: clock.now, sleep: clock.sleep, stderr: sink(), stdout: sink() }), 0);
+  const tDir = path.join(outRoot, T_SLUG);
+  const m = metaOf(path.join(tDir, out.readCurrent(tDir)));
+  const f = metaOf(clean.dir);
+  assert.strictEqual(m.mode, 'retry');
+  assert.deepStrictEqual(m.skipped, f.skipped);
+  assert.deepStrictEqual(m.history_status, f.history_status);
+  assert.strictEqual(m.requests_this_pull, 1, 'one UserEvents page for the retried player');
+  // The registrant list (1 TournamentEvents + 2 EventEntrants) is reused, not re-read, so a retry
+  // counts the players' requests only: the clean pull's count less those three.
+  const registrantRequests = clean.fetchImpl.calls.filter((c) => c.op === 'TournamentEvents' || c.op === 'EventEntrants').length;
+  assert.strictEqual(registrantRequests, 3);
+  assert.strictEqual(m.request_count, f.request_count - registrantRequests);
+});
+
+test('D2-7: if the old pull folder cannot be deleted after the swap, the pull still counts as done, the W-L runs, the leftover is reported, and the next pull deletes it', async () => {
+  const outRoot = tmp();
+  const world = buildWorld(START / 1000);
+  const first = await pull(outRoot, { world });
+  addTournament(outRoot, world, [E_SLUG, E2_SLUG]);
+  const oldName = path.basename(first.dir);
+  const realRm = fs.rmSync;
+  fs.rmSync = function (p, o) {
+    if (path.basename(String(p)) === oldName) throw Object.assign(new Error(`EBUSY: resource busy or locked, rmdir '${p}'`), { code: 'EBUSY' });
+    return realRm.call(this, p, o);
+  };
+  const clock = virtualClock(START + HOUR);
+  const app = createApp({ outRoot, getToken: () => TOKEN, fetchImpl: createFakeFetch(world), now: clock.now, sleep: clock.sleep });
+  try {
+    assert.strictEqual((await inject(app.handler, { url: `/api/t/${T_SLUG}/refresh`, method: 'POST', headers: H })).status, 202);
+    await app.jobs.last.get(T_SLUG).promise;
+  } finally { fs.rmSync = realRm; }
+  const st = app.jobs.status(T_SLUG);
+  assert.strictEqual(st.phase, 'done', st.error);
+  assert.ok(st.wl.done > 0, 'the W-L ran');
+  assert.match(st.message, new RegExp(`old pull folder ${oldName} could not be deleted yet`));
+  assert.notStrictEqual(out.readCurrent(first.tDir), oldName, 'the new pull is live');
+  assert.ok(fs.existsSync(first.dir), 'the leftover is still there');
+  // The next pull's sweep of older folders removes it.
+  const report = {};
+  const c2 = virtualClock(START + 2 * HOUR);
+  assert.strictEqual(await run({ tournament: T_SLUG, events: [E_SLUG, E2_SLUG], token: TOKEN, outRoot, fetchImpl: createFakeFetch(world), now: c2.now, sleep: c2.sleep, stderr: sink(), stdout: sink(), report }), 0);
+  assert.ok(report.swap.removed.includes(oldName), report.swap.removed.join(','));
+  assert.deepStrictEqual(report.swap.leftover, []);
+  assert.ok(!fs.existsSync(first.dir));
+  assert.deepStrictEqual(out.listPulls(first.tDir).map((p) => p.name), [path.basename(report.pullDir)]);
+});

@@ -158,6 +158,8 @@ class Jobs {
     if (!report.swap) {
       throw new Error(`The pull did not finish (exit ${code}): ${lastLine || 'no output'}. The page still shows the previous pull.`);
     }
+    // D2-7: the new pull is live even if the old folder could not be deleted; say so and go on.
+    job.leftover = (report.swap.leftover || []).map((l) => l.name);
 
     // 2. W-L for whatever is still missing, summary-first across every tab.
     job.phase = 'wl';
@@ -187,7 +189,8 @@ class Jobs {
     }).then(setWl);
     wl.savePoolCache(tDir, cache);
     job.phase = 'done';
-    job.message = `Done: ${job.wl.done} W-L fetched, ${Object.keys(cache).length} cached` + (code === 1 ? '; some players failed (see the pull\'s meta.json)' : '');
+    job.message = `Done: ${job.wl.done} W-L fetched, ${Object.keys(cache).length} cached` + (code === 1 ? '; some players failed (see the pull\'s meta.json)' : '')
+      + (job.leftover.length ? `; the old pull folder ${job.leftover.join(', ')} could not be deleted yet (the next pull deletes it)` : '');
   }
 
   async executeArchive(job) {

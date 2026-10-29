@@ -51,3 +51,23 @@ test('cli: --resume on a folder that is not a run folder -> exit 2', () => {
   assert.strictEqual(r.status, 2);
   assert.match(r.stderr, /Not a run folder/);
 });
+
+test('D2-8: --resume on an increment 1 per-event run folder refuses in one line, exit 2, and writes nothing', () => {
+  const dir = copyApp();
+  const old = path.join(dir, 'out', 'crescendo-of-night-3-episode-0__andante-uni2-pc__20261015-1052');
+  fs.mkdirSync(path.join(old, '_work'), { recursive: true });
+  // An old folder that finished with a failed player: the case that would have taken the retry branch.
+  fs.writeFileSync(path.join(old, '_work', 'run.json'), JSON.stringify({ version: 1, players: [{ player_id: '1' }], window: { startMs: 0, endMs: 1 } }));
+  fs.writeFileSync(path.join(old, 'meta.json'), JSON.stringify({ failed_players: [{ player_id: '1' }] }));
+  fs.writeFileSync(path.join(old, 'players.csv'), '"player_id"\r\n"1"\r\n');
+  fs.writeFileSync(path.join(old, 'results.csv'), '"player_id"\r\n');
+  const snapshot = () => fs.readdirSync(path.join(dir, 'out'), { recursive: true }).sort().map((f) => {
+    const p = path.join(dir, 'out', f);
+    return fs.statSync(p).isFile() ? `${f}:${fs.readFileSync(p, 'utf8')}` : f;
+  });
+  const before = snapshot();
+  const r = runCli(dir, ['--resume', old], { STARTGG_TOKEN: 'x-not-used' });
+  assert.strictEqual(r.status, 2, r.stderr);
+  assert.strictEqual(r.stderr.trim(), 'This is a per-event run folder from before the pool layout; add the tournament in the app or run a fresh pull.');
+  assert.deepStrictEqual(snapshot(), before, 'nothing written, moved or deleted');
+});

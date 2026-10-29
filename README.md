@@ -36,6 +36,29 @@ changes in any mode.
 - **Download for Google Sheets** saves the summary table as a CSV. In Sheets: *File → Import →
   Upload*, then *Replace current sheet*. Tags that start with `=`, `+`, `-` or `@` get a leading `'`
   so Sheets keeps them as text.
+- **Tier and Notes** are edited in place: double-click the cell (or focus it and press Enter).
+  Enter saves, Esc cancels. Saves go to `registry/tiers.csv`. There is no reason field: the results
+  are the justification, and notes are for what results don't show. Changing a tier stamps its
+  `decided_on` date.
+- **✓ (Seeded column) marks a player as reviewed at this tournament.** It writes today's date and
+  this tournament to `registry/tiers.csv` (`last_reviewed_on`, `last_reviewed_tournament`), so the
+  mark shows in every browser, not just this one. The row turns green when the player's last review
+  was at this page's tournament. Clicking ✓ again undoes a review made *today* here (a misclick);
+  an earlier review is never erased by a click. Clicking the Seeded header groups reviewed and
+  unreviewed rows.
+- **Tier colors** show how recently you reviewed each player: green = reviewed at this tournament,
+  no color = within the last 6 months, amber = longer ago, grey = never reviewed (a tier from the
+  sheet import). Hover a tier for the date and the tournament of the last review.
+- **Major columns are per game, main event only.** A major column shows a player's result in the
+  event's game at that tournament's main event for the game (its largest bracket of that game that
+  isn't a side, community, 2v2, teams or "Pre-" bracket), one result per year. Side brackets stay
+  in the series columns. The lists live in **`config/majors.json`**, one per game, keyed by the
+  start.gg game id (it's in a run's `meta.json` under `game.id`; MBAACC is `22407`); `default` covers
+  games without their own list. **To add a game** copy the `default` block under the game's id and
+  add its own majors; **to add a major** add `{ "label": "Name", "pattern": "^name\\b", "kind":
+  "game" }` (`pattern` is a case-insensitive regular expression on the tournament name; `kind` is
+  `known` for the big four, `game` for a game's own majors). Your rule for adding one: a series of
+  the game whose field is at least as large as a known major's. A reload picks up the change.
 - Pins, frozen columns and the compare pair are remembered per event in this browser.
 
 The app pulls with the same code and token as `seed.cmd`. To keep it from using all of start.gg's
@@ -200,7 +223,13 @@ The seeding view (increment 2, spec [`docs/design-webapp.md`](docs/design-webapp
   W-L tally, events both entered. Runs in Node and in the browser.
 - `lib/view/render.js`: HTML (and the export's plain text) for every cell and table. Also shared
   by Node and the browser, so the app and `views/major-table.js` show the same cells.
-- `lib/view/data.js`: run folders on disk → the page's JSON; the latest finished run per event.
+- `lib/view/data.js`: run folders on disk → the page's JSON; the latest finished run per event;
+  the tier/notes and ✓ review writes to `registry/tiers.csv`.
+- `lib/view/majors.js`: reads `config/majors.json`, the per-game majors lists (increment 3, spec
+  [`docs/design-tool.md`](docs/design-tool.md)).
+- `scripts/migrate-tiers.js`: the one-time T1 migration of `registry/tiers.csv` (drops
+  `justification`, adds the two review columns, backfills Eclipse's app-set tiers). Already run;
+  running it again does nothing.
   `lib/view/export.js`: the Google Sheets CSV.
 - `lib/wl.js`: W-L (sets) for result rows through `lib/startgg`'s client, cached in
   `<run>/views/set-records.json`.

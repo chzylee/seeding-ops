@@ -497,3 +497,9 @@ with no action, per the ruling.
 (including the by-value check); 3 superseded by the pool (build B pass 1's live pull); 4 met, live
 included; 5 count met, rows not run (C3-4); 6 met; 7 met offline, live leg fake-only by ruling; 8–11 met;
 12 is build B's pass 4.
+
+---
+
+## Pass 4 — closing (increment 1)
+
+Increment 1's own Acceptance 12 (closing approval) was **given with notes** by build B's pass 4 auditor on 2026-10-29; the verdict and its evidence are in [`build-record-tool.md`](build-record-tool.md) § "Build B — Pass 4 — engineering auditor (closing re-review)". Still open for Noah from this increment: C2-3 (the schema questions; `schema-check.js` never run) and C3-4 (the three random-row re-fetches), both needing a live allowance; C2-4 and C2-5 recorded with no action.

@@ -431,3 +431,42 @@ test('D2-1: ticking a new event while a job runs saves the tick, queues the incr
   assert.match(js, /ticked; pulling \$\{[^}]+\} players after the current job/);
   assert.match(js, /st\.running \|\| st\.busy \|\| st\.queued/);
 });
+
+test('D2-7 (Windows partial delete, observed in pass 3): a leftover the delete stopped partway is never resumed; --resume never swaps an older pull in over the live one', async () => {
+  const outRoot = tmp();
+  const world = buildWorld(START / 1000);
+  const first = await pull(outRoot, { world });
+  const oldName = path.basename(first.dir);
+  // What a locked players.csv did to a recursive delete on Windows: meta.json went, then EBUSY.
+  const realRm = fs.rmSync;
+  fs.rmSync = function (p, o) {
+    if (path.basename(String(p)) === oldName) {
+      realRm.call(this, path.join(String(p), 'meta.json'), { force: true });
+      throw Object.assign(new Error('EBUSY: resource busy or locked'), { code: 'EBUSY' });
+    }
+    return realRm.call(this, p, o);
+  };
+  const report = {};
+  try {
+    const c = virtualClock(START + HOUR);
+    assert.strictEqual(await run({ tournament: T_SLUG, events: [E_SLUG, E2_SLUG], token: TOKEN, outRoot, fetchImpl: createFakeFetch(world), now: c.now, sleep: c.sleep, stderr: sink(), stdout: sink(), report }), 0);
+  } finally { fs.rmSync = realRm; }
+  const live = path.basename(report.pullDir);
+  assert.deepStrictEqual(report.swap.leftover.map((l) => l.name), [oldName]);
+  assert.ok(!fs.existsSync(path.join(first.dir, 'meta.json')) && fs.existsSync(path.join(first.dir, 'players.csv')), 'partly deleted');
+  assert.ok(!fs.existsSync(path.join(first.dir, '_work', 'run.json')), 'the resume marker went first');
+  // Neither a tournament-folder resume nor naming the leftover finishes it.
+  const err = sink();
+  assert.strictEqual(await run({ resumeDir: first.tDir, token: TOKEN, fetchImpl: createFakeFetch(world), stderr: err, stdout: sink() }), 2);
+  assert.match(err.text(), /Nothing to resume/);
+  assert.strictEqual(out.readCurrent(first.tDir), live);
+  // Even a leftover that kept its run.json (put back by hand here) is refused, by name or by folder.
+  fs.mkdirSync(path.join(first.dir, '_work'), { recursive: true });
+  fs.copyFileSync(path.join(first.tDir, live, '_work', 'run.json'), path.join(first.dir, '_work', 'run.json'));
+  const e2 = sink();
+  assert.strictEqual(await run({ resumeDir: first.dir, token: TOKEN, fetchImpl: createFakeFetch(world), stderr: e2, stdout: sink() }), 2);
+  assert.match(e2.text(), new RegExp(`${oldName} is older than the live pull ${live}`));
+  assert.strictEqual(await run({ resumeDir: first.tDir, token: TOKEN, fetchImpl: createFakeFetch(world), stderr: sink(), stdout: sink() }), 2);
+  assert.strictEqual(out.readCurrent(first.tDir), live, 'the live pull never went back');
+  assert.ok(fs.existsSync(path.join(first.tDir, live, 'meta.json')));
+});

@@ -704,3 +704,21 @@ REPORT
      UTC days.
   4. Increment 1's passes 2–4 remain open, due with build B.
 ```
+
+---
+
+## Orchestrator verification after pass 3 (2026-10-29)
+
+Run in the session's browser pane. B2-1 and B2-3 were checked on a scratch copy (second server on 8799,
+`SEED_TIERS_FILE` pointed at the copy, the Eclipse run folder duplicated as `next-event`); items 2 and 4
+on the live app on 8765 (no writes: item 2 is a no-op click).
+
+| item | result |
+|---|---|
+| 1 B2-1 restore | On `next-event`, Aster Laker started "Last reviewed 2026-10-16 at eclipse-1st-cour" (`rec-recent`). ✓ → "Last reviewed 2026-10-29 at next-event (this tournament)" (`rec-here`). ✓ again → back to 2026-10-16 at eclipse-1st-cour, status line "Aster Laker: today's review undone; the review of 2026-10-16 at eclipse-1st-cour is back." Scratch `tiers.csv` vs real afterwards: **byte-identical**. |
+| 2 item 5 note | On the live Eclipse page, scrolled, ✓ on Aster Laker (reviewed 2026-10-16): row stays green; status line "Aster Laker was reviewed here on 2026-10-16; a click only undoes a review made here today, so that review stays." Still shown after 4 s. |
+| 3 B2-3 | Not exercised live (every Eclipse registrant has a row); covered by the unit test pass 3 names. |
+| 4 B2-2 | Data API: MBTL majors = Combo Breaker, Frosty Faustings, Climax of Night; UNI2 = CEO, Evo, Combo Breaker, Frosty Faustings. |
+| 5 reload limit | Not exercised; pass 3 states it (option (a) restores only within one page load). Handed to pass 4 to judge. |
+
+Pass 3's queued item ("Not saved" errors still go to `#msg`, out of view when scrolled) is also handed to pass 4.

@@ -110,6 +110,40 @@ test('rule 6: a Climax of Night field gets its own column for MBAACC, and not fo
   assert.deepStrictEqual(majorLabels(other), [], 'default list: Climax of Night is a series there');
 });
 
+// B2-2 (ruled 2026-10-29, amendable): MBTL (36865) has its own list, the four known majors plus
+// Climax of Night (kind game), because rule 6's test holds on the real MBTL data (Climax of Night
+// MBTL Singles 142 / 158 entrants vs Frosty Faustings MBTL 85 / 73). UNI2 (50203) stays on default.
+// The rows mirror out/crescendo-of-night-3-episode-0__allegro-mbtl-pc__20261014-1909/results.csv
+// (tournament and event names, entrants, dates, game ids), read with the shipped config.
+test('config/majors.json as shipped: an MBTL run gets a Climax of Night column (B2-2); UNI2 stays on the default list', () => {
+  const cfg = loadMajorsConfig(SHIPPED);
+  const MBTL = '36865', UNI2 = '50203';
+  assert.deepStrictEqual(majorsForGame(cfg, MBTL).majors.map((m) => [m.label, m.kind]),
+    [['CEO', 'known'], ['Evo', 'known'], ['Combo Breaker', 'known'], ['Frosty Faustings', 'known'], ['Climax of Night', 'game']]);
+  assert.deepStrictEqual(majorsForGame(cfg, UNI2).majors.map((m) => m.label), ['CEO', 'Evo', 'Combo Breaker', 'Frosty Faustings'], 'UNI2 has no list of its own');
+  const mbtl = (pid, tournament, event_name, num_entrants, event_date, extra = {}) => row(pid, tournament,
+    { game_id: MBTL, game_name: 'Melty Blood: Type Lumina', event_name, num_entrants, event_date, ...extra });
+  const s6 = mbtl(1, 'Climax of Night Season 6: [strong+hold]', '[strong+light] MBTL Singles', '158', '2024-10-25');
+  const fin = mbtl(1, 'Climax of Night Final Season: [breakadawn]', '[all of the lights.] MBTL Singles', '142', '2025-10-24');
+  const ff17 = mbtl(2, 'Frosty Faustings XVII 2025', 'Melty Blood: Type Lumina', '85', '2025-01-24');
+  const ff18 = mbtl(2, 'Frosty Faustings XVIII 2026', 'Melty Blood: Type Lumina', '73', '2026-01-30');
+  // Another game's Climax bracket in the same results: never an MBTL cell.
+  const uni = row(3, 'Climax of Night Final Season: [breakadawn]', { game_id: UNI2, game_name: 'Under Night In-Birth II Sys:Celes', is_event_game: 'false', event_name: '[the last night.] UNI2 Singles', num_entrants: '491', event_date: '2025-10-24' });
+  const rows = [s6, fin, also(2, fin), ff17, ff18, also(1, ff17), uni];
+  const ps = players(3);
+  const ctxWith = (majors) => {
+    const index = M.buildSeriesIndex(rows, { majors });
+    return R.summaryContext({ meta: { game: { name: 'MBTL' } }, players: ps, rows, records: {}, notes: {}, columns: M.chooseColumns(ps, rows.filter(M.isGame), index), index });
+  };
+  const after = ctxWith(majorsForGame(cfg, MBTL));
+  assert.deepStrictEqual(majorLabels(after), ['Frosty Faustings', 'Climax of Night'], 'MBTL shows Frosty Faustings and Climax of Night');
+  const p1 = rows.filter((r) => r.player_id === '1');
+  assert.match(cellText(R.majorCell(p1, { label: 'Climax of Night' }, {}, after.index)), /^9th \/ 142 · — '25 9th \/ 158 · — '24$/, 'one result per year, MBTL brackets only');
+  assert.ok(!/491/.test(cellText(R.majorCell(rows.filter((r) => r.player_id === '3'), { label: 'Climax of Night' }, {}, after.index))), 'the UNI2 bracket is not an MBTL cell');
+  // Before B2-2 (the default list): no Climax of Night column for MBTL.
+  assert.ok(!majorLabels(ctxWith(majorsForGame(cfg, UNI2))).includes('Climax of Night'));
+});
+
 test('rule 5: the main event is judged across the run (one bracket for everyone), and a larger excluded bracket never displaces it', () => {
   const main = row(1, 'Frosty Faustings XVII 2025', { num_entrants: '145', placement: '9' });
   const rows = [

@@ -11,6 +11,16 @@
         { "label": "Frosty Faustings", "pattern": "^frosty faustings\\b", "kind": "known" }
       ]
     },
+    "36865": {
+      "name": "Melty Blood: Type Lumina",
+      "majors": [
+        { "label": "CEO", "pattern": "^CEO \\d{4}\\b", "kind": "known" },
+        { "label": "Evo", "pattern": "^EVO \\d{4}\\b", "kind": "known" },
+        { "label": "Combo Breaker", "pattern": "^combo breaker\\b", "kind": "known" },
+        { "label": "Frosty Faustings", "pattern": "^frosty faustings\\b", "kind": "known" },
+        { "label": "Climax of Night", "pattern": "^climax of night\\b", "kind": "game" }
+      ]
+    },
     "22407": {
       "name": "Melty Blood Actress Again Current Code",
       "majors": [

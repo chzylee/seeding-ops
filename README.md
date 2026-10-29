@@ -53,7 +53,8 @@ changes in any mode.
   event's game at that tournament's main event for the game (its largest bracket of that game that
   isn't a side, community, 2v2, teams or "Pre-" bracket), one result per year. Side brackets stay
   in the series columns. The lists live in **`config/majors.json`**, one per game, keyed by the
-  start.gg game id (it's in a run's `meta.json` under `game.id`; MBAACC is `22407`); `default` covers
+  start.gg game id (it's in a run's `meta.json` under `game.id`; MBAACC is `22407`, MBTL `36865`,
+  which adds Climax of Night); `default` covers
   games without their own list. **To add a game** copy the `default` block under the game's id and
   add its own majors; **to add a major** add `{ "label": "Name", "pattern": "^name\\b", "kind":
   "game" }` (`pattern` is a case-insensitive regular expression on the tournament name; `kind` is

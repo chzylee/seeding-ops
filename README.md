@@ -56,10 +56,11 @@ changes in any mode.
   in the series columns. The lists live in **`config/majors.json`**, one per game, keyed by the
   start.gg game id (it's in a run's `meta.json` under `game.id`; MBAACC is `22407`; MBTL is `36865`,
   which adds Climax of Night); `default` covers games without their own list. **To add a game**
-  copy the `default` block under the game's id and add its own majors; **to add a major** add `{ "label": "Name", "pattern": "^name\\b", "kind":
-  "game" }` (`pattern` is a case-insensitive regular expression on the tournament name; `kind` is
-  `known` for the big four, `game` for a game's own majors). Your rule for adding one: a series of
-  the game whose field is at least as large as a known major's. A reload picks up the change.
+  copy the `default` block under the game's id and add its own majors; **to add a major** add
+  `{ "label": "Name", "pattern": "^name\\b", "kind": "game" }` (`pattern` is a case-insensitive
+  regular expression on the tournament name; `kind` is `known` for the big four, `game` for a
+  game's own majors). Your rule for adding one: a series of the game whose field is at least as
+  large as a known major's. A reload picks up the change.
 - Pins, frozen columns and the compare pair are remembered per event in this browser.
 
 The app pulls with the same code and token as `seed.cmd`. To keep it from using all of start.gg's

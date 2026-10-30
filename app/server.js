@@ -247,6 +247,10 @@ function createApp(opts = {}) {
     if (!parsed.rows.length) {
       throw bad(400, `No player rows in the file.${parsed.malformed.length ? ` Malformed: ${parsed.malformed.map((x) => `line ${x.line} (${x.reason})`).join('; ')}` : ''}`, { malformed: parsed.malformed });
     }
+    // E2-7: a row ceiling, checked before anything is written or asked of start.gg.
+    if (parsed.rows.length > U.MAX_UPLOAD_ROWS) {
+      throw bad(400, `The list has ${parsed.rows.length} player rows; an upload takes at most ${U.MAX_UPLOAD_ROWS} (each row is a start.gg lookup and a pull on the one queue). Split the list.`);
+    }
     // Done by the given date: the page counts as done from the start of that day, this computer's time.
     const startAt = local.toISOString();
     const event = U.uploadEvent({ name, game, startAt, count: parsed.rows.length });

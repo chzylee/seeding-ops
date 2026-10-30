@@ -375,3 +375,21 @@ test('E2-6: a row whose lookup failed is flagged "lookup failed (<reason>)", dis
   const ps = out.parseCsv(fs.readFileSync(path.join(pool.currentPull(path.join(w.outRoot, 'mixfest-26-test')).dir, 'players.csv'), 'utf8'));
   assert.deepStrictEqual(ps.filter((p) => p.lookup_error).map((p) => [p.player_id, p.lookup_error]), [['unresolved-aaaa0005', reason]]);
 });
+
+// E2-7 (build C pass 2; orchestrator ruling): a row ceiling of 1,000, refused with the count before any
+// start.gg request and before anything is written. The byte caps were the only limit before.
+test('E2-7: an upload over 1,000 player rows is refused with the count, writing nothing and asking start.gg nothing; 1,000 is taken', async () => {
+  const w = setup();
+  const list = (n) => 'name,discriminator\n' + Array.from({ length: n }, (_, i) => `P${i},${(0xa0000000 + i).toString(16)}`).join('\n') + '\n';
+  const r = await upload(w.app, { name: 'Too Big', csv: list(1001) });
+  assert.strictEqual(r.status, 400, r.text);
+  assert.match(r.json().error, /The list has 1001 player rows; an upload takes at most 1000/);
+  assert.ok(!fs.existsSync(path.join(w.outRoot, 'too-big')));
+  assert.strictEqual(w.fake.calls.length, 0);
+  // Repeats are collapsed first: 1,001 lines with one repeat is 1,000 rows, under the ceiling.
+  const repeat = list(1000) + 'Again,a0000000\n';
+  const ok = await upload(w.app, { name: 'Just Fits', csv: repeat });
+  assert.strictEqual(ok.status, 202, ok.text);
+  assert.deepStrictEqual([ok.json().rows, ok.json().duplicates.length], [1000, 1]);
+  await w.app.jobs.idle();
+});

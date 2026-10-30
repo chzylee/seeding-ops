@@ -1,6 +1,6 @@
 # Dispatch contract — seeding-ops, increment 4 (CSV upload, discriminator, source badges), build C
 
-Status: DRAFT 2026-10-30, awaiting Noah's go before any seat is dispatched.
+Status: ISSUED 2026-10-30 on Noah's go ("you can go ahead and do that and then start the app for me to try with uploading our edited sheet").
 Team: `personal-staff/personas/TEAMS.md` §Engineering team (owner **lead-engineer**, auditor
 **engineering-auditor**, report-only). Profile blocks: `personal-staff/personas/library/<slug>.md`.
 Models: Opus for every seat (Noah's standing ruling).

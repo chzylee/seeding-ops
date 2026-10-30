@@ -3013,3 +3013,14 @@ REPORT
   2. E2-4's "attempted code" test (assumption 1) is a definition I supplied; amendable in one function.
   3. Still unverified from earlier passes: Mixfest's date (2026-11-14) and start.gg's blue (#3f80ff).
 ```
+
+---
+
+## Orchestrator verification after build C pass 3 (2026-10-30)
+
+Suite on the working tree at `fea9a0a`: 262 tests, 262 pass, 0 fail, 0 skipped (matches pass 3). The
+desktop app on 8765 was left running for Noah throughout passes 2 and 3 (it loads live code; its
+server-side changes reach it at the next launch, which the orchestrator does after pass 4). The Mixfest
+page's one-time upload summary is still unseen (`uploads[0].shown_at` null). The browser checklist items
+(tag-only light blue on a scratch copy, the header-skipped note, the 1,000-row refusal) rest on pass 3's
+own offline run and the six new tests; not re-run here to avoid touching the checkout while Noah uses it.

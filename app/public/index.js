@@ -71,10 +71,26 @@
   if (!up) return;
   const $ = (id) => document.getElementById(id);
   const upMsg = $('upMsg');
+  // The game picker (Noah, 2026-10-30): a button with the chosen game's logo and a grid of logos from
+  // config/games.json (copied from find-my-fgc). The hidden input #upGame carries the chosen id;
+  // "other" reveals the free id fields.
   const game = $('upGame');
+  const pickBtn = $('upGameBtn');
+  const grid = $('upGameGrid');
   const showOther = () => { $('upOtherWrap').hidden = game.value !== 'other'; $('upGameId').required = game.value === 'other'; };
-  game.addEventListener('change', showOther);
-  showOther();
+  const choose = (btn) => {
+    game.value = btn.dataset.id;
+    game.dataset.name = btn.dataset.name || '';
+    grid.querySelectorAll('button').forEach((b) => b.setAttribute('aria-selected', b === btn ? 'true' : 'false'));
+    const img = btn.querySelector('img');
+    pickBtn.innerHTML = (img ? `<img src="${img.getAttribute('src')}" alt="">` : '') + `<span>${btn.dataset.name || btn.textContent.trim()}</span><span class="caret">▾</span>`;
+    showOther();
+  };
+  pickBtn.addEventListener('click', (ev) => { ev.preventDefault(); grid.hidden = !grid.hidden; if (!grid.hidden) (grid.querySelector('[aria-selected="true"]') || grid.querySelector('button')).focus(); });
+  grid.addEventListener('click', (ev) => { const b = ev.target.closest('button[data-id]'); if (!b) return; ev.preventDefault(); choose(b); grid.hidden = true; pickBtn.focus(); });
+  document.addEventListener('click', (ev) => { if (!grid.hidden && !grid.contains(ev.target) && ev.target !== pickBtn && !pickBtn.contains(ev.target)) grid.hidden = true; });
+  document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape' && !grid.hidden) { grid.hidden = true; pickBtn.focus(); } });
+  choose(grid.querySelector('[aria-selected="true"]') || grid.querySelector('button[data-id]'));
   const readText = (file) => new Promise((resolve, reject) => {
     const r = new FileReader();
     r.onload = () => resolve(String(r.result || ''));
@@ -91,7 +107,7 @@
     const payload = {
       name: $('upName').value, date: $('upDate').value, file_name: file.name,
       game_id: other ? $('upGameId').value.trim() : game.value,
-      game_name: other ? $('upGameName').value.trim() : game.options[game.selectedIndex].text,
+      game_name: other ? $('upGameName').value.trim() : (game.dataset.name || ''),
     };
     up.querySelector('button').disabled = true;
     upMsg.textContent = 'Reading the file…';

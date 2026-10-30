@@ -186,7 +186,14 @@ test('the home page: an upload badge for the uploaded list, a start.gg badge for
   assert.strictEqual(pool.readState(path.join(w.outRoot, T_SLUG)).source, 'startgg');
   // The upload form sits beside "Add a tournament": the games from config/majors.json, then a free id.
   assert.match(html, /<form id="add"[\s\S]*<details id="uploadBox"[\s\S]*<form id="upload"/);
-  assert.match(html, /<option value="22407">Melty Blood Actress Again Current Code<\/option><option value="36865">Melty Blood: Type Lumina<\/option><option value="other">/);
+  // The game picker (Noah, 2026-10-30): a grid of logos from config/games.json, MBAACC selected by
+  // default, plus the free "other" id; the chosen id travels in the hidden #upGame input.
+  assert.match(html, /<input type="hidden" id="upGame" name="game" value="22407">/);
+  assert.match(html, /<button type="button" data-id="22407" data-name="Melty Blood Actress Again Current Code" aria-selected="true"><img src="\/static\/games\/mbaacc-logo\.png" alt="">/);
+  assert.match(html, /<button type="button" data-id="36865" data-name="Melty Blood: Type Lumina" aria-selected="false"><img src="\/static\/games\/mbtl-logo\.png" alt="">/);
+  assert.match(html, /<button type="button" data-id="other" class="other"/);
+  assert.strictEqual((await inject(w.app.handler, { url: '/static/games/mbaacc-logo.png' })).status, 200, 'a listed logo is served');
+  assert.strictEqual((await inject(w.app.handler, { url: '/static/games/nope.png' })).status, 404, 'only listed logos are served');
   assert.match(html, /<input id="upDate" name="date" type="date" required/);
   const css = fs.readFileSync(path.join(__dirname, '..', 'app', 'public', 'app.css'), 'utf8');
   assert.match(css, /\.src\.src-startgg \{ background: var\(--src-startgg-bg\); color: var\(--src-startgg-fg\); \}/);
@@ -297,11 +304,11 @@ test('home page layout (Noah, mid-pass 2026-10-30): "Add a tournament" header, t
   const html = (await inject(w.app.handler, { url: '/' })).text;
   const at = (s) => { const i = html.indexOf(s); assert.ok(i >= 0, `has ${s}`); return i; };
   const order = [at('<h2 id="addHead">Add a tournament</h2>'), at('<form id="add"'), at('<input id="addUrl"'), at('<button type="submit">Add</button>'), at('</form>'),
-    at('<summary>Import from CSV <span'), at('It builds its own page for one game; no push and no schedule.'), at('<ul class="events">')];
+    at('<summary>Import from CSV <span'), at('It builds its own page for one game.'), at('<ul class="events">')]; // Noah's shortened text, 2026-10-30
   assert.deepStrictEqual([...order].sort((a, b) => a - b), order, 'top to bottom in that order');
   // The link field and Add share the one form (one row); the CSV import's description shows while folded.
   assert.match(html, /<form id="add" class="add-t"><label[^>]*class="sr-only"[^>]*>[^<]*<\/label>\s*<input id="addUrl"[^>]*>\s*<button type="submit">Add<\/button>/);
-  assert.match(html, /<summary>Import from CSV <span class="dim import-desc">[^<]*two columns: name, then the start\.gg discriminator/i);
+  assert.match(html, /<summary>Import from CSV <span class="dim import-desc">[^<]*two columns: name \+ start\.gg discriminator/i); // Noah's shortened text, 2026-10-30
   assert.ok(!/Live tournaments first/.test(html), 'no explanatory block for live ones');
   const note = at('class="done-note dim"');
   assert.ok(at('href="/t/a-live"') < note && note < at('href="/t/b-done"'), 'the sentence sits above the first done tournament');

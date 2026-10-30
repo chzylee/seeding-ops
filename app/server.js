@@ -76,6 +76,22 @@ const STATIC = {
   'app.css': [path.join(APP_DIR, 'public', 'app.css'), 'text/css; charset=utf-8'],
   'theme.js': [path.join(APP_DIR, 'public', 'theme.js'), JS],
 };
+// The upload picker's game logos (config/games.json, copied from find-my-fgc), served as
+// /static/games/<file>: only files the config names, only image types, only under app/public/games.
+const IMAGE_TYPES = { '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.ico': 'image/x-icon', '.webp': 'image/webp', '.svg': 'image/svg+xml' };
+function loadGames() {
+  try {
+    const j = JSON.parse(fs.readFileSync(path.join(ROOT, 'config', 'games.json'), 'utf8'));
+    return (j.games || []).filter((g) => /^\d+$/.test(String(g.id)) && g.name).map((g) => ({ id: String(g.id), name: String(g.name), short: String(g.short || g.name), image: typeof g.image === 'string' && /^games\/[a-z0-9._-]+$/i.test(g.image) ? g.image : null }));
+  } catch { return []; }
+}
+for (const g of loadGames()) {
+  if (!g.image) continue;
+  const ext = path.extname(g.image).toLowerCase();
+  const file = path.join(APP_DIR, 'public', g.image);
+  // A logo named in the config but not on disk yet is simply not served (the picker shows the name alone).
+  if (IMAGE_TYPES[ext] && fs.existsSync(file)) STATIC[g.image] = [file, IMAGE_TYPES[ext]];
+}
 const PAGE = path.join(APP_DIR, 'public', 'tournament.html');
 
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -96,20 +112,31 @@ const SOURCE_BADGE = {
   upload: '<span class="src src-upload" title="Built from an uploaded CSV list of players">upload</span>',
 };
 // The upload form's games (A1.3): the games config/majors.json lists by id, then a free id.
+// The games the upload picker offers: config/games.json (ids, names, logos; copied from find-my-fgc),
+// with any game that only config/majors.json names appended (no logo). MBAACC first when present.
 function uploadGames() {
-  let games = {};
-  try { games = majorsConfig.loadMajorsConfig().games; } catch { games = {}; }
-  return Object.entries(games).filter(([id]) => /^\d+$/.test(id)).map(([id, g]) => ({ id, name: g.name }));
+  const list = loadGames();
+  const seen = new Set(list.map((g) => g.id));
+  let majors = {};
+  try { majors = majorsConfig.loadMajorsConfig().games; } catch { majors = {}; }
+  for (const [id, g] of Object.entries(majors)) if (/^\d+$/.test(id) && !seen.has(id)) list.push({ id, name: g.name, short: g.name, image: null });
+  const first = list.findIndex((g) => g.id === '22407');
+  if (first > 0) list.unshift(...list.splice(first, 1));
+  return list;
 }
 function uploadForm() {
-  const opts = uploadGames().map((g) => `<option value="${esc(g.id)}">${esc(g.name)}</option>`).join('');
+  const games = uploadGames();
+  const sel = games[0] ? games[0].id : 'other';
+  const img = (g) => (g.image && STATIC[g.image] ? `<img src="/static/${esc(g.image)}" alt="">` : '');
+  const opts = games.map((g) => `<button type="button" data-id="${esc(g.id)}" data-name="${esc(g.name)}" aria-selected="${g.id === sel ? 'true' : 'false'}">${img(g)}<span>${esc(g.short)}</span></button>`).join('')
+    + `<button type="button" data-id="other" class="other" data-name="" aria-selected="false">Other (start.gg game id)…</button>`;
+  const picker = `<span class="game-pick"><input type="hidden" id="upGame" name="game" value="${esc(sel)}"><button type="button" id="upGameBtn" class="game-pick-btn" aria-haspopup="listbox" aria-controls="upGameGrid">Game…</button><div id="upGameGrid" class="game-grid" role="listbox" hidden>${opts}</div></span>`;
   // Noah, mid-pass 2026-10-30: under the link row, "Import from CSV" with a short description that is
   // visible while the form is folded.
-  return `<details id="uploadBox" class="upload-t"><summary>Import from CSV <span class="dim import-desc">A CSV of two columns: name, then the start.gg discriminator (the code in start.gg/user/&lt;code&gt;). It builds its own page for one game; no push and no schedule.</span></summary>
+  return `<details id="uploadBox" class="upload-t"><summary>Import from CSV <span class="dim import-desc">A CSV of two columns: name + start.gg discriminator (acbd1234). It builds its own page for one game.</span></summary>
 <form id="upload" class="upload-form">
-<p class="dim">The code can be bare, user/&lt;code&gt; or the profile link; a header row is optional. Each row costs one start.gg lookup, then the players' results are pulled as for a tournament.</p>
 <label>Page name <input id="upName" name="name" required autocomplete="off" placeholder="e.g. Mixfest 26 MBAACC"></label>
-<label>Game <select id="upGame" name="game">${opts}<option value="other">Other (start.gg game id)…</option></select></label>
+<label>Game ${picker}</label>
 <label id="upOtherWrap" hidden>Game id <input id="upGameId" inputmode="numeric" pattern="\\d+" autocomplete="off" placeholder="start.gg videogame id"> name <input id="upGameName" autocomplete="off" placeholder="optional"></label>
 <label>Date <input id="upDate" name="date" type="date" required title="The day the event is played. The page counts as done once it starts."></label>
 <label>CSV file <input id="upFile" name="file" type="file" accept=".csv,text/csv" required></label>
@@ -416,7 +443,7 @@ function createApp(opts = {}) {
 
       if (p === '/' && method === 'GET') return send(res, 200, indexPage(outRoot, jobs, nowMs()), 'text/html; charset=utf-8');
 
-      let m = /^\/static\/([a-z.]+)$/.exec(p);
+      let m = /^\/static\/((?:games\/)?[a-z0-9._-]+)$/i.exec(p);
       if (m && method === 'GET') {
         const s = STATIC[m[1]];
         if (!s) return notFound(res);

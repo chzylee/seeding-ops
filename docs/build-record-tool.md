@@ -3323,3 +3323,26 @@ that asks for approval before deleting."* Recorded per standing rule (a).
   the confirmation; the tournament page's Delete button therefore shows on live tournaments too. The
   done note on the home page names both ways. Three tests updated to the new rule (tournament.test.js
   lifecycle, upload.test.js badges + layout); suite 262/262/0/0.
+
+---
+
+## Out-of-band: the game picker with logos, start.gg game names, two new games (orchestrating session, 2026-10-30)
+
+Noah: *"for selecting a game, i have game ids, names, and images in find-my-fgc. we can copy these and use
+these to build a dropdown selector"*; *"use the startgg api to find the ids for marvel tokon and avatar
+legends"*; he also shortened the Import from CSV description himself (committed here with his wording).
+
+- `config/games.json`: 26 games. 24 copied from `find-my-fgc/frontend/constants/games.ts` (ids, short
+  labels) with their logos copied to `app/public/games/` (5 MB); the two new ones found through the API
+  (`videogames(query:{filter:{name}})`): **Marvel Tokon: Fighting Souls = 107706**, **Avatar Legends: The
+  Fighting Game = 114292**. Every `name` is start.gg's own (`videogame(id)` for all 26, 28 read-only
+  requests paced at one per 3 s); `short` keeps find-my-fgc's label for the grid.
+- Upload form: the `<select>` is now a picker (`#upGameBtn` + `#upGameGrid`, index.js): a button with the
+  chosen game's logo and a grid of logos; MBAACC first and selected; "Other (start.gg game id)…" keeps the
+  free id fields. The hidden `#upGame` carries the id; `data-name` carries start.gg's name for the tab.
+  Logos are served as `/static/games/<file>` only when the config names them and the file exists; a game
+  without a logo on disk shows its name alone (the two new ones, until Noah drops
+  `marvel-tokon-logo.png` and `avatar-legends-logo.png` into `app/public/games/`).
+- Tests updated for the new markup and Noah's text; suite 262/262/0/0. Checked in the browser pane: 27
+  buttons (26 games + other), 24 logos all loading, choosing a game sets the id, name and button label,
+  "other" reveals the id fields.

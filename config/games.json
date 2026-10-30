@@ -1,0 +1,161 @@
+{
+  "_about": "Games offered by the CSV upload picker (docs/design-tool.md A1.3). Copied from find-my-fgc (frontend/constants/games.ts and assets/games) on 2026-10-30: start.gg videogame ids, a short label, and a logo under app/public/games/. `name` is the start.gg name where known (it is what the tab shows), else the short label. Add a game by adding a row and dropping its logo in app/public/games/.",
+  "games": [
+    {
+      "id": "43868",
+      "name": "Street Fighter 6",
+      "short": "SF6",
+      "image": "games/sf6-logo.png"
+    },
+    {
+      "id": "33945",
+      "name": "Guilty Gear: Strive",
+      "short": "GGST",
+      "image": "games/ggst-logo.png"
+    },
+    {
+      "id": "64423",
+      "name": "2XKO",
+      "short": "2XKO",
+      "image": "games/2xko-logo.png"
+    },
+    {
+      "id": "49783",
+      "name": "TEKKEN 8",
+      "short": "Tekken 8",
+      "image": "games/t8-logo.jpg"
+    },
+    {
+      "id": "114237",
+      "name": "Virtua Fighter 5 R.E.V.O. World Stage",
+      "short": "VF5 REVO",
+      "image": "games/vf5-logo.png"
+    },
+    {
+      "id": "3139",
+      "name": "Dead or Alive 6",
+      "short": "DOA 6",
+      "image": "games/doa6-logo.png"
+    },
+    {
+      "id": "73221",
+      "name": "Fatal Fury: City of the Wolves",
+      "short": "FF CotW",
+      "image": "games/cotw-logo.png"
+    },
+    {
+      "id": "36963",
+      "name": "The King of Fighters XV",
+      "short": "KOFXV",
+      "image": "games/kofxv-logo.png"
+    },
+    {
+      "id": "48548",
+      "name": "Granblue Fantasy Versus: Rising",
+      "short": "GBVSR",
+      "image": "games/gbvsr-logo.ico"
+    },
+    {
+      "id": "48599",
+      "name": "Mortal Kombat 1",
+      "short": "MK1",
+      "image": "games/mk1-logo.png"
+    },
+    {
+      "id": "582",
+      "name": "Vampire Savior: The Lord of Vampire",
+      "short": "VSAV",
+      "image": "games/vsav-logo.png"
+    },
+    {
+      "id": "610",
+      "name": "Street Fighter III: 3rd Strike",
+      "short": "3rd Strike",
+      "image": "games/3s-logo.png"
+    },
+    {
+      "id": "50203",
+      "name": "Under Night In-Birth II Sys:Celes",
+      "short": "UNI2",
+      "image": "games/uni2-logo.png"
+    },
+    {
+      "id": "36865",
+      "name": "Melty Blood: Type Lumina",
+      "short": "MBTL",
+      "image": "games/mbtl-logo.png"
+    },
+    {
+      "id": "22407",
+      "name": "Melty Blood Actress Again Current Code",
+      "short": "MBAACC",
+      "image": "games/mbaacc-logo.png"
+    },
+    {
+      "id": "32",
+      "name": "Skullgirls: 2nd Encore",
+      "short": "Skullgirls",
+      "image": "games/skugs-logo.png"
+    },
+    {
+      "id": "18",
+      "name": "Ultimate Marvel vs Capcom 3",
+      "short": "UMVC3",
+      "image": "games/mvc3-logo.png"
+    },
+    {
+      "id": "287",
+      "name": "DRAGON BALL FighterZ",
+      "short": "DBFZ",
+      "image": "games/dbfz-logo.png"
+    },
+    {
+      "id": "37",
+      "name": "BlazBlue: Central Fiction",
+      "short": "BBCF",
+      "image": "games/bbcf-logo.png"
+    },
+    {
+      "id": "36",
+      "name": "Guilty Gear Xrd REV2",
+      "short": "GG Xrd REV2",
+      "image": "games/xrd-logo.png"
+    },
+    {
+      "id": "53945",
+      "name": "Rivals of Aether II",
+      "short": "ROA II",
+      "image": "games/roa2-logo.png"
+    },
+    {
+      "id": "1386",
+      "name": "Super Smash Bros. Ultimate",
+      "short": "SSBU",
+      "image": "games/ssbu-logo.png"
+    },
+    {
+      "id": "1",
+      "name": "Super Smash Bros. Melee",
+      "short": "SSBM",
+      "image": "games/ssbm-logo.png"
+    },
+    {
+      "id": "4",
+      "name": "Super Smash Bros.",
+      "short": "Smash 64",
+      "image": "games/s64-logo.png"
+    },
+    {
+      "id": "107706",
+      "name": "Marvel Tokon: Fighting Souls",
+      "short": "Marvel Tokon",
+      "image": "games/marvel-tokon-logo.png"
+    },
+    {
+      "id": "114292",
+      "name": "Avatar Legends: The Fighting Game",
+      "short": "Avatar Legends",
+      "image": "games/avatar-legends-logo.png"
+    }
+  ]
+}

@@ -426,3 +426,44 @@ Owner and auditor passes as before.
   The majors rule came out fully formed, with the Climax of Night exception already in it.
 - *"Deadline shouldn't be relevant"* a week before an event is a scope statement, not bravado. It
   held: every answer after it made the design smaller.
+
+## Amendment A1 — CSV upload and the discriminator (Noah, 2026-10-30; increment 4)
+
+Rulings from the 2026-10-30 session, binding over the sections above where they differ.
+
+1. **Identity.** The start.gg **discriminator** (the eight-character code in a profile URL,
+   `start.gg/user/abcd1234`) is the id Noah records; the numeric `Player.id` stays the internal join
+   key for results and tiers and is resolved from the discriminator through the API. T1 gains a
+   `discriminator` column beside `player_id` (migration; blank where unknown). A tiers row with neither
+   is provisional, matched by tag.
+2. **Match order.** A player is matched to a tiers row **first by id** (player id, or discriminator
+   resolved to one), **then by tag** only. A row matched by tag only is shown with a distinct cell color
+   (grey or light blue; the build picks and records it) on the Tier cell, so Noah can see which links
+   are inferred. A ✓ or an edit on such a row writes the id and discriminator into it (the link
+   becomes real), as the tag fallback already does for ids.
+3. **CSV upload** (verified API: `user(slug: "user/<discriminator>")` returns `id`, `discriminator`,
+   `player { id gamerTag prefix }`, `location`, and `events`, the same history path the pull uses;
+   source <https://developer.start.gg/reference/query.doc.html>, <https://developer.start.gg/reference/user.doc.html>).
+   - **Contract:** a CSV of two columns, name then discriminator; column names irrelevant; a header row is
+     expected but not required, and its absence is detected by the first value of the second column being
+     itself a discriminator. A discriminator may be given bare (`abcd1234`) or as a URL or `user/abcd1234`;
+     the code is what is kept. Names in start.gg's `Team | tag` form are split into prefix and tag as the
+     pull does; a name without `|` is the tag.
+   - **What it builds:** its **own tournament page**, named by Noah at upload, with **one tab for a game
+     Noah picks** at upload. No start.gg event stands behind it, so there is no push and no Schedule tab;
+     lifecycle (done by a date Noah gives, Mark done, Delete), export, ✓, tiers and majors work as on any
+     page. The pool is pulled the same way as a tournament's: one `user` lookup per row resolves the
+     player, then that player's results and W-L through the existing per-player code, under the one queue.
+     A discriminator the API cannot resolve stays on the page as a row with the CSV's name, no results, and
+     a flag, never dropped.
+   - **Display:** the page shows the **current start.gg tag** with the CSV's name kept as an alias (hover);
+     the Team column gets the prefix.
+   - **Registry linking:** on upload, every row whose discriminator (or resolved player id) matches a
+     tiers row links it; every row that matches a tiers row **by tag only** gets its id and discriminator
+     written in and is reported as "linked by tag" in the upload summary (Noah's call to review).
+4. **Source on the home page.** Each tournament shows where it came from: a small **start.gg** badge in
+   start.gg's blue for tournaments added by link, and an **upload** badge for CSV pages. `state.json`
+   records `source: "startgg" | "upload"`; imported legacy pulls are `startgg`.
+5. **Prior pages.** The old per-event pulls were imported into the pool layout on 2026-10-30
+   (`scripts/import-legacy.js`); past events stay listed under done/archived and are deleted by hand
+   when wanted. No sandbox mode.

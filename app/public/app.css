@@ -483,3 +483,35 @@ ul.events li.done-note:hover { border: 0; }
 .ctx-menu button:hover, .ctx-menu button:focus-visible { background: var(--row-hover); outline: none; }
 .ctx-menu button.danger { color: var(--err); }
 .ctx-menu button.danger:hover, .ctx-menu button.danger:focus-visible { background: var(--err-bg); }
+
+/* ---- The upload modal and its game combobox (Noah, 2026-10-30) ---- */
+#uploadOpen { height: var(--ctl-h); padding: 0 var(--s-3); border: 1px solid var(--line-strong); background: var(--cell); color: var(--fg); border-radius: var(--radius); font: inherit; }
+#uploadOpen:hover { border-color: var(--accent); }
+.add-section .import-row { display: flex; align-items: center; gap: var(--s-3); margin: var(--s-2) 0 0; }
+.add-section .import-row .import-desc { margin: 0; }
+dialog.upload-modal { width: min(560px, calc(100vw - 32px)); padding: 0; border: 1px solid var(--line-strong); border-radius: var(--radius); background: var(--cell); color: var(--fg); box-shadow: 0 12px 40px rgba(0, 0, 0, .28); }
+dialog.upload-modal::backdrop { background: rgba(0, 0, 0, .45); }
+dialog.upload-modal .modal-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--s-3); padding: var(--s-3) var(--s-4) 0; }
+dialog.upload-modal h2 { margin: 0; font-size: 15px; }
+dialog.upload-modal .upload-form { display: grid; grid-template-columns: 92px 1fr; gap: var(--s-2) var(--s-3); align-items: center; padding: var(--s-3) var(--s-4) var(--s-4); margin: 0; }
+dialog.upload-modal .upload-form p { grid-column: 1 / -1; margin: 0 0 var(--s-1); }
+dialog.upload-modal .upload-form label { display: contents; }
+dialog.upload-modal .upload-form label > span.lbl { color: var(--ink-2); font-weight: 600; font-size: 13px; }
+dialog.upload-modal .upload-form input:not([type=file]) { width: 100%; }
+dialog.upload-modal .modal-actions { grid-column: 1 / -1; display: flex; align-items: center; gap: var(--s-2); margin-top: var(--s-1); }
+dialog.upload-modal .upload-form button.plain { background: var(--cell); color: var(--fg); border-color: var(--line-strong); }
+/* combobox */
+.game-combo { position: relative; display: flex; align-items: center; gap: 6px; }
+.game-combo .chip { display: inline-flex; width: 22px; height: 22px; flex: 0 0 22px; align-items: center; justify-content: center; }
+.game-combo .chip img { width: 22px; height: 22px; object-fit: contain; border-radius: 3px; background: #fff; }
+.game-combo input { flex: 1 1 auto; min-width: 0; }
+.game-combo ul.game-list { position: absolute; left: 28px; right: 0; top: calc(var(--ctl-h) + 3px); z-index: var(--z-popover); margin: 0; padding: 4px; list-style: none; max-height: 240px; overflow: auto;
+  background: var(--cell); border: 1px solid var(--line-strong); border-radius: var(--radius); box-shadow: 0 6px 24px rgba(0, 0, 0, .18); }
+.game-combo ul.game-list[hidden] { display: none; }
+.game-combo ul.game-list li { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border-radius: var(--radius-sm); cursor: pointer; font-size: 13px; line-height: 1.3; }
+.game-combo ul.game-list li img { width: 20px; height: 20px; flex: 0 0 20px; object-fit: contain; border-radius: 3px; background: #fff; }
+.game-combo ul.game-list li .full { color: var(--dim); font-size: 12px; margin-left: auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 55%; }
+.game-combo ul.game-list li.active, .game-combo ul.game-list li:hover { background: var(--row-hover); }
+.game-combo ul.game-list li[aria-selected="true"] { box-shadow: inset 0 0 0 1px var(--accent); }
+.game-combo ul.game-list li.other { color: var(--ink-2); border-top: 1px solid var(--line); border-radius: 0; margin-top: 4px; padding-top: 7px; }
+.game-combo ul.game-list li.none { color: var(--dim); cursor: default; }

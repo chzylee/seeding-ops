@@ -3346,3 +3346,27 @@ legends"*; he also shortened the Import from CSV description himself (committed 
 - Tests updated for the new markup and Noah's text; suite 262/262/0/0. Checked in the browser pane: 27
   buttons (26 games + other), 24 logos all loading, choosing a game sets the id, name and button label,
   "other" reveals the id fields.
+
+---
+
+## Out-of-band: the upload modal, the game combobox, Archive with confirmation, optional date (orchestrating session, 2026-10-30)
+
+Noah, after seeing the logo picker render oversized in the window: *"lets make the csv thing a button that
+pops up a modal … there can be a manual archive button with approval follow up on all events, and then its
+fine for date to be optional"*; *"we need a better dropdown selector thats small and easy to scroll or type
+in a title to filter."* Recorded per standing rule (a).
+
+- Home page: "Import from CSV…" is a button beside its one-line description; the form lives in a
+  `<dialog>` (Page name, Game, Date, CSV file; Upload / Cancel; Escape closes).
+- Game field: a combobox (`#upGameSearch` + `#upGameList`): type to filter by short label or start.gg
+  name, scroll (240 px max), arrow keys and Enter, click; 20 px logos; the chosen game's logo sits as a 22 px
+  chip beside the box; "Other (start.gg game id)…" at the end reveals the id fields. The oversized render
+  came from the form's button rule applying to the picker button; the combobox uses list items, not buttons.
+- Date optional: without one the page stays live until archived by hand (server: empty date allowed,
+  synthetic event without `start_at`; `statusOf` already treats no date as live).
+- "Mark done" is now **Archive** on every tournament page, behind a confirmation naming the tournament
+  ("moves to the done section; nothing is deleted; Mark live again undoes it"). "Archive standings" (the
+  start.gg standings fetch) is unchanged.
+- A duplicate `const list` in index.js (the right-click menu's and the combobox's) broke the whole script on
+  first try; renamed. Checked in the browser pane: modal opens and closes, filtering "tek" leaves Tekken 8
+  and Other, Enter picks it (id 49783, name "TEKKEN 8"), logos 20 px, date not required. Suite 262/262/0/0.

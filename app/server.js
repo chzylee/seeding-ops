@@ -127,21 +127,13 @@ function uploadGames() {
 function uploadForm() {
   const games = uploadGames();
   const sel = games[0] ? games[0].id : 'other';
-  const img = (g) => (g.image && STATIC[g.image] ? `<img src="/static/${esc(g.image)}" alt="">` : '');
-  const opts = games.map((g) => `<button type="button" data-id="${esc(g.id)}" data-name="${esc(g.name)}" aria-selected="${g.id === sel ? 'true' : 'false'}">${img(g)}<span>${esc(g.short)}</span></button>`).join('')
-    + `<button type="button" data-id="other" class="other" data-name="" aria-selected="false">Other (start.gg game id)…</button>`;
-  const picker = `<span class="game-pick"><input type="hidden" id="upGame" name="game" value="${esc(sel)}"><button type="button" id="upGameBtn" class="game-pick-btn" aria-haspopup="listbox" aria-controls="upGameGrid">Game…</button><div id="upGameGrid" class="game-grid" role="listbox" hidden>${opts}</div></span>`;
-  // Noah, mid-pass 2026-10-30: under the link row, "Import from CSV" with a short description that is
-  // visible while the form is folded.
-  return `<details id="uploadBox" class="upload-t"><summary>Import from CSV <span class="dim import-desc">A CSV of two columns: name + start.gg discriminator (acbd1234). It builds its own page for one game.</span></summary>
-<form id="upload" class="upload-form">
-<label>Page name <input id="upName" name="name" required autocomplete="off" placeholder="e.g. Mixfest 26 MBAACC"></label>
-<label>Game ${picker}</label>
-<label id="upOtherWrap" hidden>Game id <input id="upGameId" inputmode="numeric" pattern="\\d+" autocomplete="off" placeholder="start.gg videogame id"> name <input id="upGameName" autocomplete="off" placeholder="optional"></label>
-<label>Date <input id="upDate" name="date" type="date" required title="The day the event is played. The page counts as done once it starts."></label>
-<label>CSV file <input id="upFile" name="file" type="file" accept=".csv,text/csv" required></label>
-<button type="submit">Upload</button><span id="upMsg" class="status" role="status" aria-live="polite"></span>
-</form></details>`;
+  const src = (g) => (g.image && STATIC[g.image] ? `/static/${esc(g.image)}` : '');
+  // The combobox's options: small logo, short label, start.gg's full name. Filtered client-side by name.
+  const opts = games.map((g) => `<li role="option" data-id="${esc(g.id)}" data-name="${esc(g.name)}" data-short="${esc(g.short)}" data-img="${src(g)}" aria-selected="${g.id === sel ? 'true' : 'false'}">${src(g) ? `<img src="${src(g)}" alt="">` : '<span class="chip"></span>'}<span>${esc(g.short)}</span>${g.short !== g.name ? `<span class="full">${esc(g.name)}</span>` : ''}</li>`).join('')
+    + `<li role="option" class="other" data-id="other" data-name="" data-short="Other (start.gg game id)…" data-img="" aria-selected="false">Other (start.gg game id)…</li><li id="upGameNone" class="none" hidden>No game matches; pick Other and give the id.</li>`;
+  const combo = `<span class="game-combo"><input type="hidden" id="upGame" name="game" value="${esc(sel)}"><span id="upGameChip" class="chip"></span><input id="upGameSearch" autocomplete="off" spellcheck="false" placeholder="Type to filter…" role="combobox" aria-expanded="false" aria-controls="upGameList" aria-autocomplete="list"><ul id="upGameList" class="game-list" role="listbox" hidden>${opts}</ul></span>`;
+  // Noah, 2026-10-30: "Import from CSV" is a button beside its one-line description; the form is a modal.
+  return `<div class="import-row"><button type="button" id="uploadOpen">Import from CSV…</button><span class="dim import-desc">A CSV of two columns: name + start.gg discriminator (acbd1234). It builds its own page for one game.</span></div><dialog id="uploadModal" class="upload-modal" aria-labelledby="uploadTitle"><div class="modal-head"><h2 id="uploadTitle">Import from CSV</h2></div><form id="upload" class="upload-form" method="dialog"><p class="dim">Two columns, name then start.gg discriminator; a header row is optional. Each row costs one start.gg lookup, then the players' results are pulled as for a tournament.</p><label><span class="lbl">Page name</span><input id="upName" name="name" required autocomplete="off" placeholder="e.g. Mixfest 26 MBAACC"></label><label><span class="lbl">Game</span>${combo}</label><label id="upOtherWrap" hidden><span class="lbl">Game id</span><span><input id="upGameId" inputmode="numeric" pattern="\\d+" autocomplete="off" placeholder="start.gg videogame id"> <input id="upGameName" autocomplete="off" placeholder="name (optional)"></span></label><label><span class="lbl">Date</span><input id="upDate" name="date" type="date" title="Optional: the day the event is played. With a date the page counts as done once it starts; without one it stays live until you archive it."></label><label><span class="lbl">CSV file</span><input id="upFile" name="file" type="file" accept=".csv,text/csv" required></label><div class="modal-actions"><button type="submit">Upload</button><button type="button" id="uploadCancel" class="plain">Cancel</button><span id="upMsg" class="status" role="status" aria-live="polite"></span></div></form></dialog>`;
 }
 // Noah, mid-pass 2026-10-30: no block or heading for the live ones; one sentence sits above the first
 // tournament that is no longer live (the list is always live, then done, then archived).
@@ -265,10 +257,11 @@ function createApp(opts = {}) {
     if (!/^\d+$/.test(gameId)) throw bad(400, 'Pick a game, or give its start.gg videogame id (digits).');
     const known = uploadGames().find((g) => g.id === gameId);
     const game = { id: gameId, name: (known && known.name) || String(fields.game_name || '').trim() || `Game ${gameId}` };
-    const date = String(fields.date || '');
+    // The date is optional (Noah, 2026-10-30): without one the page stays live until archived by hand.
+    const date = String(fields.date || '').trim();
     const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
     const local = m && new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
-    if (!local || local.getFullYear() !== Number(m[1]) || local.getMonth() !== Number(m[2]) - 1 || local.getDate() !== Number(m[3])) throw bad(400, 'The date must be a YYYY-MM-DD date.');
+    if (date && (!local || local.getFullYear() !== Number(m[1]) || local.getMonth() !== Number(m[2]) - 1 || local.getDate() !== Number(m[3]))) throw bad(400, 'The date must be a YYYY-MM-DD date, or empty.');
     if (typeof fields.csv !== 'string' || !fields.csv.trim()) throw bad(400, 'The CSV file is empty.');
     const parsed = U.parseUploadCsv(fields.csv);
     if (!parsed.rows.length) {
@@ -279,7 +272,7 @@ function createApp(opts = {}) {
       throw bad(400, `The list has ${parsed.rows.length} player rows; an upload takes at most ${U.MAX_UPLOAD_ROWS} (each row is a start.gg lookup and a pull on the one queue). Split the list.`);
     }
     // Done by the given date: the page counts as done from the start of that day, this computer's time.
-    const startAt = local.toISOString();
+    const startAt = date ? local.toISOString() : null;
     const event = U.uploadEvent({ name, game, startAt, count: parsed.rows.length });
     const fileName = String(fields.file_name || '').slice(0, 200) || null;
     pool.writeState(tDir, {

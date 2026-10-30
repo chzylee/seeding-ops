@@ -30,8 +30,8 @@
       </div>
     </details>
     <div class="group right" role="group" aria-label="Lifecycle">
-      <button id="markDone" type="button" hidden title="Treat this tournament as done now (it is computed from the last seeded event's start otherwise)">Mark done</button>
-      <button id="unmarkDone" type="button" hidden title="Undo Mark done">Mark live again</button>
+      <button id="markDone" type="button" hidden title="Move this tournament to the done section now (it moves by itself once its last seeded event's date has passed). Asks first. Nothing is deleted.">Archive</button>
+      <button id="unmarkDone" type="button" hidden title="Undo Archive: back to live">Mark live again</button>
       <button id="archive" type="button" hidden title="Fetch the final standings of every seeded event into standings.json (one request per event)">Archive standings</button>
       <button id="delete" type="button" hidden class="danger" title="Delete out/&lt;tournament&gt;/: the pool, W-L, schedule and standings. Your tiers (registry/tiers.csv) are kept.">Delete tournament data</button>
     </div>

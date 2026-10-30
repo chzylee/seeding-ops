@@ -74,23 +74,55 @@
   // The game picker (Noah, 2026-10-30): a button with the chosen game's logo and a grid of logos from
   // config/games.json (copied from find-my-fgc). The hidden input #upGame carries the chosen id;
   // "other" reveals the free id fields.
-  const game = $('upGame');
-  const pickBtn = $('upGameBtn');
-  const grid = $('upGameGrid');
+  // ---- The modal (Noah, 2026-10-30): "Import from CSV" is a button; the whole form lives in a dialog.
+  const modal = $('uploadModal');
+  $('uploadOpen').addEventListener('click', () => { modal.showModal(); $('upName').focus(); });
+  $('uploadCancel').addEventListener('click', () => modal.close());
+
+  // ---- The game combobox: type to filter, scroll, pick. Small logos; nothing pops up large.
+  const game = $('upGame');            // hidden: the chosen id ("other" for a free id)
+  const search = $('upGameSearch');    // the text box: filter while open, the chosen game's name when closed
+  const gameList = $('upGameList');        // role=listbox; <li role=option data-id data-name data-short data-img>
+  const chip = $('upGameChip');        // the chosen game's small logo beside the box
+  const options = [...gameList.querySelectorAll('[role="option"]')];
   const showOther = () => { $('upOtherWrap').hidden = game.value !== 'other'; $('upGameId').required = game.value === 'other'; };
-  const choose = (btn) => {
-    game.value = btn.dataset.id;
-    game.dataset.name = btn.dataset.name || '';
-    grid.querySelectorAll('button').forEach((b) => b.setAttribute('aria-selected', b === btn ? 'true' : 'false'));
-    const img = btn.querySelector('img');
-    pickBtn.innerHTML = (img ? `<img src="${img.getAttribute('src')}" alt="">` : '') + `<span>${btn.dataset.name || btn.textContent.trim()}</span><span class="caret">▾</span>`;
+  const open = () => { gameList.hidden = false; filter(search.value); };
+  const close = () => { gameList.hidden = true; search.value = game.dataset.label || ''; };
+  const filter = (q) => {
+    const needle = q.trim().toLowerCase();
+    let shown = 0;
+    for (const o of options) {
+      const hit = !needle || o.dataset.id === 'other' || (o.dataset.name + ' ' + o.dataset.short).toLowerCase().includes(needle);
+      o.hidden = !hit; if (hit) shown++;
+    }
+    const active = options.find((o) => !o.hidden && o.getAttribute('aria-selected') === 'true') || options.find((o) => !o.hidden);
+    options.forEach((o) => o.classList.toggle('active', o === active));
+    $('upGameNone').hidden = shown > 0;
+  };
+  const choose = (o) => {
+    game.value = o.dataset.id;
+    game.dataset.name = o.dataset.name || '';
+    game.dataset.label = o.dataset.id === 'other' ? 'Other (start.gg game id)…' : o.dataset.short || o.dataset.name;
+    options.forEach((x) => x.setAttribute('aria-selected', x === o ? 'true' : 'false'));
+    chip.innerHTML = o.dataset.img ? `<img src="${o.dataset.img}" alt="">` : '';
+    close();
     showOther();
   };
-  pickBtn.addEventListener('click', (ev) => { ev.preventDefault(); grid.hidden = !grid.hidden; if (!grid.hidden) (grid.querySelector('[aria-selected="true"]') || grid.querySelector('button')).focus(); });
-  grid.addEventListener('click', (ev) => { const b = ev.target.closest('button[data-id]'); if (!b) return; ev.preventDefault(); choose(b); grid.hidden = true; pickBtn.focus(); });
-  document.addEventListener('click', (ev) => { if (!grid.hidden && !grid.contains(ev.target) && ev.target !== pickBtn && !pickBtn.contains(ev.target)) grid.hidden = true; });
-  document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape' && !grid.hidden) { grid.hidden = true; pickBtn.focus(); } });
-  choose(grid.querySelector('[aria-selected="true"]') || grid.querySelector('button[data-id]'));
+  search.addEventListener('focus', () => { search.select(); open(); });
+  search.addEventListener('input', () => { if (gameList.hidden) gameList.hidden = false; filter(search.value); });
+  search.addEventListener('keydown', (ev) => {
+    const visible = options.filter((o) => !o.hidden);
+    const i = visible.findIndex((o) => o.classList.contains('active'));
+    if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp') {
+      ev.preventDefault(); if (gameList.hidden) open();
+      const n = ev.key === 'ArrowDown' ? Math.min(i + 1, visible.length - 1) : Math.max(i - 1, 0);
+      options.forEach((o) => o.classList.remove('active')); if (visible[n]) { visible[n].classList.add('active'); visible[n].scrollIntoView({ block: 'nearest' }); }
+    } else if (ev.key === 'Enter') { if (!gameList.hidden) { ev.preventDefault(); const a = visible[i] || visible[0]; if (a) choose(a); } }
+    else if (ev.key === 'Escape') { if (!gameList.hidden) { ev.preventDefault(); ev.stopPropagation(); close(); } }
+  });
+  gameList.addEventListener('mousedown', (ev) => { const o = ev.target.closest('[role="option"]'); if (!o) return; ev.preventDefault(); choose(o); });
+  search.addEventListener('blur', () => setTimeout(() => { if (!gameList.hidden) close(); }, 120));
+  choose(options.find((o) => o.getAttribute('aria-selected') === 'true') || options[0]);
   const readText = (file) => new Promise((resolve, reject) => {
     const r = new FileReader();
     r.onload = () => resolve(String(r.result || ''));
@@ -102,7 +134,7 @@
     upMsg.classList.remove('err');
     const file = $('upFile').files[0];
     if (!file) { upMsg.textContent = 'Pick a CSV file.'; upMsg.classList.add('err'); return; }
-    if (file.size > 150000) { upMsg.textContent = 'That file is larger than a player list should be (150 KB).'; upMsg.classList.add('err'); return; }
+    if (file.size > 150000) { upMsg.textContent = 'That file is larger than a player gameList should be (150 KB).'; upMsg.classList.add('err'); return; }
     const other = game.value === 'other';
     const payload = {
       name: $('upName').value, date: $('upDate').value, file_name: file.name,
@@ -114,7 +146,7 @@
     let res, body;
     try {
       payload.csv = await readText(file);
-      upMsg.textContent = 'Checking the list…';
+      upMsg.textContent = 'Checking the gameList…';
       res = await fetch('/api/uploads', { method: 'POST', headers: { 'X-Seeding-App': '1', 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
       body = await res.json().catch(() => ({}));
     } catch (err) { res = { ok: false }; body = { error: err.message }; }

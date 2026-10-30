@@ -218,7 +218,12 @@
     if (!r.ok) { line(r.body.error || 'Not done.', true); return null; }
     return r.body;
   }
-  $('markDone').addEventListener('click', async () => { if (await lifecycle('mark-done')) { line('Marked done.'); refreshInfo(); } });
+  // Archive (Noah, 2026-10-30): the manual way to the done section, on every page, asks first.
+  $('markDone').addEventListener('click', async () => {
+    const name = ($('title') && $('title').textContent.trim()) || T;
+    if (!window.confirm(`Archive "${name}"?\n\nIt moves to the done section of the tournaments list. Nothing is deleted, and "Mark live again" undoes it.`)) return;
+    if (await lifecycle('mark-done')) { line('Archived: moved to the done section.'); refreshInfo(); }
+  });
   $('unmarkDone').addEventListener('click', async () => { if (await lifecycle('unmark-done')) { line('Back to computed status.'); refreshInfo(); } });
   $('archive').addEventListener('click', async () => {
     if (await lifecycle('archive')) { line('Archiving standings…'); poll(); }

@@ -2289,3 +2289,17 @@ browser pane: OS-dark applied with nothing saved; the click saved `light`, appli
 another page; the switch is present on the index, the not-added page and the tournament page. Not
 checked by eye: the seeding table's dark colors on real data (no tournament is in the new layout yet).
 Suite 223/223/0/0.
+
+---
+
+## Out-of-band: import of the old per-event pulls (orchestrating session, 2026-10-30)
+
+Noah: *"import of those is fine"*, and no sandbox: *"put past events in archived section and let them
+be manually deleted if necessary."* `scripts/import-legacy.js` (+ `test/import-legacy.test.js`) converts
+`out/<t>__<e>__<stamp>/` (newest finished run per event) into `out/<t>/pull-<stamp>/` + `current` +
+`state.json` (all events ticked; linked side tournaments from `conflicts/linked.json`) +
+`set-records.json` (the runs' W-L caches merged) + `schedule.json` (newest `conflicts/out/<t>__*`), offline,
+never touching the old folders. Run on the real `out/`: Crescendo (2 events, 27 players, 2,272 results,
+1,560 W-L) and Eclipse (182 players, 10,154 results, 10,154 W-L, schedule with 402 players, 31 events,
+1 side tournament). Both list as **done** in the app with their tabs; verified through the API and the
+browser pane. The old folders remain on disk (gitignored) and are unused by design.

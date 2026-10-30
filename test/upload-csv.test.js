@@ -147,3 +147,25 @@ test('poolPlayers: found rows become registrants (start.gg tag, list prefix else
   ]);
   assert.ok(ps.every((p) => p.events[0] === U.UPLOAD_EVENT && p.games[0] === '22'));
 });
+
+// E2-4 (build C pass 2; orchestrator ruling): the first row is the header only when its second value is
+// neither a discriminator nor an attempt at one. A header-less file whose first code is mistyped used
+// to lose that player as "the header" with nothing reported.
+test('E2-4: a first row whose second value is an attempted discriminator is malformed at line 1, never the header; a real header is kept with its two values', () => {
+  for (const bad of ['abcd123', 'abcd12g3', 'user/abcd12', 'https://start.gg/user/abc', 'www.start.gg/user/x', 'user/abcd1234/x', 'ABCD12345']) {
+    const r = U.parseUploadCsv(`Alice,${bad}\nBob,bbbb0002\n`);
+    assert.strictEqual(r.header, null, bad);
+    assert.strictEqual(r.header_row, null, bad);
+    assert.deepStrictEqual(r.malformed.map((m) => [m.line, m.text]), [[1, `Alice,${bad}`]], bad);
+    assert.deepStrictEqual(r.rows.map((x) => [x.line, x.tag]), [[2, 'Bob']], bad);
+  }
+  for (const [h, values] of [['name,discriminator', ['name', 'discriminator']], ['Player,start.gg', ['Player', 'start.gg']], ['Name, startgg id ', ['Name', 'startgg id']],
+    ['player1,column2', ['player1', 'column2']], ['tag,code', ['tag', 'code']], ['Gamertag', ['Gamertag', '']], ['who,discriminator (start.gg)', ['who', 'discriminator (start.gg)']]]) {
+    const r = U.parseUploadCsv(`${h}\nBob,bbbb0002\n`);
+    assert.deepStrictEqual(r.header_row, { line: 1, values }, h);
+    assert.deepStrictEqual([r.rows.length, r.malformed.length], [1, 0], h);
+  }
+  assert.strictEqual(U.parseUploadCsv('Alpha,aaaa0001\n').header_row, null, 'no header: nothing skipped');
+  // The Mixfest file's header is still a header.
+  assert.deepStrictEqual(U.parseUploadCsv(MIXFEST).header_row, { line: 1, values: ['name', 'discriminator'] });
+});

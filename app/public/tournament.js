@@ -235,6 +235,9 @@
   function summaryHtml(x) {
     const li = (items) => `<ul>${items.join('')}</ul>`;
     const parts = [`<p>${esc(new Date(x.at).toLocaleString())}: ${x.rows} rows, ${x.found} found on start.gg (${x.asked} looked up this time).</p>`];
+    // E2-4: the row read as the column header is named with its two values, so a player taken for
+    // the header by mistake is visible here.
+    if (x.header) parts.push(`<p class="dim header-skipped">Line ${x.header.line} was read as the column header and skipped: <code>${esc(x.header.values[0])}</code>, <code>${esc(x.header.values[1])}</code>. If that is a player, add a header row above it and upload again.</p>`);
     if (x.not_found.length) parts.push(`<h4>Not found on start.gg (kept on the page, flagged)</h4>${li(x.not_found.map((r) => `<li>line ${r.line}: ${esc(r.name || '(no name)')} · ${esc(r.discriminator)} — ${esc(r.reason)}</li>`))}`);
     if (x.errors.length) parts.push(`<h4>Lookups that failed (Refresh asks again)</h4>${li(x.errors.map((r) => `<li>line ${r.line}: ${esc(r.name)} · ${esc(r.discriminator)} — ${esc(r.reason)}</li>`))}`);
     if (x.duplicates.length) parts.push(`<h4>Repeated discriminators (kept once)</h4>${li(x.duplicates.map((d) => `<li>line ${d.line} repeats line ${d.kept_line} (${esc(d.discriminator)})</li>`))}`);

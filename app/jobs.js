@@ -269,6 +269,8 @@ class Jobs {
         .map((r) => ({ line: r.line, name: r.name, discriminator: r.discriminator, reason: r.resolved.reason || '' }));
       const summary = {
         at: new Date(this.now()).toISOString(), asked, rows: rows.length, found: found.length,
+        // E2-4: the row skipped as the header, named, so a mistaken one is never silent.
+        header: state.upload.header_row || null,
         not_found: by('not-found'), errors: by('error'),
         duplicates: state.upload.duplicates || [], malformed: state.upload.malformed || [], ignored_columns: state.upload.ignored_columns || [],
         tiers, shown_at: null,

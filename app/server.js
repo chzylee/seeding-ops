@@ -255,12 +255,12 @@ function createApp(opts = {}) {
       version: 1, source: 'upload',
       tournament: { id: null, slug: t, name, start_at: startAt, timezone: null },
       events: [event], ticked: [event.slug], linked: [], marked_done: null, archived: null, pushes: [],
-      upload: { file_name: fileName, created_at: nowDate().toISOString(), date, header: parsed.header, rows: parsed.rows,
+      upload: { file_name: fileName, created_at: nowDate().toISOString(), date, header: parsed.header, header_row: parsed.header_row, rows: parsed.rows,
         duplicates: parsed.duplicates, malformed: parsed.malformed, ignored_columns: parsed.ignored_columns },
       uploads: [],
     });
     const { started, queued } = jobs.queuePull(t, { mode: 'full' });
-    return { t, page: `/t/${t}`, rows: parsed.rows.length, header: parsed.header, duplicates: parsed.duplicates, malformed: parsed.malformed,
+    return { t, page: `/t/${t}`, rows: parsed.rows.length, header: parsed.header, header_row: parsed.header_row, duplicates: parsed.duplicates, malformed: parsed.malformed,
       ignored_columns: parsed.ignored_columns, started, queued };
   }
 

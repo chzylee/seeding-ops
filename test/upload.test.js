@@ -313,3 +313,39 @@ test('home page layout (Noah, mid-pass 2026-10-30): "Add a tournament" header, t
   const fresh = setup();
   assert.ok(!(await inject(fresh.app.handler, { url: '/' })).text.includes('done-note'));
 });
+
+// The page's summary renderer, taken from app/public/tournament.js as served (it runs in the browser).
+function summaryHtmlFromPage() {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'app', 'public', 'tournament.js'), 'utf8');
+  const esc = /\n  const esc = [^\n]+\n/.exec(src)[0];
+  const fn = /\n  function summaryHtml\(x\) \{[\s\S]*?\n  \}\n/.exec(src)[0];
+  return new Function(`${esc}${fn}return summaryHtml;`)();
+}
+
+// E2-4 (build C pass 2): whenever a row is skipped as the header, the upload's summary says so with its
+// two values; a header-less list says nothing of the kind.
+test('E2-4: the upload summary names the row skipped as the header (line and both values) and the page shows it; a list with no header has no such note', async () => {
+  const w = setup();
+  const r = await upload(w.app, { name: 'With Header', csv: 'Player,Code\nKid,aaaa0002\n' });
+  assert.strictEqual(r.status, 202, r.text);
+  assert.deepStrictEqual(r.json().header_row, { line: 1, values: ['Player', 'Code'] });
+  const r2 = await upload(w.app, { name: 'No Header', csv: 'Kid,aaaa0002\nQuiet,aaaa0003\n' });
+  assert.strictEqual(r2.status, 202, r2.text);
+  await w.app.jobs.idle();
+  const a = pool.readState(path.join(w.outRoot, 'with-header')).uploads[0];
+  const b = pool.readState(path.join(w.outRoot, 'no-header')).uploads[0];
+  assert.deepStrictEqual(a.header, { line: 1, values: ['Player', 'Code'] });
+  assert.strictEqual(b.header, null);
+  const html = summaryHtmlFromPage();
+  assert.match(html(a), /Line 1 was read as the column header and skipped: <code>Player<\/code>, <code>Code<\/code>/);
+  assert.ok(!html(b).includes('column header'));
+  // A mistyped first code in a header-less list is a malformed row at line 1, listed in the summary.
+  const r3 = await upload(w.app, { name: 'Typo First', csv: 'Kid,aaaa002\nQuiet,aaaa0003\n' });
+  assert.strictEqual(r3.status, 202, r3.text);
+  assert.deepStrictEqual([r3.json().header_row, r3.json().malformed.map((m) => m.line)], [null, [1]]);
+  await w.app.jobs.idle();
+  const c = pool.readState(path.join(w.outRoot, 'typo-first')).uploads[0];
+  assert.match(html(c), /<h4>Rows not read<\/h4><ul><li>line 1: <code>Kid,aaaa002<\/code>/);
+  // A summary recorded before this field existed (the live Mixfest one) still renders.
+  assert.ok(!html({ ...b, header: undefined }).includes('column header'));
+});

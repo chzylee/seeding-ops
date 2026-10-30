@@ -443,3 +443,23 @@ table.push-diff tr.crosses td { background: var(--warn-bg); }
 /* Cross-fade on a theme change: theme.js sets html.theme-fade for the duration of the switch. */
 html.theme-fade, html.theme-fade *, html.theme-fade *::before, html.theme-fade *::after {
   transition: background-color .3s ease, color .3s ease, border-color .3s ease, fill .3s ease, stroke .3s ease !important; }
+
+/* ---- Build C (Amendment A1.3, A1.4): source badges, the upload form, an uploaded list's page ---- */
+/* Source badges on the home page: start.gg in start.gg's blue, upload in a muted violet. Tokens per theme. */
+.src { display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: .02em; border-radius: var(--radius-sm); padding: 0 6px; line-height: 18px; vertical-align: 2px; }
+.src.src-startgg { background: var(--src-startgg-bg); color: var(--src-startgg-fg); }
+.src.src-upload { background: var(--src-upload-bg); color: var(--src-upload-fg); }
+details.upload-t { margin: var(--s-3) 0; }
+details.upload-t > summary { font-weight: 600; cursor: pointer; }
+.upload-form { display: flex; flex-wrap: wrap; gap: var(--s-2) var(--s-3); align-items: center; margin-top: var(--s-2); }
+.upload-form p { flex: 1 1 100%; margin: 0; }
+.upload-form input:not([type=file]), .upload-form select { height: var(--ctl-h); padding: 0 var(--s-2); font: inherit; border: 1px solid var(--line-strong); border-radius: var(--radius); background: var(--cell); color: var(--fg); }
+.upload-form button { height: var(--ctl-h); padding: 0 var(--s-3); border: 1px solid var(--accent); background: var(--accent); color: var(--on-accent); border-radius: var(--radius); }
+.upload-note { flex: 0 0 auto; max-height: 40vh; overflow: auto; padding: var(--s-2) var(--s-4); border-bottom: 1px solid var(--line); background: var(--cell); }
+.upload-note summary { font-weight: 600; cursor: pointer; }
+.upload-note h4 { margin: var(--s-2) 0 var(--s-1); font-size: 13px; }
+.upload-note ul { margin: 0; padding-left: 20px; }
+/* The list's name on hover over the start.gg tag, when they differ. */
+#summary a.aka b, table.summary a.aka b { text-decoration: underline dotted; text-underline-offset: 3px; }
+/* An uploaded row start.gg does not know: kept, flagged, not editable. */
+.flag-unresolved { display: inline-block; margin-top: 2px; font-size: 12px; background: var(--warn-bg); color: var(--warn-fg); border-radius: var(--radius-sm); padding: 0 5px; }

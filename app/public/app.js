@@ -499,6 +499,7 @@
   let polling = null;
   function statusText(st) {
     if (!st) return '';
+    if (st.running && st.resolving) return `Looking up players on start.gg… ${st.message || ''}`;
     if (st.running && st.pulling) return `Pulling… ${st.message || ''}`;
     if (st.running && st.kind === 'archive') return `Archiving standings… ${st.message || ''}`;
     if (st.running && st.wl) return `W-L ${st.wl.done.toLocaleString()} / ${st.wl.total.toLocaleString()} (summary ${st.wl.summaryDone.toLocaleString()} / ${st.wl.summaryTotal.toLocaleString()})`;

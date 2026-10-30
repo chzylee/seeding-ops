@@ -12,6 +12,11 @@
 // API (POSTs need the X-Seeding-App header; JSON bodies):
 //   POST /api/tournaments                     { url } add a tournament: ONE synchronous start.gg
 //                                             request for its events, saved to out/<t>/state.json
+//   POST /api/uploads                         { name, game_id, game_name?, date, csv, file_name? } an
+//                                             uploaded list (Amendment A1.3): out/<slug>/ with
+//                                             state.json source "upload", then a job through the queue
+//                                             (one user lookup per row, registry linking, the pull, W-L)
+//   POST /api/t/<t>/upload/seen               the upload summary has been shown once
 //   GET  /api/t/<t>                           the tournament: catalog, ticked, tabs, status, controls,
 //                                             pushes, the live pull's facts, job status
 //   POST /api/t/<t>/events                    { ticked: [slug] } the seeded events; a newly ticked
@@ -47,6 +52,8 @@ const pool = require('../lib/pool');
 const data = require('../lib/view/data');
 const push = require('../lib/push');
 const { readSchedule } = require('../lib/schedule-pull');
+const U = require('../lib/upload');
+const majorsConfig = require('../lib/view/majors');
 const { Jobs } = require('./jobs');
 const { createQueue } = require('./queue');
 
@@ -82,6 +89,31 @@ const notFound = (res) => send(res, 404, 'Not found');
 const bad = (status, msg, extra = {}) => Object.assign(new Error(msg), { status, ...extra });
 
 const STATUS_LABEL = { live: 'live', done: 'done', archived: 'archived' };
+// Amendment A1.4: where each tournament came from. state.json `source` (lib/pool.js readState reads
+// a missing one as "startgg").
+const SOURCE_BADGE = {
+  startgg: '<span class="src src-startgg" title="Added from start.gg by link">start.gg</span>',
+  upload: '<span class="src src-upload" title="Built from an uploaded CSV list of players">upload</span>',
+};
+// The upload form's games (A1.3): the games config/majors.json lists by id, then a free id.
+function uploadGames() {
+  let games = {};
+  try { games = majorsConfig.loadMajorsConfig().games; } catch { games = {}; }
+  return Object.entries(games).filter(([id]) => /^\d+$/.test(id)).map(([id, g]) => ({ id, name: g.name }));
+}
+function uploadForm() {
+  const opts = uploadGames().map((g) => `<option value="${esc(g.id)}">${esc(g.name)}</option>`).join('');
+  return `<details id="uploadBox" class="add-t upload-t"><summary>Upload a player list (CSV)</summary>
+<form id="upload" class="upload-form">
+<p class="dim">Two columns: name, then the start.gg discriminator (the code in start.gg/user/&lt;code&gt;, bare or as a link). A header row is optional. Each row costs one start.gg lookup, then the players' results are pulled as for a tournament.</p>
+<label>Page name <input id="upName" name="name" required autocomplete="off" placeholder="e.g. Mixfest 26 MBAACC"></label>
+<label>Game <select id="upGame" name="game">${opts}<option value="other">Other (start.gg game id)…</option></select></label>
+<label id="upOtherWrap" hidden>Game id <input id="upGameId" inputmode="numeric" pattern="\\d+" autocomplete="off" placeholder="start.gg videogame id"> name <input id="upGameName" autocomplete="off" placeholder="optional"></label>
+<label>Date <input id="upDate" name="date" type="date" required title="The day the event is played. The page counts as done once it starts."></label>
+<label>CSV file <input id="upFile" name="file" type="file" accept=".csv,text/csv" required></label>
+<button type="submit">Upload</button><span id="upMsg" class="status" role="status" aria-live="polite"></span>
+</form></details>`;
+}
 function indexPage(outRoot, jobs, nowMs) {
   const items = pool.listTournaments(outRoot, nowMs).map((x) => {
     const st = jobs.status(x.t);
@@ -90,8 +122,9 @@ function indexPage(outRoot, jobs, nowMs) {
     const sub = [tabs.length ? tabs.join(' · ') : 'no events ticked yet',
       x.current ? `${x.current.meta.registrant_count} players · pulled ${esc(String(x.current.meta.run_at).slice(0, 16).replace('T', ' '))} UTC` : 'not pulled yet']
       .map(esc).join(' · ');
-    const busy = st.running ? ` <span class="busy">${st.pulling ? 'pulling…' : st.kind === 'archive' ? 'archiving…' : 'fetching W-L…'}</span>` : '';
-    return `<li class="st-${x.status}"><a href="/t/${esc(x.t)}">${esc(name)}</a> <span class="pill st-${x.status}">${STATUS_LABEL[x.status]}</span>${busy}<div class="dim">${sub}</div></li>`;
+    const busy = st.running ? ` <span class="busy">${st.resolving ? 'looking up players…' : st.pulling ? 'pulling…' : st.kind === 'archive' ? 'archiving…' : 'fetching W-L…'}</span>` : '';
+    const badge = SOURCE_BADGE[x.state.source] || SOURCE_BADGE.startgg;
+    return `<li class="st-${x.status} src-${esc(x.state.source)}"><a href="/t/${esc(x.t)}">${esc(name)}</a> ${badge} <span class="pill st-${x.status}">${STATUS_LABEL[x.status]}</span>${busy}<div class="dim">${sub}</div></li>`;
   }).join('');
   return `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Seeding tournaments</title><link rel="stylesheet" href="/static/app.css"><script src="/static/theme.js"></script>
@@ -100,6 +133,7 @@ function indexPage(outRoot, jobs, nowMs) {
 <input id="addUrl" name="url" placeholder="start.gg tournament or event link" autocomplete="off" spellcheck="false" required>
 <button type="submit">Add</button><span id="addMsg" class="status" role="status" aria-live="polite"></span></form>
 <p class="dim">Live tournaments first, then done, then archived. Adding makes one request to start.gg for the tournament's events; you pick the singles events to seed on its page.</p>
+${uploadForm()}
 <ul class="events">${items || '<li class="dim">No tournaments yet. Add one above.</li>'}</ul></main>
 <script src="/static/index.js"></script></body></html>`;
 }
@@ -135,7 +169,7 @@ function createApp(opts = {}) {
   const nowDate = () => new Date(nowMs());
   const queue = opts.queue || createQueue({ fetchImpl: opts.fetchImpl, now: opts.now, sleep: opts.sleep,
     max: opts.maxPerMinute || Number(process.env.SEED_APP_MAX_PER_MIN) || pacing.MAX_REQUESTS });
-  const jobs = new Jobs({ outRoot, getToken, queue, now: opts.now, sleep: opts.sleep, pull: opts.pull, pullSchedule: opts.pullSchedule });
+  const jobs = new Jobs({ outRoot, getToken, queue, now: opts.now, sleep: opts.sleep, pull: opts.pull, pullSchedule: opts.pullSchedule, tiersFile });
   const client = () => {
     const token = getToken();
     if (!token) throw bad(400, 'No STARTGG_TOKEN. Paste it into .env first, then restart the app.');
@@ -151,7 +185,8 @@ function createApp(opts = {}) {
     const meta = cur && cur.meta;
     const status = pool.statusOf(state, meta, nowMs());
     return {
-      t, tournament: state.tournament, status, controls: pool.controlsFor(state, status),
+      t, source: state.source, tournament: state.tournament, status, controls: pool.controlsFor(state, status),
+      ...(pool.isUpload(state) ? { upload: uploadInfo(state) } : {}),
       marked_done: state.marked_done, archived: state.archived,
       events: state.events.map((e) => ({ slug: e.slug, name: e.name, game: e.game, start_at: e.start_at, num_entrants: e.num_entrants, singles: e.singles })),
       ticked: state.ticked, linked: state.linked, pushes: state.pushes,
@@ -163,6 +198,64 @@ function createApp(opts = {}) {
     };
   }
 
+  // What an uploaded list's page shows besides the tab: the list's counts, each row's state, and the
+  // summaries (the newest one unseen is shown once, A1.3 / Acceptance 8).
+  function uploadInfo(state) {
+    const rows = state.upload.rows || [];
+    const count = (st) => rows.filter((r) => r.resolved && r.resolved.status === st).length;
+    return {
+      file_name: state.upload.file_name || null, game: state.events[0] && state.events[0].game, date: state.upload.date,
+      rows: rows.length, found: count('found'), not_found: count('not-found'), errors: count('error'), pending: rows.filter((r) => !r.resolved).length,
+      duplicates: state.upload.duplicates || [], malformed: state.upload.malformed || [],
+      summaries: state.uploads || [],
+    };
+  }
+
+  const notForUpload = (t, what) => {
+    const st = pool.readState(pool.tournamentDir(outRoot, t));
+    if (pool.isUpload(st)) throw bad(409, `This page is an uploaded list: it has no start.gg event, so ${what}.`);
+  };
+
+  // POST /api/uploads (Amendment A1.3): the list parsed and checked here, synchronously and with no
+  // start.gg request; out/<slug>/state.json written; then the job (one lookup per row, the registry
+  // linking, the pull, W-L) through the queue, queued behind a running job like a newly ticked event.
+  function createUpload(fields) {
+    const name = String(fields.name || '').trim();
+    if (!name) throw bad(400, 'Give the page a name.');
+    const t = U.slugify(name);
+    if (!t || !pool.SLUG_PART.test(t)) throw bad(400, 'The name needs at least one letter or digit.');
+    const tDir = pool.tournamentDir(outRoot, t);
+    if (fs.existsSync(tDir)) throw bad(409, `out/${t}/ already exists. Pick another name, or delete that page first.`);
+    const gameId = String(fields.game_id ?? '').trim();
+    if (!/^\d+$/.test(gameId)) throw bad(400, 'Pick a game, or give its start.gg videogame id (digits).');
+    const known = uploadGames().find((g) => g.id === gameId);
+    const game = { id: gameId, name: (known && known.name) || String(fields.game_name || '').trim() || `Game ${gameId}` };
+    const date = String(fields.date || '');
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
+    const local = m && new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+    if (!local || local.getFullYear() !== Number(m[1]) || local.getMonth() !== Number(m[2]) - 1 || local.getDate() !== Number(m[3])) throw bad(400, 'The date must be a YYYY-MM-DD date.');
+    if (typeof fields.csv !== 'string' || !fields.csv.trim()) throw bad(400, 'The CSV file is empty.');
+    const parsed = U.parseUploadCsv(fields.csv);
+    if (!parsed.rows.length) {
+      throw bad(400, `No player rows in the file.${parsed.malformed.length ? ` Malformed: ${parsed.malformed.map((x) => `line ${x.line} (${x.reason})`).join('; ')}` : ''}`, { malformed: parsed.malformed });
+    }
+    // Done by the given date: the page counts as done from the start of that day, this computer's time.
+    const startAt = local.toISOString();
+    const event = U.uploadEvent({ name, game, startAt, count: parsed.rows.length });
+    const fileName = String(fields.file_name || '').slice(0, 200) || null;
+    pool.writeState(tDir, {
+      version: 1, source: 'upload',
+      tournament: { id: null, slug: t, name, start_at: startAt, timezone: null },
+      events: [event], ticked: [event.slug], linked: [], marked_done: null, archived: null, pushes: [],
+      upload: { file_name: fileName, created_at: nowDate().toISOString(), date, header: parsed.header, rows: parsed.rows,
+        duplicates: parsed.duplicates, malformed: parsed.malformed, ignored_columns: parsed.ignored_columns },
+      uploads: [],
+    });
+    const { started, queued } = jobs.queuePull(t, { mode: 'full' });
+    return { t, page: `/t/${t}`, rows: parsed.rows.length, header: parsed.header, duplicates: parsed.duplicates, malformed: parsed.malformed,
+      ignored_columns: parsed.ignored_columns, started, queued };
+  }
+
   async function addTournament(fields) {
     const t = sgg.parseTournamentSlug(fields.url);
     if (!t) throw bad(400, 'That is not a start.gg tournament or event link.');
@@ -170,6 +263,9 @@ function createApp(opts = {}) {
     const catalog = pool.catalogOf(apiT);
     const tDir = pool.tournamentDir(outRoot, catalog.tournament.slug);
     const had = pool.readState(tDir);
+    // An uploaded list with the same slug is never turned into a start.gg tournament (its rows, its
+    // pool and its summaries would be overwritten by the catalog).
+    if (pool.isUpload(had)) throw bad(409, `out/${catalog.tournament.slug}/ is an uploaded list with the same name. Delete it first, or keep both by renaming the list.`);
     // Re-adding refreshes the catalog (names, start times, phases) and keeps every decision.
     const state = had ? { ...had, tournament: catalog.tournament, events: catalog.events } : pool.newState(catalog);
     pool.writeState(tDir, state);
@@ -181,6 +277,7 @@ function createApp(opts = {}) {
   function setTicked(t, fields) {
     const tDir = pool.tournamentDir(outRoot, t);
     if (!Array.isArray(fields.ticked)) throw bad(400, '"ticked" must be a list of event slugs.');
+    notForUpload(t, 'its one tab cannot be changed');
     let added = [];
     let addedNames = [];
     const state = pool.updateState(tDir, (s) => {
@@ -335,6 +432,12 @@ function createApp(opts = {}) {
         return send(res, 302, `Moved to ${to}`, 'text/plain; charset=utf-8', { Location: to });
       }
 
+      if (p === '/api/uploads') {
+        if (method !== 'POST') return send(res, 405, 'Method not allowed');
+        requireApp(req);
+        return json(res, 202, createUpload(await readBody(req)));
+      }
+
       if (p === '/api/tournaments') {
         if (method !== 'POST') return send(res, 405, 'Method not allowed');
         requireApp(req);
@@ -375,7 +478,7 @@ function createApp(opts = {}) {
           return send(res, 200, csv, 'text/csv; charset=utf-8', { 'Content-Disposition': `attachment; filename="${filename}"` });
         }
         const getRoute = /^(\/status|\/schedule|\/g\/\d+\/(data|export\.csv|seeds\.csv))$/;
-        const postRoute = /^(\/g\/\d+\/player\/\d+(\/review)?|\/events|\/refresh|\/lifecycle|\/linked|\/schedule\/refresh|\/push\/[^/]+\/(dry-run|post))$/;
+        const postRoute = /^(\/g\/\d+\/player\/\d+(\/review)?|\/events|\/refresh|\/lifecycle|\/linked|\/schedule\/refresh|\/upload\/seen|\/push\/[^/]+\/(dry-run|post))$/;
         if (method !== 'POST' || getRoute.test(rest)) {
           return postRoute.test(rest) || getRoute.test(rest) ? send(res, 405, 'Method not allowed') : notFound(res);
         }
@@ -406,18 +509,28 @@ function createApp(opts = {}) {
           return json(res, started ? 202 : 409, jobs.status(t));
         }
         if (rest === '/lifecycle') return json(res, 200, lifecycle(t, await readBody(req)));
+        if (rest === '/upload/seen') {
+          await readBody(req);
+          const tDir = pool.tournamentDir(outRoot, t);
+          if (!pool.isUpload(pool.readState(tDir))) throw bad(404, 'This page is not an uploaded list.');
+          const s = pool.updateState(tDir, (st) => { const last = (st.uploads || [])[st.uploads.length - 1]; if (last && !last.shown_at) last.shown_at = nowDate().toISOString(); });
+          return json(res, 200, { shown_at: s.uploads.length ? s.uploads[s.uploads.length - 1].shown_at : null });
+        }
         if (rest === '/linked') {
+          notForUpload(t, 'it has no side tournaments');
           const fields = await readBody(req);
           if (!Array.isArray(fields.linked) || !fields.linked.every((x) => slug(String(x)))) throw bad(400, '"linked" must be a list of tournament slugs.');
           const s = pool.updateState(pool.tournamentDir(outRoot, t), (st) => { st.linked = [...new Set(fields.linked.map((x) => String(x).toLowerCase()))].filter((x) => x !== t); });
           return json(res, 200, { linked: s.linked });
         }
         if (rest === '/schedule/refresh') {
+          notForUpload(t, 'it has no schedule');
           const { started } = jobs.startSchedule(t, { seedsOnly: url.searchParams.get('only') === 'seeds' });
           return json(res, started ? 202 : 409, jobs.status(t).schedule);
         }
         g = /^\/push\/([^/]+)\/(dry-run|post)$/.exec(rest);
         if (g && slug(g[1])) {
+          notForUpload(t, 'there is nothing to push to');
           const fields = await readBody(req);
           if (g[2] === 'dry-run') return json(res, 200, await dryRun(t, g[1].toLowerCase()));
           return json(res, 200, await postSeeding(t, g[1].toLowerCase(), fields));

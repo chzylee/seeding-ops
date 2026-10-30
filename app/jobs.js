@@ -137,6 +137,7 @@ class Jobs {
     const s = this.schedules.get(t);
     return {
       pulling: running && job.phase === 'pulling',
+      resolving: running && job.phase === 'resolving',
       running,
       kind: job ? job.kind : null,
       phase: job ? job.phase : null,
@@ -167,6 +168,9 @@ class Jobs {
     const ticked = state.ticked || [];
     if (!ticked.length) throw new Error('Tick at least one event to seed first.');
     const fetchImpl = this.opts.queue.fetchFor((t) => { job.requests++; job.sends.push(t); });
+    // Amendment A1.3: an uploaded list first resolves its rows (one user lookup each, saved to
+    // state.json as they come, so a stopped job resumes), links the registry, then pulls like any page.
+    const upload = pool.isUpload(state) ? await this.resolveUpload(job, tDir, token) : null;
 
     // 1. The pull. An unfinished pull of the same seeded events (or a finished one never swapped in)
     // is resumed: its checkpointed players are not fetched again.
@@ -177,8 +181,9 @@ class Jobs {
     let lastLine = '';
     const stderr = lineSink((l) => { if (l.trim()) { lastLine = l; job.message = l; } });
     const report = {};
-    const args = open ? { resumeDir: open.dir } : { tournament: job.t, events: ticked, mode: job.mode };
+    const args = open ? { resumeDir: open.dir } : upload ? { upload } : { tournament: job.t, events: ticked, mode: job.mode };
     if (open) job.message = `Resuming ${open.name}`;
+    job.phase = 'pulling';
     const code = await (this.opts.pull || runPull)({ ...args, token, outRoot, fetchImpl, now: this.opts.now, sleep: this.opts.sleep,
       stderr, stdout: lineSink(() => {}), report });
     job.pullDir = report.pullDir || null;
@@ -187,6 +192,13 @@ class Jobs {
     }
     // D2-7: the new pull is live even if the old folder could not be deleted; say so and go on.
     job.leftover = (report.swap.leftover || []).map((l) => l.name);
+    // A1.1: the pull resolved its players' discriminators (players.csv user_slug); tiers rows already
+    // linked to them by player_id get theirs. A failed write leaves the pull intact and is said.
+    try {
+      const live = pool.currentPull(tDir);
+      const ps = out.parseCsv(fs.readFileSync(path.join(live.dir, 'players.csv'), 'utf8'));
+      job.discriminators = data.fillDiscriminators(ps, this.tiersOpt()).discriminators_written;
+    } catch (err) { job.tiersError = `start.gg ids not written to the tiers file: ${err.message}`; }
 
     // 2. W-L for whatever is still missing, summary-first across every tab.
     job.phase = 'wl';
@@ -217,7 +229,54 @@ class Jobs {
     wl.savePoolCache(tDir, cache);
     job.phase = 'done';
     job.message = `Done: ${job.wl.done} W-L fetched, ${Object.keys(cache).length} cached` + (code === 1 ? '; some players failed (see the pull\'s meta.json)' : '')
-      + (job.leftover.length ? `; the old pull folder ${job.leftover.join(', ')} could not be deleted yet (the next pull deletes it)` : '');
+      + (job.leftover.length ? `; the old pull folder ${job.leftover.join(', ')} could not be deleted yet (the next pull deletes it)` : '')
+      + (job.tiersError ? `; ${job.tiersError}` : '');
+  }
+
+  // tiersFile from createApp (tests point it at a scratch file); undefined means data.js's default.
+  tiersOpt() { return this.opts.tiersFile ? { tiersFile: this.opts.tiersFile } : {}; }
+
+  // An uploaded list's resolution and registry linking (Amendment A1.3). Rows not yet resolved, or
+  // whose lookup failed last time, are asked once each through the queue; each answer is saved to
+  // state.json at once. When this run asked anything, the found players are linked into the tiers
+  // file and the run's summary is appended to state.json `uploads` (shown on the page once).
+  // Returns the pull's input: { catalog, players }.
+  async resolveUpload(job, tDir, token) {
+    const U = require('../lib/upload');
+    const state = pool.readState(tDir);
+    const rows = state.upload.rows;
+    const todo = rows.filter((r) => !r.resolved || r.resolved.status === 'error').length;
+    let asked = 0;
+    if (todo) {
+      job.phase = 'resolving';
+      job.message = `Looking up ${todo} player(s) on start.gg`;
+      // One line per lookup sent (no token, no headers), beside state.json: out/<t>/upload-requests.jsonl.
+      const log = path.join(tDir, 'upload-requests.jsonl');
+      const client = this.client(job, token, (rec) => fs.appendFileSync(log, JSON.stringify(rec) + '\n'));
+      ({ asked } = await U.resolveRows(client, rows, { onRow: (row) => {
+        pool.updateState(tDir, (s) => { const r = s.upload.rows.find((x) => x.discriminator === row.discriminator); if (r) r.resolved = row.resolved; });
+        const done = rows.filter((r) => r.resolved && r.resolved.status !== 'error').length;
+        job.message = `Looked up ${done} of ${rows.length} players`;
+      } }));
+    }
+    const game = state.events[0].game;
+    const players = U.poolPlayers(rows, game.id);
+    if (asked) {
+      const found = players.filter((p) => !p.unresolved);
+      let tiers;
+      try { tiers = data.linkPlayers(found, { gameId: game.id, ...this.tiersOpt() }); } catch (err) { tiers = { error: err.message }; }
+      const by = (st) => rows.filter((r) => r.resolved && r.resolved.status === st)
+        .map((r) => ({ line: r.line, name: r.name, discriminator: r.discriminator, reason: r.resolved.reason || '' }));
+      const summary = {
+        at: new Date(this.now()).toISOString(), asked, rows: rows.length, found: found.length,
+        not_found: by('not-found'), errors: by('error'),
+        duplicates: state.upload.duplicates || [], malformed: state.upload.malformed || [], ignored_columns: state.upload.ignored_columns || [],
+        tiers, shown_at: null,
+      };
+      pool.updateState(tDir, (s) => { s.uploads = [...(s.uploads || []), summary]; });
+      job.uploadSummary = summary;
+    }
+    return { catalog: { tournament: state.tournament, events: state.events }, players };
   }
 
   async executeArchive(job) {

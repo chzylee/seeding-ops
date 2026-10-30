@@ -2828,3 +2828,188 @@ Defaults chosen by the orchestrating session under Noah's go for build C; produc
 
 Noah is using the desktop app against this checkout while pass 3 runs; it loads live code, so pass 3
 commits in small steps and keeps the tree working between commits.
+
+---
+
+## Build C — Pass 3 — lead engineer (repair)
+
+Seat: lead-engineer persona v0.4.0 (`personal-staff/personas/library/lead-engineer.md`, Profile block,
+loaded in-seat), a fresh job; I did not build pass 1. Model: Opus. Branch `build/tool-c`, started at
+`d19f853` with a clean tree. Commits `8ba8783`, `6e84da4`, `da53062`, `69b2582`, `a1b4e28`, `345508f`,
+plus this record's commit. Local only, no push, nothing amended. No skills, subagents or workflows.
+
+### Terms as understood
+
+- **Scope:** the "Orchestrator rulings for build C pass 3" table above, E2-1..E2-9, each ruling taken
+  as given (not re-decided). Contract `docs/dispatch-contract-tool-c.md` (pass 3: repair, every finding
+  FIXED or DECLINED with reasoning); spec `docs/design-tool.md` with Amendment A1. Work types: repair.
+- **Kept from builds A, B and C pass 1:** the ✓ semantics, the one matcher (`matchTierRowBy`), A6-1, the
+  single queue (`app/queue.js` over `app/limit-fetch.js`), both dark blocks. No CSS changed in this pass.
+- **Grants used:** source, tests and README edits under the repo. `registry/tiers.csv` was not written
+  (mtime still 2026-10-30 10:06:00, pass 1's live run; `.bak` kept). `out/` was not written: the
+  Mixfest `state.json` is unchanged (mtime 10:06:00) and its `uploads[0].shown_at` is still `null`
+  (read-only check); `/t/mixfest-26-mbaacc` was never opened, on 8765 or anywhere.
+- **Prohibitions:** **0 start.gg requests.** Every suite ran with `testlib/no-network.js`; my own app run
+  used `testlib/fake-global-fetch.js` with `STARTGG_TOKEN=offline-fake` in the environment of a clean
+  clone that has no `.env`. The token was never read or printed. Port 8765 was not touched; my runs used
+  port 8796, and the mutation checks ran in a scratch clone.
+- **Owner on 8765:** every code commit was preceded by a green full suite. The 8765 process loaded
+  `app/server.js` and `lib/` at launch, so the server-side changes reach it at its next launch;
+  `app/public/tournament.js` is served per request and its new line is guarded (`if (x.header)`), so the
+  Mixfest summary, recorded before the field existed, renders as before (pinned in the E2-4 test).
+- **Before-state** (at `d19f853`, before the first edit): `NODE_OPTIONS="--require ./testlib/no-network.js"
+  node --test` → **tests 256, pass 256, fail 0, skipped 0.**
+- **Grounding not consulted** (the standards bank, the runbook): every change traces to a ruling, the
+  contract or the existing code.
+
+### Assumptions I supplied
+
+1. **E2-4's "hex-like token"** is defined as one token of 6–10 letters and digits with at least one digit
+   and at most two letters outside a–f (`lib/upload.js` `looksLikeAttemptedCode`). It catches `abcd123`,
+   `abcd12g3`, `ABCD12345`, and leaves `discriminator`, `start.gg`, `startgg id`, `player1`, `column2` and
+   `code` as headers (all pinned). "A URL" is `://`, a leading `www.`, or `start.gg/`; a bare `start.gg`
+   column name stays a header. Amendable in one function.
+2. **E2-1's record shape:** `t`/`ms` are now the send time (every existing reader of `ms`, including
+   `scripts/check-requests.js`, `lib/run.js`'s summary line and `priorSends`, already treated it as a
+   send time); `queued_ms` is added only when it differs. With the real clock a request that waited one
+   event-loop turn shows `queued_ms` 1 ms earlier (seen in the offline demo's `upload-requests.jsonl`);
+   that is accurate, so I left it.
+3. **E2-6's reason travels in a new upload-only `lookup_error` column** of the pool's `players.csv`
+   (empty unless the lookup failed). The flag text is `lookup failed (<the client's error message>)`;
+   the history status stays `unresolved`, so counts and the no-✓/no-edit rules are unchanged. The live
+   Mixfest pool has no such column and reads as before.
+4. **E2-7 counts rows after repeats are collapsed** (the number of lookups), refuses with **400** and the
+   count, and writes nothing (pinned: no `out/too-big/`, no fake request).
+5. **E2-4's note wording** on the page: *"Line N was read as the column header and skipped: `a`, `b`. If
+   that is a player, add a header row above it and upload again."* The row is also in the POST response
+   (`header_row`) and in `state.json` `upload.header_row`.
+
+### Dispositions
+
+| finding | disposition | commit | test (verified failing on the old code) | note |
+|---|---|---|---|---|
+| E2-1 | **FIXED** (the cheap half, per ruling) | `6e84da4` | `test/client.test.js` "E2-1: through the app queue, each request record carries the time it was sent…": on `d19f853`'s code the three records' `ms` are `[1000000, 1000000, 1000000]` where the queue sent the third at ≥ 1060000 | `app/limit-fetch.js` reports the send time to a caller that asks (`init.onSent`, stripped before the real fetch); `lib/startgg.js` stamps `t`/`ms` with it and keeps `queued_ms`. Covers the pull, W-L and upload logs (all go through the client). The "ceiling one below the limit" rule is added nowhere; Noah's, per ruling. |
+| E2-2 | **ACKNOWLEDGED: record correction** | this record | n/a | Record corrections 1; UI checklist item 1 names where to see the color. |
+| E2-3 | **ACKNOWLEDGED: record correction** | this record | n/a | Record corrections 2. |
+| E2-4 | **FIXED** | `da53062` | `test/upload-csv.test.js` "E2-4: a first row whose second value is an attempted discriminator…" (old: `Alice,abcd123` became the header) and `test/upload.test.js` "E2-4: the upload summary names the row skipped as the header…" (old: no `header_row`, no summary field, no note) | Header only when the first row's second value is neither a code nor an attempt at one; an attempt is malformed at its line. The skipped header row is in the POST response, `state.json` `upload.header_row`, each summary's `header`, and the page's summary. |
+| E2-5 | **FIXED** (test) | `8ba8783` | `test/upload.test.js` "E2-5: the push routes on an uploaded page are refused by the upload guard itself…": with `notForUpload(t, 'there is nothing to push to')` removed it fails with *"Mixfest 26 Test (uploaded list) has no phases on start.gg yet."* | Asserts the guard's exact message on `dry-run` and `post`, and no start.gg request. The old test is unchanged. |
+| E2-6 | **FIXED** | `69b2582` | `test/upload.test.js` "E2-6: a row whose lookup failed is flagged \"lookup failed (<reason>)\"…" (old: no `lookup_error`, flag "not found on start.gg") | Hover: *"The start.gg lookup for <code> failed, so this row has no results and no id to link a tier to yet. Refresh asks again."* Not-found rows unchanged. |
+| E2-7 | **FIXED** | `a1b4e28` | `test/upload.test.js` "E2-7: an upload over 1,000 player rows is refused…" (old: 202) | `MAX_UPLOAD_ROWS = 1000` in `lib/upload.js`, checked in `createUpload` before anything is written or queued. 1,000 rows (1,001 lines with one repeat) is accepted. |
+| E2-8 | **DECLINED** (no change) | n/a | n/a | Ruling: keep, amendable, Noah's. The list's name stays a tag key (`lib/view/data.js`). |
+| E2-9 | **ACKNOWLEDGED** | n/a | n/a | Ruling: recorded. Nothing to repair; this pass wrote no registry row. |
+
+README (`345508f`): the header rule for a mistyped first code, the 1,000-row ceiling, the *lookup failed*
+flag, and `requests.jsonl` stamped at the send with `queued_ms`.
+
+### Record corrections
+
+1. **E2-2: the tag-only color is not visible on any real page today.** Pass 1's assumption 2 ("on
+   start.gg pages (Eclipse), sheet-only rows that were grey are now light blue") and its UI checklist item
+   6 (see it on the Eclipse page) are **wrong**. Every one of Eclipse's 182 registrants matches a tiers row
+   by `player_id` (pass 2's matcher run, before and after build C), and the Mixfest upload linked its 11
+   tag matches by writing their ids, so **no page in `out/` shows the light blue**. The rule itself
+   stands (light blue replaces the recency color on a tag-only cell); the place to see it is a scratch
+   setup, UI checklist item 1 below. Nothing in the real `registry/tiers.csv` is to be changed to show it.
+2. **E2-3: the desktop app on 8765 runs the checkout's live code.** Pass 1's assumption 21, its Needs
+   attention 4, and its checklist's first line ("not the desktop exe on 8765, which is an older build")
+   are **wrong**. `app/app-main.js` (the compiled sidecar's entry) looks for a folder carrying
+   `app/server.js` and, when it finds one (the exe sits in `<repo>/app/`), sets `SEEDING_ROOT` and
+   `require`s that live `app/server.js` (lines 46–52); only otherwise does it run the copy embedded at
+   compile time. So 8765 serves this checkout's code as of its launch: build C's badges and form (pass 2
+   saw them), and its tier writes use the current column order, so the "moves `discriminator` to the end"
+   warning does not apply. The sidecar needs rebuilding only when the loader (`app/app-main.js`) itself
+   changes. Two consequences: server-side changes reach 8765 at its next launch, while files under
+   `app/public/` are served from disk per request; and opening `/t/mixfest-26-mbaacc` there **does** use
+   up the one-time summary (`POST …/upload/seen`).
+
+### Changed tests
+
+None. Six tests added; no existing assertion changed, removed or skipped. `git diff d19f853 --numstat --
+test/`: `client.test.js` +24/−0, `upload-csv.test.js` +22/−0, `upload.test.js` +97/−0. 256 + 6 = 262.
+
+### Verification
+
+| what | command / method | result |
+|---|---|---|
+| before-state | working tree at `d19f853`, `NODE_OPTIONS="--require ./testlib/no-network.js" node --test` | 256 / 256 / 0 / 0 |
+| each new test fails on the old code | scratch clone at `d19f853` with only the new test file copied in (and, for E2-5, the guard line removed) | E2-5, E2-1, both E2-4, E2-6, E2-7 each fail, with the old behavior quoted under Dispositions |
+| suite after each code commit | same command, working tree | 258 after `6e84da4`, 260 after `da53062`, 261 after `69b2582`, 262 after `a1b4e28`; 0 fail each time |
+| **suite, working tree (final code)** | same command at `345508f` | **tests 262, pass 262, fail 0, skipped 0** |
+| **suite, clean clone, offline** | `git clone -b build/tool-c` at `345508f` (no `.env`), same command | **tests 262, pass 262, fail 0, skipped 0** |
+| the app, offline, port 8796 | the clean clone, the command under UI checklist; Browser pane | the fake Combo Breaker page: TeamA's Tier cell light blue (dark theme, `rgb(24, 64, 110)` = `#18406e`), hover *"Matched by tag only: … · Never reviewed (tier from the sheet import)"*; an upload with header `Player,Code`: the summary open with *"Line 1 was read as the column header and skipped: Player, Code. …"*; 1,001 rows POSTed as the form does: 400 *"The list has 1001 player rows; an upload takes at most 1000 …"*, no folder, no fake request; `upload-requests.jsonl` lines carry `ms` and, where a request waited, `queued_ms` |
+| protected files | `ls -l`, `git status`, a read of Mixfest's `state.json` | `registry/tiers.csv` and `out/mixfest-26-mbaacc/state.json` mtime 10:06:00 (pass 1); `out/eclipse-1st-cour/state.json` 09:13:14; Mixfest `shown_at` null |
+
+### Could not verify
+
+- **The 1,000-row refusal shown in the form itself.** The Browser pane refused navigation back to my demo's
+  home page (an auto-mode classifier denial); I did not work around it. The refusal is checked by the test
+  and by POSTing the form's body to my 8796 server (400 with the message above); the form puts any error's
+  text in its message line (`app/public/index.js`, unchanged).
+- **The light theme** of the tag-only cell and of the header note: only the dark theme was seen this pass.
+  No CSS changed; pass 1 checked both themes.
+- **8765 picking up the server-side changes:** not exercised (not mine to restart); reasoned from
+  `app/app-main.js` (Record corrections 2).
+- **A real start.gg failure's text** in the *lookup failed (…)* flag: the fake's 503 gives the client's
+  "gave up after 5 tries" message; a real one shows whatever the client throws.
+
+### UI checklist for the orchestrator
+
+All offline against the fake, from a clean clone, on your own port (not 8765). Setup once (bash; replace
+`<scratch>`):
+
+```
+git clone -b build/tool-c C:/Users/iknow/repos/seeding-ops <scratch>/clone && cd <scratch>/clone
+mkdir -p <scratch>/demo/out
+node -e "const out=require('./lib/output'),data=require('./lib/view/data');const row=(o)=>({game_id:'22',game_name:'Melty Blood: Actress Again Current Code',player_id:'',discriminator:'',startgg_tag:'',sheet_tag:'',tier:'',notes:'',decided_on:'',last_reviewed_on:'',last_reviewed_tournament:'',source:'sheet import',sheet_region:'',sheet_placements:'',sheet_notes:'',...o});require('fs').writeFileSync(process.argv[1],out.toCsv(data.TIER_COLS,[row({sheet_tag:'Quiet',tier:'5'}),row({sheet_tag:'TeamA',tier:'3'}),row({player_id:'101',startgg_tag:'GeneralMidwest',tier:'9',source:'app'})]))" <scratch>/demo/tiers.csv
+STARTGG_TOKEN=offline-fake SEED_TIERS_FILE=<scratch>/demo/tiers.csv NODE_OPTIONS="--require ./testlib/no-network.js --require ./testlib/fake-global-fetch.js" node app/server.js --port 8796 --out <scratch>/demo/out
+```
+
+1. **The tag-only light blue (E2-2's place to see it).** On the home page add
+   `https://www.start.gg/tournament/combo-breaker-2026/event/melty-blood-actress-again-current-code` (the
+   fake) and let the pull finish. The scratch tiers rows *Quiet* (5) and *TeamA* (3) carry no ids, so both
+   Tier cells are light blue with a hover starting *"Matched by tag only…"*; GeneralMidwest (9, linked by
+   id) is not. Switch the theme to see both. Do this **before** step 2: step 2's upload links *Quiet* by
+   tag, after which only *TeamA* stays blue.
+2. **The header-skipped note (E2-4).** *Import from CSV*: name `Header Demo`, game Other with id `22`, any
+   date, a file of four lines: `Player,Code`, `Gen,14364d39`, `Quiet,aaaa0003`, `Kid,user/aaaa0002`. The
+   page's **Upload summary** opens with *"Line 1 was read as the column header and skipped: Player, Code.
+   If that is a player, add a header row above it and upload again."* Then upload a header-less file whose
+   first line is `Kid,aaaa002` (seven characters) and second `Quiet,aaaa0003`: no header note, and *Rows
+   not read* lists *line 1: `Kid,aaaa002`*.
+3. **The row ceiling (E2-7).** Upload a file of 1,001 distinct rows (make it with
+   `node -e "let s='name,discriminator\n';for(let i=0;i<1001;i++)s+='P'+i+','+(0xa0000000+i).toString(16)+'\n';require('fs').writeFileSync('too-big.csv',s)"`).
+   The form's message line shows *"The list has 1001 player rows; an upload takes at most 1000 (…). Split
+   the list."*; no page is created and the fake gets no request.
+4. **Lookup failed (E2-6)** is pinned by test only (the app's fake has no failing code); it is the existing
+   `flag-unresolved` pill with the new text.
+5. **Request logs (E2-1):** `<scratch>/demo/out/header-demo/upload-requests.jsonl` lines carry `ms` (the
+   send) and, where a request waited, `queued_ms`.
+
+### REPORT
+
+```
+REPORT
+- Overview: Build C pass 3 (repair) disposed E2-1..E2-9 per the orchestrator's rulings on build/tool-c:
+  5 FIXED (E2-1 send-time request logs, E2-4 mistyped first code + named header, E2-5 push-guard test,
+  E2-6 "lookup failed (<reason>)", E2-7 1,000-row ceiling), 2 record corrections (E2-2, E2-3), E2-8
+  declined (kept per ruling), E2-9 acknowledged. node --test 262/262/0/0 on the working tree and on a
+  clean offline clone (before 256/256/0/0). 0 start.gg requests.
+- Found: 9 findings, each with a ruling; all doable within the rulings. No new defect outside them.
+- Ran: 8ba8783 (E2-5), 6e84da4 (E2-1), da53062 (E2-4), 69b2582 (E2-6), a1b4e28 (E2-7), 345508f
+  (README), then this record's commit. Each new test failed on d19f853's code (scratch clone). Offline
+  app run on port 8796 from a clean clone against the fake (Browser pane): the tag-only blue, the
+  header note, the 1,001-row refusal (by API; the pane refused the home page).
+- Attributed: core / seeding-ops increment 4, build C. STATED: dispatch-contract-tool-c.md,
+  design-tool.md Amendment A1, "Orchestrator rulings for build C pass 3".
+- Queued: E2-1's "live ceiling one below the limit" rule (Noah's, per ruling; added nowhere). E2-8 stays
+  Noah's to keep or drop.
+- Spend: term = 4 passes + at most 1 repair pair; consumed pass 3 of 4. start.gg requests 0. No skills,
+  subagents or workflows. Token never read.
+- Parked: none. Tree clean at the record commit. registry/tiers.csv.bak kept for pass 4. Scratch (the
+  mutation clone, the clean clone, the offline demo) in this session's scratchpad.
+- Needs attention:
+  1. 8765 runs the checkout's live app/server.js (record correction 2): this pass's server-side changes
+     reach it at its next launch; opening Mixfest there uses up the one-time summary (shown_at still null).
+  2. E2-4's "attempted code" test (assumption 1) is a definition I supplied; amendable in one function.
+  3. Still unverified from earlier passes: Mixfest's date (2026-11-14) and start.gg's blue (#3f80ff).
+```

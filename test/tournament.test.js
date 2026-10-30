@@ -270,7 +270,7 @@ test('status is computed from the latest ticked event\'s startAt, with marked_do
   assert.strictEqual(pool.statusOf({ ...st, marked_done: '2026-11-02' }, null, at('2026-11-02T00:00:00.000Z')), 'done');
   assert.strictEqual(pool.statusOf({ ...st, marked_done: '2026-11-02', archived: '2026-11-10' }, null, 0), 'archived');
   assert.strictEqual(pool.statusOf({ ...st, ticked: [] }, null, at('2026-10-31T00:00:00.000Z')), 'live', 'nothing ticked: the tournament\'s own start');
-  assert.deepStrictEqual(pool.controlsFor(st, 'live'), { markDone: true, unmarkDone: false, archive: false, delete: false });
+  assert.deepStrictEqual(pool.controlsFor(st, 'live'), { markDone: true, unmarkDone: false, archive: false, delete: true }); // delete is always offered (Noah, 2026-10-30), behind a confirmation
   assert.deepStrictEqual(pool.controlsFor({ ...st, marked_done: 'x' }, 'done'), { markDone: false, unmarkDone: true, archive: true, delete: true });
 });
 
@@ -298,7 +298,10 @@ test('lifecycle: Mark done; done blocks nothing; Archive standings makes one sta
   const info = async () => (await inject(app.handler, { url: TAPI })).json();
   assert.strictEqual((await info()).status, 'live');
   assert.strictEqual((await post(app, `${TAPI}/lifecycle`, { action: 'archive' })).status, 409, 'Archive is surfaced once done');
-  assert.strictEqual((await post(app, `${TAPI}/lifecycle`, { action: 'delete', confirm: T_SLUG })).status, 409, 'Delete is surfaced once done');
+  // Delete is offered at any status (Noah, 2026-10-30: right-click or the page's button, always behind a
+  // confirmation); only the confirmation gates it. A wrong confirm is refused while live too.
+  assert.strictEqual((await post(app, `${TAPI}/lifecycle`, { action: 'delete', confirm: 'wrong' })).status, 400, 'Delete needs the slug as confirmation, live or not');
+  assert.strictEqual((await info()).controls.delete, true, 'Delete is offered while live');
 
   // Mark done (and undo it).
   assert.strictEqual((await post(app, `${TAPI}/lifecycle`, { action: 'mark-done' })).status, 200);

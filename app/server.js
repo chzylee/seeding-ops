@@ -118,7 +118,7 @@ function uploadForm() {
 }
 // Noah, mid-pass 2026-10-30: no block or heading for the live ones; one sentence sits above the first
 // tournament that is no longer live (the list is always live, then done, then archived).
-const DONE_NOTE = '<li class="done-note dim">Tournaments are marked done automatically once their last seeded event\'s date has passed. Delete one by hand from its page when you no longer need it.</li>';
+const DONE_NOTE = '<li class="done-note dim">Tournaments are marked done automatically once their last seeded event\'s date has passed. Delete one when you no longer need it: right-click it here, or use Delete on its page; both ask first.</li>';
 function indexPage(outRoot, jobs, nowMs) {
   const list = pool.listTournaments(outRoot, nowMs);
   const firstDone = list.findIndex((x) => x.status !== 'live');
@@ -131,7 +131,7 @@ function indexPage(outRoot, jobs, nowMs) {
       .map(esc).join(' · ');
     const busy = st.running ? ` <span class="busy">${st.resolving ? 'looking up players…' : st.pulling ? 'pulling…' : st.kind === 'archive' ? 'archiving…' : 'fetching W-L…'}</span>` : '';
     const badge = SOURCE_BADGE[x.state.source] || SOURCE_BADGE.startgg;
-    return `${i === firstDone ? DONE_NOTE : ''}<li class="st-${x.status} src-${esc(x.state.source)}"><a href="/t/${esc(x.t)}">${esc(name)}</a> ${badge} <span class="pill st-${x.status}">${STATUS_LABEL[x.status]}</span>${busy}<div class="dim">${sub}</div></li>`;
+    return `${i === firstDone ? DONE_NOTE : ''}<li class="st-${x.status} src-${esc(x.state.source)}" data-t="${esc(x.t)}" data-name="${esc(name)}" title="Right-click for options"><a href="/t/${esc(x.t)}">${esc(name)}</a> ${badge} <span class="pill st-${x.status}">${STATUS_LABEL[x.status]}</span>${busy}<div class="dim">${sub}</div></li>`;
   }).join('');
   return `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Seeding tournaments</title><link rel="stylesheet" href="/static/app.css"><script src="/static/theme.js"></script>

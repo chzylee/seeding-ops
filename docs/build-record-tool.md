@@ -3304,3 +3304,22 @@ REPORT
      definition and its header note on every upload.
   5. registry/tiers.csv.bak may now be deleted. The carried items from builds A and B are listed above.
 ```
+
+---
+
+## Out-of-band: right-click Delete, delete at any status; Mixfest removed (orchestrating session, 2026-10-30)
+
+Noah: *"delete the mixfest one so i can upload myself. we should also have a right click > delete option
+that asks for approval before deleting."* Recorded per standing rule (a).
+
+- `out/mixfest-26-mbaacc/` deleted by hand (its 18 tiers links from the build C live upload stay in
+  `registry/tiers.csv`; a re-upload matches them by id). The repo's fixture copy of the list is untouched.
+- Home page: right-click a tournament → a one-item menu, "Delete tournament data…" → a confirmation
+  naming the tournament and what is removed (`out/<t>/` only; the tiers table is kept) → the existing
+  `lifecycle delete` route (slug confirmation) → reload. Escape, a click elsewhere or window blur
+  closes the menu; a cancelled confirmation sends nothing (checked in the browser pane: menu shown, confirm
+  asked, no request on cancel, tournament still listed).
+- `pool.controlsFor`: `delete` is now offered at every status (it was done/archived only), still behind
+  the confirmation; the tournament page's Delete button therefore shows on live tournaments too. The
+  done note on the home page names both ways. Three tests updated to the new rule (tournament.test.js
+  lifecycle, upload.test.js badges + layout); suite 262/262/0/0.

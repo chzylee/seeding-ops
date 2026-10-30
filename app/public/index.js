@@ -26,6 +26,46 @@
     location.href = body.page;
   });
 
+  // ---- Right-click a tournament: Delete (Noah, 2026-10-30), always behind a confirmation ----
+  const list = document.querySelector('ul.events');
+  const menu = document.createElement('div');
+  menu.className = 'ctx-menu';
+  menu.hidden = true;
+  menu.setAttribute('role', 'menu');
+  menu.innerHTML = '<button type="button" role="menuitem" class="danger" data-act="delete">Delete tournament data…</button>';
+  document.body.appendChild(menu);
+  let target = null;
+  const hide = () => { menu.hidden = true; target = null; };
+  if (list) list.addEventListener('contextmenu', (ev) => {
+    const li = ev.target.closest('li[data-t]');
+    if (!li) return;
+    ev.preventDefault();
+    target = li;
+    menu.hidden = false;
+    const w = menu.offsetWidth, h = menu.offsetHeight;
+    menu.style.left = Math.min(ev.clientX, window.innerWidth - w - 8) + 'px';
+    menu.style.top = Math.min(ev.clientY, window.innerHeight - h - 8) + 'px';
+    menu.querySelector('button').focus();
+  });
+  document.addEventListener('click', (ev) => { if (!menu.contains(ev.target)) hide(); });
+  document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') hide(); });
+  window.addEventListener('blur', hide);
+  menu.querySelector('[data-act="delete"]').addEventListener('click', async () => {
+    const li = target; hide();
+    if (!li) return;
+    const t = li.dataset.t, name = li.dataset.name || t;
+    // The approval step: nothing is deleted until this is accepted. The tiers table is never touched.
+    const ok = window.confirm(`Delete all data for "${name}"?\n\nThis removes its pulls, W-L, schedule and standings (out/${t}/). Your tiers table (registry/tiers.csv) is kept. This cannot be undone.`);
+    if (!ok) return;
+    let res, body;
+    try {
+      res = await fetch(`/api/t/${encodeURIComponent(t)}/lifecycle`, { method: 'POST', headers: { 'X-Seeding-App': '1', 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'delete', confirm: t }) });
+      body = await res.json().catch(() => ({}));
+    } catch (err) { res = { ok: false }; body = { error: err.message }; }
+    if (!res.ok) { msg.textContent = body.error || 'Could not delete it.'; msg.classList.add('err'); return; }
+    location.reload();
+  });
+
   // ---- Upload a player list (A1.3) ----
   const up = document.getElementById('upload');
   if (!up) return;

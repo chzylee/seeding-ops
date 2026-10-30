@@ -104,7 +104,7 @@ test('the page: one tab for the chosen game; players with start.gg\'s current ta
   assert.strictEqual(info.source, 'upload');
   assert.deepStrictEqual(info.tabs.map((t) => [t.game.id, t.events]), [[GAME.id, ['upload']]]);
   assert.strictEqual(info.status, 'live');
-  assert.deepStrictEqual(info.controls, { markDone: true, unmarkDone: false, archive: false, delete: false });
+  assert.deepStrictEqual(info.controls, { markDone: true, unmarkDone: false, archive: false, delete: true }); // delete always offered (Noah, 2026-10-30)
   assert.deepStrictEqual([info.upload.rows, info.upload.found, info.upload.not_found, info.upload.errors, info.upload.pending], [7, 6, 1, 0, 0]);
   const vm = (await inject(w.app.handler, { url: `/api/t/mixfest-26-test/g/${GAME.id}/data` })).json();
   const by = Object.fromEntries(vm.players.map((p) => [p.player_id, p]));
@@ -179,7 +179,7 @@ test('the home page: an upload badge for the uploaded list, a start.gg badge for
   await upload(w.app);
   await w.app.jobs.idle();
   const html = (await inject(w.app.handler, { url: '/' })).text;
-  const li = (t) => new RegExp(`<li class="st-\\w+ src-(\\w+)"><a href="/t/${t}">[^<]*</a> <span class="src src-(\\w+)"[^>]*>([^<]+)</span>`).exec(html);
+  const li = (t) => new RegExp(`<li class="st-\\w+ src-(\\w+)" data-t="${t}"[^>]*><a href="/t/${t}">[^<]*</a> <span class="src src-(\\w+)"[^>]*>([^<]+)</span>`).exec(html);
   assert.deepStrictEqual(li(T_SLUG).slice(1), ['startgg', 'startgg', 'start.gg']);
   assert.deepStrictEqual(li('mixfest-26-test').slice(1), ['upload', 'upload', 'upload']);
   assert.strictEqual(sha(legacy), before, 'reading never rewrote the old state.json');
@@ -306,7 +306,7 @@ test('home page layout (Noah, mid-pass 2026-10-30): "Add a tournament" header, t
   const note = at('class="done-note dim"');
   assert.ok(at('href="/t/a-live"') < note && note < at('href="/t/b-done"'), 'the sentence sits above the first done tournament');
   assert.strictEqual(html.split('done-note').length, 2, 'once');
-  assert.match(html, /marked done automatically once their last seeded event's date has passed\. Delete one by hand/);
+  assert.match(html, /marked done automatically once their last seeded event's date has passed\. Delete one when you no longer need it: right-click it here, or use Delete on its page; both ask first\./);
   const css = fs.readFileSync(path.join(__dirname, '..', 'app', 'public', 'app.css'), 'utf8');
   assert.match(css, /\.add-section \.add-t input \{ flex: 1 1 auto; min-width: 0; \}/);
   // With nothing done yet there is no sentence.

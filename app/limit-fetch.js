@@ -24,6 +24,7 @@ function limitFetch(fetchImpl, { max = pacing.MAX_REQUESTS, windowMs = pacing.WI
       sentAt.push(t);
       while (sentAt.length > max * 2) sentAt.shift();
       onSend(t);
+      return t;
     });
     gate = mine.catch(() => {});
     return mine;
@@ -36,9 +37,18 @@ function limitFetch(fetchImpl, { max = pacing.MAX_REQUESTS, windowMs = pacing.WI
     const { timeoutMs, ...rest } = init;
     return { ...rest, signal: AbortSignal.timeout(timeoutMs) };
   };
+  // E2-1 (build C pass 2): a caller that asks for the send time (init.onSent, lib/startgg's client)
+  // is told it here, so its request log carries the time the request was sent, not queued. If the
+  // fetch underneath also holds calls, it reports the later, real send itself.
+  const report = (init, t) => {
+    if (!init || typeof init.onSent !== 'function' || fetchImpl.timeoutAtSend) return init;
+    const { onSent, ...rest } = init;
+    onSent(t);
+    return rest;
+  };
   const limited = async (url, init) => {
-    await reserve();
-    return fetchImpl(url, arm(init));
+    const t = await reserve();
+    return fetchImpl(url, arm(report(init, t)));
   };
   limited.timeoutAtSend = true;
   limited.sentAt = sentAt;

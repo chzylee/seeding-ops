@@ -232,3 +232,27 @@ test('D2-3: without a queue the client arms the timeout itself; app/limit-fetch 
   await c.request('Op', 'query Op { x }', {}); // waits 60 s (virtual) for the limiter's slot
   assert.deepStrictEqual(seen, [{ signal: true, timeoutMs: undefined }, { signal: true, timeoutMs: undefined }], 'the send gets a signal and never the bare timeoutMs');
 });
+
+// E2-1 (build C pass 2): the request log is stamped at the SEND, so it can be read against the
+// budget on its own. Before, the client stamped a request when it handed it to the queue, and a log
+// showed 21 in a 60 s window where the queue had sent 20.
+test('E2-1: through the app queue, each request record carries the time it was sent (queued_ms when it waited); the log alone stays under the ceiling', async () => {
+  const { createQueue } = require('../app/queue');
+  const START = 1_000_000;
+  const clock = virtualClock(START);
+  const plain = async () => ({ status: 200, ok: true, headers: { get: () => null }, text: async () => '{"data":{"ok":1}}' });
+  const queue = createQueue({ fetchImpl: plain, max: 2, now: clock.now, sleep: clock.sleep });
+  const records = [];
+  const c = sgg.createClient({ token: TOKEN, fetchImpl: queue.fetchFor(), now: clock.now, sleep: clock.sleep, onRequest: (r) => records.push(r) });
+  for (let i = 0; i < 3; i++) await c.request('Op', 'query Op { x }', {});
+  assert.deepStrictEqual(records.map((r) => r.ms), queue.sentAt, 'the log\'s times are the queue\'s send times');
+  assert.deepStrictEqual(records.slice(0, 2).map((r) => r.ms), [START, START]);
+  assert.ok(records[2].ms >= START + 60_000, 'the third was held for the window: ' + records[2].ms);
+  assert.deepStrictEqual(records.map((r) => r.queued_ms), [undefined, undefined, START], 'the held request keeps when it was queued');
+  assert.strictEqual(records[2].t, new Date(records[2].ms).toISOString());
+  assert.strictEqual(pacing.maxInAnyWindow(records.map((r) => r.ms)), 2);
+  // Without a queue nothing changes: the send is the call.
+  const direct = [];
+  await sgg.createClient({ token: TOKEN, fetchImpl: plain, now: clock.now, sleep: clock.sleep, onRequest: (r) => direct.push(r) }).request('Op', 'query Op { x }', {});
+  assert.deepStrictEqual([direct[0].ms, direct[0].queued_ms], [clock.now(), undefined]);
+});

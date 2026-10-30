@@ -219,6 +219,23 @@ test('an uploaded list refuses what needs a start.gg event (push, schedule, side
   assert.ok(html.indexOf(`/t/${T}`) > 0);
 });
 
+// E2-5 (build C pass 2): the push guard's own refusal, on both push routes. The synthetic event's name
+// contains "uploaded list" and push.dryRun refuses a phase-less event with its own 409, so asserting
+// only the status and /uploaded list/ passed with the guard removed; this asserts the guard's words.
+test('E2-5: the push routes on an uploaded page are refused by the upload guard itself (its own message), before any start.gg request', async () => {
+  const w = setup();
+  await upload(w.app);
+  await w.app.jobs.idle();
+  const T = 'mixfest-26-test';
+  const calls = w.fake.calls.length;
+  for (const url of [`/api/t/${T}/push/upload/dry-run`, `/api/t/${T}/push/upload/post`]) {
+    const r = await post(w.app, url, {});
+    assert.strictEqual(r.status, 409, `${url}: ${r.text}`);
+    assert.strictEqual(r.json().error, 'This page is an uploaded list: it has no start.gg event, so there is nothing to push to.', url);
+  }
+  assert.strictEqual(w.fake.calls.length, calls, 'no start.gg request');
+});
+
 test('POST /api/uploads refuses, writing nothing, a missing name, game or date, an empty file, or a file with no readable row (with the lines); it needs the app header', async () => {
   const w = setup();
   const cases = [

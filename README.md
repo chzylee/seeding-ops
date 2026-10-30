@@ -18,14 +18,14 @@ machine. Page files (`app/public/`) are read fresh on every load, so a browser r
 changes in any mode. The token comes from `.env` (see *Setup* below).
 
 **Add a tournament.** The home page lists your tournaments: live ones first, then done, then
-archived. Paste a start.gg tournament link, or any of its event links, into *Add a tournament*. The
+archived (a short line above the first done one says done is automatic once the last seeded event's date has passed). Paste a start.gg tournament link, or any of its event links, into *Add a tournament*. The
 app asks start.gg once for the tournament's events and opens the tournament's page. Each tournament
 on the home page carries a small badge saying where it came from: **start.gg** (blue) for one added
 by link, **upload** (violet) for a CSV list (below). Tournaments added before the badges existed,
 and the old per-event pulls imported into this layout, count as start.gg.
 
 **Or upload a player list.** When there is no start.gg event to read registrants from (or you have
-your own list), open *Upload a player list (CSV)* under *Add a tournament*:
+your own list), open *Import from CSV* under the link field in *Add a tournament*:
 
 - **The file:** two columns, the player's name and then their start.gg **discriminator**, the
   8-character code in their profile link (`start.gg/user/2d17cccd`). The code can be given bare

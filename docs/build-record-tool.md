@@ -2303,3 +2303,279 @@ never touching the old folders. Run on the real `out/`: Crescendo (2 events, 27 
 1,560 W-L) and Eclipse (182 players, 10,154 results, 10,154 W-L, schedule with 402 players, 31 events,
 1 side tournament). Both list as **done** in the app with their tabs; verified through the API and the
 browser pane. The old folders remain on disk (gitignored) and are unused by design.
+
+---
+
+## Build C — Pass 1 — lead engineer
+
+Seat: lead-engineer persona v0.4.0 (`personal-staff/personas/library/lead-engineer.md`, Profile block,
+loaded in-seat). Model: Opus. Branch `build/tool-c`, started at `c7be7b3` with a clean tree. Commits
+`ff379d3`, `56c7c5d`, `c4cf4a3`, `00996c1`, `e26b22f`, `d72d3bb`, `c23be07`, `c6f0aee`, `6c49b79`, plus
+this record's commit. Local only, no push, nothing amended. No skills, subagents or workflows.
+
+### Terms as understood
+
+- **Scope:** `docs/dispatch-contract-tool-c.md` Acceptance 1–11 (12 is pass 4's). Spec:
+  `docs/design-tool.md` Amendment A1 (the discriminator, match order and the tag-only color, the CSV
+  contract and page, source badges, prior pages), with §T1, §T2, §Pages, §Lifecycle and §Open
+  questions where A1 is silent.
+- **Kept from builds A and B:** the ✓ semantics (option (a), the in-page restore; B2-3's empty-row
+  removal), the one tier-row matcher for reader and writer (A4-2), A6-1, the majors config, the pool
+  layout and `current` swap, the one queue, the theme switch (both dark blocks), `scripts/import-legacy.js`
+  pools reading as start.gg.
+- **Mid-pass caller messages** (Noah, relayed by the coordinator, 2026-10-30; binding; applied in
+  `c23be07` and `c6f0aee`, pinned by `test/upload.test.js` "home page layout"):
+  1. Under an "Add a tournament" header, the link field and its Add button on one row; under that row
+     an "Import from CSV" option with a short description (two columns name/discriminator, its own
+     page for one game, no push or schedule). Home page order: header, link row, CSV import.
+  2. No "Live tournaments" block or explanatory text. The list stays live, then done, then archived;
+     one small sentence above the first done tournament says tournaments are marked done
+     automatically once their last seeded event's date has passed and can be deleted by hand.
+- **Grants used:**
+  - `registry/tiers.csv`: (a) the migration, once, after its tests passed and after a run on a scratch
+    copy (`c4cf4a3`; `registry/tiers.csv.bak` kept, gitignored, until pass 4); (b) the writer in
+    `lib/view/data.js` during the live upload (`6c49b79`). **For the auditor:** the upload's linking
+    is a new function (`linkPlayers`, and `fillDiscriminators` for pulls) on the writer's path: the
+    same `readTierTable`, the same `toCsv`, the same temp-file-and-rename, now shared with
+    `editTierRow` as `writeTierTable`. I read "the existing reader/writer" as that path, not as "only
+    the ✓ and edit routes". No row was hand-edited.
+  - `out/`: created `out/mixfest-26-mbaacc/` only (live run) and scratch folders under this session's
+    scratchpad. The existing pools were not written: `out/eclipse-1st-cour/state.json` and
+    `out/crescendo-of-night-3-episode-0/state.json` still have mtime 2026-10-30 09:13:14, from before
+    this pass (`ls -l`). The old `out/<t>__<e>__*` folders were never read.
+- **Prohibitions:** start.gg was called only by the live upload, through the app's queue, one
+  process, ceiling 20 per 60 s (`SEED_APP_MAX_PER_MIN=20`): 32 user lookups and one pull (per-player
+  history plus W-L). 168 requests; max **20** in any rolling 60 s by the queue's send times (details
+  under Live requests). Nothing was posted. I never opened, read or printed `.env` or the token; the
+  app's `lib/token.js` loaded it. One web search (Exa, not start.gg's API) found the event date.
+- **Before-state** (at `c7be7b3`, before the first edit): `node --test` → **225 tests, 225 pass, 0
+  fail, 0 skipped.**
+- **Grounding not consulted** (the standards bank, the runbook): the contract fixes the process; every
+  ruling below traces to A1, the spec, the earlier build records or the existing code.
+- **Provenance:** the persona was loaded from the library file named above. The design doc and the
+  amendment are Noah's; I did not author them.
+
+### Assumptions I supplied
+
+Defaults and interpretations, each amendable.
+
+1. **The tag-only color is light blue:** `--tag-only-bg: #cfe2ff; --tag-only-fg: #12357a` (light),
+   `#18406e` / `#d3e5ff` (dark, both dark blocks), and `#cfe2ff`/`#12357a` in the CLI view. A1.2 allows
+   grey or light blue; grey already means "never reviewed" (`rec-never`), so grey would be ambiguous.
+   Hover text, exactly: *"Matched by tag only: this tiers row has no start.gg id yet. A ✓ or an edit
+   links it to this player."*, then " · " and the recency text it replaces.
+2. **The tag-only color replaces the recency color** on that cell (the recency stays in the hover).
+   Nearly every tag-only row is a never-reviewed sheet row (a ✓ links the row), so the grey carried
+   no extra information there. Visible consequence: on start.gg pages (Eclipse), sheet-only rows that
+   were grey are now light blue.
+3. **A discriminator is 8 hex characters**, kept lower case. Evidence: all 32 in the Mixfest file
+   and every `user_slug` in the pulls. That start.gg never issues another shape is model knowledge,
+   unverified. Header detection depends on it (a first row whose second value is not such a code is
+   the header).
+4. **Match details** (`lib/view/data.js` `matchTierRowBy`): a row with a discriminator and no
+   `player_id` never answers to a tag; a row whose `player_id` names another player never answers to
+   a discriminator. For an uploaded player the list's name is an extra tag key, after start.gg's own
+   (reader and writer share it).
+5. **Team** on an uploaded page is the list's prefix when it gives one, else start.gg's. A1.3 says
+   "the Team column gets the prefix" without saying whose. On the Mixfest data it makes no
+   difference: all 32 list names equal start.gg's prefix and tag.
+6. **The alias hover** shows when the tag part of the list's name differs from start.gg's tag (case
+   and spacing ignored): a dotted underline, title *In the uploaded list as "…"*. None on Mixfest.
+7. **A code start.gg doesn't know** becomes a row with id `unresolved-<code>`, `history_status`
+   "unresolved", the list's name, no request, no ✓ and no tier or notes edit (the routes accept
+   digits only, so they 404). It is counted in `meta.json` `history_status` only where it occurs.
+8. **Registry linking at upload writes the ids of tag-only matches** (A1.3), so those rows read by id
+   afterwards and the light blue does not appear on the upload's own page; the review surface there
+   is the summary's "Linked by tag — please review" list. When two or more uploaded players match one
+   row by tag, none is linked (A6-1 for a batch) and the summary lists it.
+9. **Pulls fill discriminators** (A1.1, "rows get a discriminator when a pull … resolves one"): after
+   every pull, rows already linked by `player_id` get the player's discriminator, any game. Never by
+   tag. **No backfill in the migration** (the contract's "may"): the migration stays a pure byte
+   transform, and rows fill on the next pull, upload, ✓ or edit.
+10. **"Done by the given date"** = from the start of that date in the server's local time
+    (`new Date(y, m-1, d)`; Mixfest's is stored as `2026-11-14T06:00:00.000Z`, midnight CST). The
+    Mixfest date, 2026-11-14, is start.gg's listing for "Melty Blood Actress Again Current Code" at
+    Midwest Mixfest '26 (<https://www.start.gg/tournament/midwest-mixfest-26/events>, seen through an Exa
+    search; tournament dates Nov 13–15, MBAACC on the 14th).
+11. **The page slug comes from the name** (`Mixfest 26 MBAACC` → `mixfest-26-mbaacc`). An existing
+    `out/<slug>/` is refused (409), and adding a start.gg tournament whose slug is an uploaded page's is
+    refused too, so neither overwrites the other.
+12. **Refresh on an uploaded page** pulls the same players again (Refresh means everything) and looks
+    up any row whose lookup failed. It never re-reads the file.
+13. **"Shown once"**: the page opens the newest summary by itself while it is unseen, then marks it
+    seen (`POST /api/t/<t>/upload/seen`, `shown_at`); afterwards it stays on the page, folded. Each run
+    that looked something up appends a summary to `state.json` `uploads`.
+14. **The game picker**: the numeric ids in `config/majors.json` (22407, 36865) with their names, then
+    "Other": a free id plus an optional name (default `Game <id>`).
+15. **CSV edges**: blank lines skipped; values after the second column ignored and listed by line; an
+    unterminated quote reported as malformed at its line; an empty name allowed (start.gg fills the tag).
+16. **`source` on read**: `lib/pool.js` `readState` gives `"startgg"` to a state.json without one and
+    never writes it; new tournaments get `source: "startgg"` from `newState`.
+17. **start.gg blue is `#3f80ff`**, model knowledge, unverified; one token per theme. The upload badge
+    is a muted violet (`#ece4f7`/`#4b2a7a`, dark `#3a2a52`/`#dccbf5`).
+18. **Archive standings is off for an uploaded page** (no start.gg events to fetch); Mark done and
+    Delete work.
+19. **`players.csv` gains `alias`** only in an uploaded pool; a start.gg pull's file is unchanged.
+20. **The lookups are logged** to `out/<t>/upload-requests.jsonl` (op, time, code, status; no token).
+21. **The desktop app on 8765 runs an older build** (the compiled sidecar). Two effects to know:
+    it shows the Mixfest page without build C's behavior (badges, hidden push), and its writer orders
+    columns by its old list, so its next tier write would move `discriminator` to the end of
+    `registry/tiers.csv`. Reads are by name, so nothing breaks, and the next write by new code puts it
+    back. Not exercised; reasoned from `readTierTable`.
+
+### Engineer's-choice rulings
+
+| ruling | options considered | picked, and why |
+|---|---|---|
+| Where an upload's pull lives | (a) a separate upload runner; (b) an `upload` input to `lib/run.js` that replaces only the registrant source | (b). The per-player loop, checkpoint, resume, `buildOutputs` and the swap are the existing code; the W-L stage in `app/jobs.js` is unchanged. |
+| Where the lookups' answers live | (a) in memory until done; (b) in `state.json`, written as each answers | (b). A stopped job resumes without asking again; `test/upload.test.js` "a stopped upload resumes". |
+| Representing an unknown code | (a) a view-only join from `state.json`; (b) a row in `players.csv` with a synthetic id | (b). Every view (table, compare, exports, CLI) shows it with no new plumbing; the id can't reach a write route. |
+| The match result | (a) change `matchTierRow` to return `{ row, by }`; (b) add `matchTierRowBy`, keep `matchTierRow` | (b). `lib/push.js` keeps its call unchanged; one index and one precedence for every caller. |
+| Tag-only vs recency on one cell | (a) both classes, CSS order decides; (b) one class chosen in `tierCellClass` | (b). No dependence on stylesheet order; the table, compare panel and CLI all call it. |
+| The CSV parser | (a) `lib/output.js` `parseCsv`; (b) `tiers-migrate` `splitRaw`; (c) a small one in `lib/upload.js` | (c). (a) keys rows by header and loses line numbers; (b) throws on the first bad quote. The contract needs line numbers and keeps going. |
+| How the file reaches the server | (a) multipart form; (b) the browser reads it (FileReader) and sends JSON | (b). The server stays JSON-only, with no multipart parser to own. Limit: the 200 kB body cap (a 32-row list is about 1 kB). |
+| How the page drops the blue after a ✓ or edit | (a) the page infers it from the action; (b) the write route answers `linked` | (b). The server states whether the row now carries this player's id. |
+
+### Acceptance
+
+Suite: `node --test` → **tests 256, pass 256, fail 0, skipped 0** (before 225/225/0/0). Clean clone
+(`git clone -b build/tool-c` at `6c49b79`, no `.env`): 256 / 256 / 0 / 0.
+
+| # | item | met | evidence |
+|---|---|---|---|
+| 1 | `node --test` clean clone, offline, no regression | yes | Above. 31 tests added, 0 removed or skipped; 7 existing tests changed, each listed below with the spec sentence behind it. |
+| 2 | T1 migration: `discriminator` after `player_id`, blank, every other byte identical, idempotent, reader/writer round-trip; rows get a discriminator from pulls and uploads | yes | `lib/tiers-migrate.js` `migrateTiersDiscriminator`, `migrateTiers`; `test/tiers-migrate.test.js` (byte identity on the real shape incl. CRLF, BOM and line breaks inside fields; LF; bare quoting; idempotence; refusals; the round-trip). Real run: scratch copy first (713 records, 0 mismatches, BOM and CRLF kept, re-run a no-op), then `node scripts/migrate-tiers.js` once (`c4cf4a3`). Pull fill: `test/upload.test.js` "a start.gg pull writes the discriminator…"; upload fill: "registry linking on upload". No backfill (assumption 9). |
+| 3 | Match order id → discriminator → tag; one matcher; tag-only marked and colored in table, compare panel, CLI; color and hover recorded; ✓ or edit writes both ids; A6-1 | yes | `test/match-order.test.js` (9 tests: each path, the view-model mark, the cell in table and compare panel, the CLI's CSS, both dark blocks equal, ✓ and edit linking, an existing discriminator kept, A6-1, the route). `test/parity.test.js` pins the CLI cell. Mutation check: disabling the discriminator step, the tag-only mark, or the write's discriminator fails 2, 4 and 3 tests (restored after). Color and hover: assumptions 1–2. |
+| 4 | CSV parsing contract | yes | `test/upload-csv.test.js`: the Mixfest fixture (32 rows, header, splits, 9 team names), code forms, header detection, duplicates with lines, malformed rows with lines (one column, empty, bad code, unterminated quote) beside kept rows, quoted commas and line breaks. |
+| 5 | Resolution: one `user(slug)` per row through the queue; unresolved kept and flagged; fake gains a resolver | yes | `lib/startgg.js` `Q_USER_BY_SLUG`/`fetchUserBySlug`; `lib/upload.js` `resolveRows`; `testlib/fake-api.js` `UserBySlug`. Tests: found fields, not-found (no user, no player), a 503 kept as an error and asked again, a bad token stopping it, one request per row. Live: 32 `UserBySlug` requests, 32 found. |
+| 6 | `POST /api/uploads` → `out/<slug>/`, `state.json` source upload, one synthetic event, pull via per-player code; one tab, no push, no Schedule; done by date; export and ✓; home lists it; form beside "Add a tournament" | yes | `app/server.js` `createUpload`; `app/jobs.js` `resolveUpload`; `lib/run.js` `upload`. `test/upload.test.js` (requests and order, state, the page's tab and controls, export, seeds, ✓, refusals of push/schedule/linked/ticking/Archive, done after the date, validation). Home layout per the two mid-pass messages (pinned). Browser pane, offline against the fake on port 8790: the form submitted, redirect, the job, the page in both themes, no console errors. Live: `out/mixfest-26-mbaacc/`. |
+| 7 | Display: current start.gg tag; the list name as alias on hover; prefix in Team | yes | `lib/view/render.js` `akaOf`; test "the page: …" (alias hover on a renamed player, none on a same-tag one, Team from the list, else start.gg's). Seen in the pane (dotted underline, title). Live data has no differing names (assumption 5). |
+| 8 | Registry linking on upload, linked-by-tag listed, summary shown once and kept in `state.json.uploads`; test with a scratch tiers file | yes | `lib/view/data.js` `linkPlayers`; test "registry linking on upload" (scratch file: id match, tag link, two players one tag, another game's row, tier/notes/source untouched, the summary, `upload/seen`). Live: 7 by id, 11 by tag, 0 ambiguous, 14 with no row; `git show 6c49b79` changes only `discriminator` (18 rows) and `player_id` (11). |
+| 9 | Source badges, both themes; existing and imported read as start.gg (migrated on read) | yes | `SOURCE_BADGE` in `app/server.js`; tokens in `app.css` light and both dark blocks (`test/match-order.test.js` compares the dark blocks). Test "the home page: …" (a state.json without `source` reads as start.gg and its bytes are unchanged). Live home page via the API: Mixfest `upload`, Eclipse and Crescendo `start.gg`. |
+| 10 | Live check: Mixfest uploaded once for real, request counts recorded; the page checked by the orchestrator | yes for the run, the orchestrator's check is pending | Live requests, below. The page itself is for the orchestrator: I left the summary unseen for Noah (opening the page marks it seen). |
+| 11 | README | yes | `d72d3bb`, `c6f0aee`: the upload (contract, what you get, what is missing), the discriminator column and match order, the light blue, the badges, `lib/upload.js`. |
+
+### Changed tests
+
+| test | change | why (spec) |
+|---|---|---|
+| `test/review.test.js` ×3 (✓ response shapes, lines 60, 114, 305) | expected objects gain `linked` | A1.2: the write route answers whether the row is now linked, so the page can drop the tag-only color. Additive. |
+| `test/outputs.test.js` "B4-3: the grey hover…" | the sheet-only row is now `match-tag` with *"Matched by tag only … · Never reviewed (tier from the sheet import)"*; the app row keeps grey | A1.2: a row matched by tag only gets the distinct color. The B4-3 text is still asserted, after the tag-only text. |
+| `test/parity.test.js` "parity: the CLI view…" | `rec-never` → `match-tag` for the sheet-only row; plus the CLI's CSS rule | A1.2, and the CLI must show the same cell. |
+| `test/tiers-migrate.test.js` "scripts/migrate-tiers.js on a copy…" | after the script, the file is T1 *then* the discriminator column | Acceptance 2: the script brings the file to the current shape. The T1 step is still pinned by the T1 tests. |
+| `test/tiers-migrate.test.js` "the real registry/tiers.csv…" | adds the discriminator-shaped branch (and build C's `.bak` branch); the pre-T1 branch is unchanged | Acceptance 2: the real file now has the column. |
+
+New: `test/match-order.test.js` (9), `test/upload-csv.test.js` (10), `test/upload.test.js` (9), and 3 in
+`test/tiers-migrate.test.js`. 225 + 31 = 256.
+
+### Live requests
+
+One run, 2026-10-30 15:04:57Z–15:13:17Z, the app from source on port 8791
+(`SEED_APP_MAX_PER_MIN=20 node app/server.js --port 8791`), the real token from `.env`, the real `out/`
+and `registry/tiers.csv`, via `curl -X POST /api/uploads` with the fixture's text (the same body the
+form sends).
+
+| part | requests | source of the count |
+|---|---|---|
+| user lookups (`UserBySlug`) | 32 (32 found, 0 not found, 0 errors, 0 retries) | `out/mixfest-26-mbaacc/upload-requests.jsonl` |
+| pull: per-player history (`UserEvents`) | 70 (0 retries) | `out/mixfest-26-mbaacc/pull-20261030-100600/_work/requests.jsonl`; `meta.json` `request_count` 70 |
+| pull: W-L (`UserIds` 2, `SetsBatch` 64) | 66 (0 retries) | `…/_work/wl-requests.jsonl` |
+| **total** | **168** | `…/_work/refresh-sends.json` `requests: 168` (every send of the job, through the queue) |
+
+**Max in any rolling 60 s: 20**, by the queue's send times (`refresh-sends.json` `sent_at_ms`, through
+`lib/pacing.js` `maxInAnyWindow`), with the ceiling at 20. **For the auditor:** the client's request
+records give 21 in one window. Those records are stamped when a request enters the queue
+(`lib/startgg.js` `request` takes `t = now()` before `fetchImpl`), and the queue may hold a request
+before sending it. So the client view runs a little ahead of the sends, and the queue's stamps
+(`app/limit-fetch.js` `onSend`, taken at the send) are the HTTP requests. I read the limit as HTTP
+requests; the auditor may read it otherwise.
+
+Result: 32 players (32 complete), 3,076 result rows in the window, 256 W-L fetched (all known), max
+`queryComplexity` 841, 0 failed. Tiers: 18 of 32 players have a tier (7 by id, 11 newly linked by tag).
+
+### Could not verify
+
+- **The live Mixfest page in a browser.** Not opened on purpose: the first visit marks the upload
+  summary seen, and that viewing is Noah's. Checked through the API instead (32 players, 3,076 rows, W-L
+  256/256, one tab, `controls` without Archive, the summary unseen, the home page's badges).
+- **start.gg's exact blue** (`#3f80ff`): model knowledge.
+- **The discriminator's shape** beyond the 8-hex values seen (assumption 3).
+- **The desktop app (8765)** against the new files: not exercised (assumption 21).
+- **The form's real file picker:** in the pane the file was attached with a `DataTransfer` (the pane
+  has no file dialog). The submit, the reading and the redirect ran for real.
+- **The light blue on a live page:** the Mixfest page has no tag-only rows after linking; the color
+  was checked in the pane on the offline fake page (both themes) and by tests.
+
+### UI checklist for the orchestrator
+
+Run the app **from source** (`npm start`, or `node app/server.js --port <p>`), not the desktop exe on
+8765, which is an older build.
+
+1. **Home page layout** (both mid-pass messages): "Tournaments", then the "Add a tournament" header,
+   the link field and **Add** on one row, then **Import from CSV** with its one-line description shown
+   while folded, then the list. No "Live tournaments first…" text. The sentence *"Tournaments are
+   marked done automatically once their last seeded event's date has passed. Delete one by hand…"*
+   sits just above the first done tournament (Mixfest is live, so above Eclipse).
+2. **Badges** in light and dark: Mixfest 26 MBAACC has a violet **upload** badge; Eclipse and Crescendo
+   have the blue **start.gg** badge.
+3. **Import from CSV** opened: page name, Game (the two Melty Blood games, then "Other (start.gg game
+   id)…", which reveals an id and a name field), Date, CSV file, Upload. (Uploading again with the
+   same name is refused, 409.)
+4. **`/t/mixfest-26-mbaacc`, first open:** the **Upload summary** is open: 32 rows, 32 found; Tiers
+   file: 7 matched by start.gg id, 7 discriminators written, 0 player ids written, 14 with no tiers row;
+   **Linked by tag — please review**: Spiraler (listed as RBS | Spiraler) → "Spiraler" tier 2, Mishi 2,
+   Alterchemist 1, Blixby 1, Ricefield 1, NITROUS 1, Wishy 2, Leebzz 2, Scrub Jay 1, Hydrous 0,
+   Javonero 1. Reload: it's folded. **The first open is Noah's if he should see it open.**
+5. The page: one tab (Melty Blood Actress Again Current Code), no Schedule tab, no **Seeded events**
+   picker, no **Push to start.gg…**; Refresh, Mark done present; status **live** (done from 2026-11-14).
+   32 players, 18 with a tier, majors columns Combo Breaker, Frosty Faustings, Climax of Night, Eclipse.
+6. **The tag-only color** is on the **Eclipse** page (sheet rows still unlinked): light blue Tier cells,
+   hover starting "Matched by tag only…"; the same in dark; tick two players including one blue to see
+   it in the compare panel; ✓ one blue row and the blue goes (that writes the row's ids into
+   `registry/tiers.csv`; un-✓ the same day undoes the review, the ids stay).
+7. **Registry links:** `git show 6c49b79 -- registry/tiers.csv`: 18 rows, only `discriminator` and
+   `player_id` changed.
+8. Download for Google Sheets and Export seeds CSV on the Mixfest tab both download.
+
+### REPORT
+
+```
+REPORT
+- Overview: Build C pass 1 is built and committed on build/tool-c (record commit follows 6c49b79).
+  registry/tiers.csv has a discriminator column (migrated once, byte-safe); players match tiers rows by
+  player_id, then discriminator, then tag, and a tag-only match is light blue in the table, compare panel
+  and CLI. A CSV list (name, discriminator) becomes its own page through POST /api/uploads: one lookup
+  per row through the queue, registry linking, the pull and W-L; the home page shows start.gg/upload
+  badges and follows Noah's two mid-pass layout messages. Live: the Mixfest file uploaded once,
+  168 requests, max 20 in any 60 s by send time. node --test 256/256/0/0 (before 225/225/0/0).
+- Found: Acceptance 1-11, all doable and done (12 is pass 4's). Two mid-pass layout amendments,
+  applied. One reading to check: the client log shows 21 in one 60 s window, the sends show 20.
+- Ran: ff379d3 (migration, matcher, writer), 56c7c5d (tag-only color), c4cf4a3 (the real tiers file
+  migrated), 00996c1 (CSV contract, user lookup, fake resolver), e26b22f (upload page, jobs, badges,
+  pull fill), d72d3bb + c6f0aee (README), c23be07 (home layout amendments), 6c49b79 (live linking in
+  registry/tiers.csv). Live: out/mixfest-26-mbaacc/. Browser pane: offline against the fake, both
+  themes. Clean-clone run: 256/256.
+- Attributed: core / seeding-ops increment 4, build C. STATED: dispatch-contract-tool-c.md,
+  design-tool.md Amendment A1, Noah's two mid-pass messages.
+- Queued: none.
+- Spend: term = 4 passes + at most 1 repair pair; consumed pass 1 of 4. start.gg: 168 of the granted
+  32 lookups + one pull; max 20/60 s (queue send times). No skills, subagents or workflows; one Exa
+  web search for the date. Token never read or printed.
+- Parked: none. Tree clean at the record commit. registry/tiers.csv.bak kept (gitignored) until pass 4.
+  Scratch (the offline UI demo, the scratch migration copy, the clone) is in this session's scratchpad.
+- Needs attention:
+  1. The 60 s count: 20 by the queue's send stamps (the HTTP requests), 21 by the client's records
+     (stamped on entering the queue). I read the limit as HTTP sends; the auditor should rule.
+  2. The first open of /t/mixfest-26-mbaacc shows the upload summary, then folds it. Let Noah have it,
+     or reset uploads[0].shown_at to null in out/mixfest-26-mbaacc/state.json after checking.
+  3. Interpretations for Noah to confirm (all amendable): light blue replaces the recency color on
+     tag-only cells, so Eclipse's sheet rows turn from grey to blue; Team takes the list's prefix
+     first (no effect on Mixfest); an upload links tag matches at once and lists them, so its own page
+     shows no blue; two listed players on one tag links neither; no discriminator backfill from old
+     pools; done from the start of the given date, local time; Mixfest's date 2026-11-14 from start.gg's
+     listing.
+  4. The desktop exe on 8765 is an older build: it shows the Mixfest page without build C's behavior,
+     and its next tier write would move the discriminator column to the end of the file (harmless;
+     reads are by name). Rebuild the sidecar before relying on it.
+  5. start.gg's brand blue (#3f80ff) is model knowledge; one CSS token to change if wrong.
+```

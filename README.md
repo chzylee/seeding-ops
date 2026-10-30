@@ -19,7 +19,53 @@ changes in any mode. The token comes from `.env` (see *Setup* below).
 
 **Add a tournament.** The home page lists your tournaments: live ones first, then done, then
 archived. Paste a start.gg tournament link, or any of its event links, into *Add a tournament*. The
-app asks start.gg once for the tournament's events and opens the tournament's page.
+app asks start.gg once for the tournament's events and opens the tournament's page. Each tournament
+on the home page carries a small badge saying where it came from: **start.gg** (blue) for one added
+by link, **upload** (violet) for a CSV list (below). Tournaments added before the badges existed,
+and the old per-event pulls imported into this layout, count as start.gg.
+
+**Or upload a player list.** When there is no start.gg event to read registrants from (or you have
+your own list), open *Upload a player list (CSV)* under *Add a tournament*:
+
+- **The file:** two columns, the player's name and then their start.gg **discriminator**, the
+  8-character code in their profile link (`start.gg/user/2d17cccd`). The code can be given bare
+  (`2d17cccd`), as `user/2d17cccd`, or as the whole profile link. Column names don't matter and a
+  header row is optional (the app sees there is none when the first row's second value is itself a
+  code). A name like `CHAINED | illumin` is split into team and tag. A code listed twice is kept
+  once; a row it can't read (no code, or not a code) is reported with its line number. Blank lines
+  and values after the second column are ignored (the latter are listed).
+- **The form:** a page name (it becomes the page's address, `/t/<name>`), the game (the games in
+  `config/majors.json`, or *Other* with a start.gg game id), the event's date, and the file.
+- **What you get:** a page like a tournament's with **one tab** for that game. The app looks each
+  code up on start.gg once (one request per row), then pulls those players' two years of results and
+  their W-L exactly as for a tournament, through the same queue. The table shows each player's
+  **current start.gg tag**; when the list named them differently, hover the (dotted) tag to see the
+  list's name. The Team column takes the list's team, or start.gg's when the list gives none. A code
+  start.gg doesn't know stays on the page under the list's name, flagged *not found on start.gg*,
+  with no results and no ✓ or tier edit (there is no id to save them against). Tiers, ✓, notes,
+  majors, compare and both exports work as on any tab. The page reads as **done** from the start of
+  the date you gave; Mark done and Delete work as usual. **Refresh** pulls the same players' results
+  again, and looks up again any row whose lookup failed (it does not re-read the file; upload a new
+  list as a new page for that).
+- **What's missing compared with a start.gg tournament:** no event picker, no **Push to start.gg**
+  (there is no bracket), no **Schedule** tab and no **Archive standings** (there are no start.gg
+  events behind the page). A page name already used by another page is refused, and adding a
+  start.gg tournament whose address matches an uploaded page's is refused too, so neither
+  overwrites the other.
+- **Your tiers file on upload:** every listed player is matched to the game's rows in
+  `registry/tiers.csv` (see *Tiers and start.gg ids* below). A row matched by start.gg id gets the
+  player's discriminator written in. A row with no id that matches **by tag only** gets the player's
+  ids written in and is listed under *Linked by tag — please review* in the page's **Upload
+  summary**, which opens by itself the first time you visit the page and stays there folded after
+  (it is kept in `out/<page>/state.json` under `uploads`). When two listed players match the same
+  row by tag, neither is linked and the summary says so. Tiers, notes and reviews are never changed
+  by an upload. The summary also lists codes not found, repeated codes and unreadable rows.
+
+**Tiers and start.gg ids.** `registry/tiers.csv` has a `discriminator` column next to `player_id`
+(added by `scripts/migrate-tiers.js`; blank until known). A player is matched to a tiers row by id
+first (the row's `player_id`, then its `discriminator`), and only then by tag, among rows that have
+neither id. Ids get written in by a ✓ or an edit on the row, by an upload (above), and by any pull:
+a row already linked by `player_id` gets that player's discriminator.
 
 **Tick the events to seed, then Pull.** On a new tournament's page, *Seeded events* lists its
 singles events (teams events are shown greyed out: they can't be seeded). Tick the ones you're
@@ -82,6 +128,11 @@ never changes, and a **browser reload** shows the newest data. Old event links
 - **Tier colors** show how recently you reviewed each player: green = reviewed at this tournament,
   no color = within the last 6 months, amber = longer ago, grey = never reviewed. Hover a tier for
   the date and the tournament of the last review; a grey tier that came from the sheet import says so.
+  **Light blue** = the tier comes from a row matched **by tag only** (it has no start.gg id yet, so
+  the app is inferring that it's this player). It takes the place of the recency color; the hover
+  says "Matched by tag only" and then the review text. A ✓ or an edit on that row writes the
+  player's ids into it and the blue goes. Two people with the same tag both show the row in blue
+  until one of them is ✓'d or edited; after that it belongs to that one only.
 - **Major columns are per game, main event only.** A major column shows a player's result in the
   tab's game at that tournament's main event for the game (its largest bracket of that game that
   isn't a side, community, 2v2, teams or "Pre-" bracket), one result per year. Side brackets stay
@@ -374,9 +425,13 @@ increment 3, [`docs/design-tool.md`](docs/design-tool.md)):
 - `lib/push.js`: the push's dry run and post. `lib/schedule.js` and `lib/schedule-pull.js`: the
   Schedule tab's data (moved from `conflicts/`; `conflicts/linked.json` is read once, when a
   tournament is added, for side tournaments linked before increment 3; `conflicts/out/` isn't read).
-- `scripts/migrate-tiers.js`: the one-time T1 migration of `registry/tiers.csv` (drops
-  `justification`, adds the two review columns, backfills Eclipse's app-set tiers). Already run;
-  running it again does nothing.
+- `scripts/migrate-tiers.js`: brings `registry/tiers.csv` to the current shape: the T1 migration
+  (drops `justification`, adds the two review columns, backfills Eclipse's app-set tiers), then the
+  `discriminator` column after `player_id` (build C). Both already run; running it again does
+  nothing. It keeps the original as `registry/tiers.csv.bak` (not committed).
+- `lib/upload.js`: an uploaded list: the CSV contract, the per-row start.gg user lookup, and the
+  rows as the pull's players (`lib/run.js`'s `upload` input). The registry linking is
+  `lib/view/data.js` `linkPlayers`, through the same row matcher as the page.
 - `app/server.js` (`npm start`, `app.cmd`): the local server; `app/jobs.js` the pull, W-L, schedule
   and archive jobs; `app/queue.js` the one request queue; `app/limit-fetch.js` its ceiling;
   `app/public/` the pages (plain HTML/CSS/JS, no build): `tournament.html` with `tournament.js`

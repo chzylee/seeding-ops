@@ -25,7 +25,9 @@ const LEGACY_RE = /^(.+?)__(.+?)__(\d{8}-\d{4})(?:-(\d+))?$/;
 const SLUG_PART = /^[a-z0-9][a-z0-9-]*$/i;
 
 function readJson(file) { try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return null; } }
-const shortEvent = (slug) => { const m = /event\/([^/?#]+)/.exec(String(slug || '')); return (m ? m[1] : String(slug || '')).toLowerCase(); };
+// Anchored: a tournament slug can itself end in "-event" ("big-event/event/x"), so only a path
+// segment that IS "event" counts.
+const shortEvent = (slug) => { const m = /(?:^|\/)event\/([^/?#]+)/.exec(String(slug || '')); return (m ? m[1] : String(slug || '')).toLowerCase(); };
 
 // Newest finished legacy run per (tournament, event).
 function legacyRuns(outRoot) {

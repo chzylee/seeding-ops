@@ -349,3 +349,29 @@ test('E2-4: the upload summary names the row skipped as the header (line and bot
   // A summary recorded before this field existed (the live Mixfest one) still renders.
   assert.ok(!html({ ...b, header: undefined }).includes('column header'));
 });
+
+// E2-6 (build C pass 2): a failed lookup is not a code start.gg does not know.
+test('E2-6: a row whose lookup failed is flagged "lookup failed (<reason>)", distinct from "not found on start.gg"; both in the page and the export', async () => {
+  const w = setup({ fetchOpts: { userBySlugFail: 'aaaa0005' } });
+  await upload(w.app);
+  await w.app.jobs.idle();
+  const st = pool.readState(path.join(w.outRoot, 'mixfest-26-test'));
+  const reason = st.upload.rows.find((r) => r.discriminator === 'aaaa0005').resolved.reason;
+  assert.ok(reason, 'the failed lookup kept its reason');
+  const vm = (await inject(w.app.handler, { url: `/api/t/mixfest-26-test/g/${GAME.id}/data` })).json();
+  const by = Object.fromEntries(vm.players.map((p) => [p.player_id, p]));
+  assert.strictEqual(by['unresolved-aaaa0005'].lookup_error, reason);
+  assert.strictEqual(by['unresolved-deadbeef'].lookup_error, undefined);
+  const ctx = R.contextFromViewModel(vm, { app: true });
+  const failed = R.summaryRow(by['unresolved-aaaa0005'], ctx, { app: true });
+  const unknown = R.summaryRow(by['unresolved-deadbeef'], ctx, { app: true });
+  const esc = (s) => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  assert.ok(failed.includes(`>lookup failed (${esc(reason)})</div>`), failed);
+  assert.match(failed, /title="The start\.gg lookup for aaaa0005 failed[^"]*Refresh asks again\."/);
+  assert.ok(!failed.includes('not found on start.gg'));
+  assert.match(unknown, />not found on start\.gg \(deadbeef\)<\/div>/);
+  assert.ok(!unknown.includes('lookup failed'));
+  // The pool's players.csv keeps the reason (and nothing for a found or not-found row).
+  const ps = out.parseCsv(fs.readFileSync(path.join(pool.currentPull(path.join(w.outRoot, 'mixfest-26-test')).dir, 'players.csv'), 'utf8'));
+  assert.deepStrictEqual(ps.filter((p) => p.lookup_error).map((p) => [p.player_id, p.lookup_error]), [['unresolved-aaaa0005', reason]]);
+});

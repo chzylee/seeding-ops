@@ -31,7 +31,9 @@ your own list), open *Import from CSV* under the link field in *Add a tournament
   8-character code in their profile link (`start.gg/user/2d17cccd`). The code can be given bare
   (`2d17cccd`), as `user/2d17cccd`, or as the whole profile link. Column names don't matter and a
   header row is optional (the app sees there is none when the first row's second value is itself a
-  code). A name like `CHAINED | illumin` is split into team and tag. A code listed twice is kept
+  code, or looks like a mistyped one: then that row is reported as unreadable, never skipped as a
+  header; when a row is skipped as the header, the upload summary names it). A list takes at most
+  1,000 players (each is a start.gg lookup); a longer one is refused with the count. A name like `CHAINED | illumin` is split into team and tag. A code listed twice is kept
   once; a row it can't read (no code, or not a code) is reported with its line number. Blank lines
   and values after the second column are ignored (the latter are listed).
 - **The form:** a page name (it becomes the page's address, `/t/<name>`), the game (the games in
@@ -41,7 +43,8 @@ your own list), open *Import from CSV* under the link field in *Add a tournament
   their W-L exactly as for a tournament, through the same queue. The table shows each player's
   **current start.gg tag**; when the list named them differently, hover the (dotted) tag to see the
   list's name. The Team column takes the list's team, or start.gg's when the list gives none. A code
-  start.gg doesn't know stays on the page under the list's name, flagged *not found on start.gg*,
+  start.gg doesn't know stays on the page under the list's name, flagged *not found on start.gg*
+  (a lookup that failed instead is flagged *lookup failed* with the reason, and Refresh asks again),
   with no results and no ✓ or tier edit (there is no id to save them against). Tiers, ✓, notes,
   majors, compare and both exports work as on any tab. The page reads as **done** from the start of
   the date you gave; Mark done and Delete work as usual. **Refresh** pulls the same players' results
@@ -305,7 +308,7 @@ In a pull folder:
 | `players.csv` | One row per registrant of any ticked event, **including players with no results**. Columns: `player_id` (the join key; never join on tag), `gamer_tag`, `prefix`, `user_slug` (blank if no start.gg account), `region_state`, `region_country` (from the account's public location; blank if hidden or no account), `result_count`, `history_status`, `team_entry`, `events` (the ticked events they entered, by event slug, separated by `;`). |
 | `results.csv` | One row per player per past event, all games, newest first within each player. Columns: `player_id`, `gamer_tag`, `event_date` (YYYY-MM-DD, UTC), `game_id`, `game_name`, `tournament_name`, `event_name`, `event_slug`, `event_id`, `num_entrants`, `placement` (blank if start.gg has none), `is_online`. There is no `is_event_game` column: a tab compares `game_id` with its own game. |
 | `meta.json` | The tournament (slug, name, start, timezone), its seeded events (slug, name, game, start, phases), `run_at`, the window, `mode` (`full`, `incremental` or `retry`), counts (registrants, results, `history_status`, `team_entries_split`, `region_coverage`, registrants in two events), `request_count` (every request behind the pull's rows, including the earlier requests that fetched players an incremental or retry pull carried over), `requests_this_pull` (what this pull itself sent; the same as `request_count` for a full pull), `query_complexity_max`, everything skipped (`out_of_window`, `no_event_container`), and `failed_players` with each one's last error. |
-| `_work/` | The pull's working state: `run.json` (what a resume needs), `checkpoint.jsonl` (one line per finished player), `requests.jsonl` (one line per request: time, query, player, status, complexity; no token), and the app's W-L request log. You don't need these files for analysis. |
+| `_work/` | The pull's working state: `run.json` (what a resume needs), `checkpoint.jsonl` (one line per finished player), `requests.jsonl` (one line per request: the time it was sent, query, player, status, complexity, and `queued_ms` when it waited in the app's queue; no token), and the app's W-L request log. You don't need these files for analysis. |
 
 `history_status` means:
 

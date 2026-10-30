@@ -57,7 +57,7 @@ test('✓ sets last_reviewed_on = today and last_reviewed_tournament = this tour
   // An unlinked sheet-import row, matched by tag, exactly as an edit would match it.
   const { tiersFile, dir } = setup([tierRow({ sheet_tag: 'Kouryuu', tier: '8', decided_on: '' })]);
   const out = data.reviewPlayer(dir, '1', { reviewed: true, now: day('2026-11-03'), tiersFile });
-  assert.deepStrictEqual(out, { player_id: '1', tier: 8, notes: '', decided_on: '', last_reviewed_on: '2026-11-03', last_reviewed_tournament: T, changed: true });
+  assert.deepStrictEqual(out, { player_id: '1', tier: 8, notes: '', decided_on: '', last_reviewed_on: '2026-11-03', last_reviewed_tournament: T, linked: true, changed: true });
   const rows = readRows(tiersFile);
   assert.strictEqual(rows.length, 1, 'the matched row was updated, not forked');
   assert.strictEqual(rows[0].player_id, '1', 'and linked to the player');
@@ -111,7 +111,7 @@ test('✓ for a player with no tiers row creates one (source app, no tier); un-�
   const { tiersFile, dir } = setup([tierRow({ sheet_tag: 'Someone Else', tier: '3' })]);
   const before = fs.readFileSync(tiersFile, 'utf8');
   const none = data.reviewPlayer(dir, '3', { reviewed: false, now: day('2026-11-03'), tiersFile });
-  assert.deepStrictEqual(none, { player_id: '3', tier: null, notes: '', decided_on: '', last_reviewed_on: '', last_reviewed_tournament: '', changed: false });
+  assert.deepStrictEqual(none, { player_id: '3', tier: null, notes: '', decided_on: '', last_reviewed_on: '', last_reviewed_tournament: '', linked: false, changed: false });
   assert.strictEqual(fs.readFileSync(tiersFile, 'utf8'), before);
   data.reviewPlayer(dir, '3', { reviewed: true, now: day('2026-11-03'), tiersFile });
   const rows = readRows(tiersFile);
@@ -302,7 +302,7 @@ test('B2-3: ✓ then un-✓ on a player with no tiers row leaves the file as it 
     data.reviewPlayer(dir, '3', { reviewed: true, now: day('2026-11-03'), tiersFile });
     assert.strictEqual(readRows(tiersFile).length, count + 1, 'the ✓ created a row');
     const out = data.reviewPlayer(dir, '3', { reviewed: false, prior, now: day('2026-11-03'), tiersFile });
-    assert.deepStrictEqual(out, { player_id: '3', tier: null, notes: '', decided_on: '', last_reviewed_on: '', last_reviewed_tournament: '', changed: true });
+    assert.deepStrictEqual(out, { player_id: '3', tier: null, notes: '', decided_on: '', last_reviewed_on: '', last_reviewed_tournament: '', linked: false, changed: true });
     assert.strictEqual(readRows(tiersFile).length, count, 'the undo removed the row it created');
     assert.strictEqual(fs.readFileSync(tiersFile, 'utf8'), before);
   }

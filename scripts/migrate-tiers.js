@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 'use strict';
-// scripts/migrate-tiers.js — run the T1 migration (lib/tiers-migrate.js) on a tiers file, once.
+// scripts/migrate-tiers.js — bring a tiers file to the current shape (lib/tiers-migrate.js migrateTiers):
+// the T1 migration (build A) when the file is pre-T1, then the discriminator column (build C), once.
 //   node scripts/migrate-tiers.js [file] [--dry-run]
 // Default file: registry/tiers.csv. Before writing, the original is copied to <file>.bak (kept
 // until the build's closing review approves; delete it by hand after). The write is atomic
@@ -9,15 +10,15 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const { migrateTiersT1 } = require('../lib/tiers-migrate');
+const { migrateTiers } = require('../lib/tiers-migrate');
 
 function main(argv = process.argv.slice(2), out = console) {
   const dry = argv.includes('--dry-run');
   const fileArg = argv.find((a) => !a.startsWith('--'));
   const file = path.resolve(fileArg || path.join(__dirname, '..', 'registry', 'tiers.csv'));
   const input = fs.readFileSync(file, 'utf8');
-  const { text, changed, stats } = migrateTiersT1(input);
-  const summary = `${stats.rows} rows, ${stats.app} with source=app, ${stats.backfilled} backfilled; columns ${stats.columnsBefore} -> ${stats.columnsAfter}`;
+  const { text, changed, stats } = migrateTiers(input);
+  const summary = `${stats.rows} rows, ${stats.app} with source=app, ${stats.backfilled} backfilled; columns ${stats.columnsBefore} -> ${stats.columnsAfter}${stats.steps.length ? ` (${stats.steps.join(' + ')})` : ''}`;
   if (!changed) { out.log(`${file}: already migrated (${summary}). Nothing written.`); return 0; }
   if (dry) { out.log(`${file}: would migrate (${summary}). --dry-run: nothing written.`); return 0; }
   const bak = `${file}.bak`;

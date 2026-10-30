@@ -3024,3 +3024,283 @@ server-side changes reach it at the next launch, which the orchestrator does aft
 page's one-time upload summary is still unseen (`uploads[0].shown_at` null). The browser checklist items
 (tag-only light blue on a scratch copy, the header-skipped note, the 1,000-row refusal) rest on pass 3's
 own offline run and the six new tests; not re-run here to avoid touching the checkout while Noah uses it.
+
+---
+
+## Build C — Pass 4 — engineering auditor (closing re-review)
+
+Seat: engineering-auditor persona v0.2.0 (`personal-staff/personas/library/engineering-auditor.md`,
+Profile block), a fresh job. Model: Opus. Report-only: no source, test, config or data file edited; this
+section is the only change, in one commit. Reviewed `build/tool-c` at `637485b` (clean tree). The artifact
+is the code at `345508f`: `git diff --stat 345508f 637485b` lists only `docs/build-record-tool.md`. No
+skills, subagents or workflows. **No start.gg calls, and the token was never read**: every suite and probe
+preloaded `testlib/no-network.js`, in a clean clone without `.env` (`scratchpad/p4c/clone`), against the
+fake. `out/`, `registry/tiers.csv` and `registry/tiers.csv.bak` were only read; every write ran in the
+clone or on copies (`scratchpad/p4c/outcopy`, `scratchpad/p4c/view`). Probe scripts are in
+`scratchpad/p4c/probes/` (`mutate.js` with `m1.json` and `m2.json`, `csvdiff.js`, `routes.js`).
+**Port 8765 was not started, stopped or sent any request**, and `/t/mixfest-26-mbaacc` was never opened
+on it; my own server ran on port 8799 over a copy and was stopped afterwards.
+`out/mixfest-26-mbaacc/state.json` `uploads[0].shown_at` is still `null`.
+
+### Terms as understood
+
+- **Comparand:** `docs/dispatch-contract-tool-c.md` Acceptance 1–11, plus 12, which is this pass's to
+  give or withhold; Noah's two mid-pass home-page messages as pass 1 recorded them (binding per the
+  caller); `docs/design-tool.md` Amendment A1 with §Pages and §Lifecycle. Pass 3 was held to
+  "Orchestrator rulings for build C pass 3"; I did not re-decide those rulings.
+- **Loop:** 4 passes plus at most one extra repair/re-review pair. This is pass 4. If I withhold 12, the
+  pair is available and I must say exactly what the repair does.
+- **Handed to me to judge:** pass 3's assumption 1, the definition of an "attempted" discriminator (E2-4).
+- **Assumption I supplied:** the live upload's 18-row linking is judged against the Mixfest pool's own
+  `players.csv` and its upload summary, not against start.gg (no calls). Amendable.
+- **One disclosure:** my first baseline hash (`sha1sum` of every file under `out/` and `registry/`, as
+  pass 2 did) also hashed the bytes of the old `out/<t>__<e>__*` folders. Nothing in them was opened or
+  parsed; every later hash covered only the three pools and `registry/`.
+
+### What I re-ran
+
+| what | command / method | result |
+|---|---|---|
+| suite, working tree | `NODE_OPTIONS="--require ./testlib/no-network.js" node --test` at `637485b` (Node v24.14.1) | tests 262, pass 262, fail 0, skipped 0; tree clean afterwards |
+| suite, clean clone, offline | `git clone -b build/tool-c`, checkout `345508f`, no `.env`, same command | 262 / 262 / 0 / 0 (matches the claim) |
+| before-states | the clone at `d19f853` and at `c7be7b3` | 256 / 256 / 0 / 0 and 225 / 225 / 0 / 0 (match) |
+| test names | sorted pass lines at `c7be7b3`, `d19f853`, `345508f` | pass 3: 0 gone, 6 new (E2-1, E2-4 ×2, E2-5, E2-6, E2-7). Whole build: 0 gone, 37 new. `git diff d19f853 345508f -- test/` has no removed line |
+| protected files | `git diff --stat c7be7b3 345508f --` the usage log, the design doc, all contracts, `build-record.md`, `build-record-webapp.md`, `.env.example`, `src-tauri/`, `.github/`; removed lines in `git diff c7be7b3 637485b -- docs/build-record-tool.md` | empty; 0 removed lines (the record is append-only) |
+| mutation checks, pass 3's fixes (`m1.json`, 20 mutants, full suite each, restored with `git checkout --`) | table below | 19 killed by the named pass-3 test; 1 survivor (E4-1) |
+| mutation checks, core acceptance guards (`m2.json`, 8 mutants) | A6-1 in a batch, `readState`'s source fallback, the badge fallback, the tag-only mark, a discriminator-linked row answering to a tag, the `player_id` step, the tag-only class, the migration's BOM | 7 killed (1 to 24 tests each). The server's badge fallback survives as an equivalent mutant: `readState` already gives every state a known source |
+| **T1 migration and live linking**, own raw parser (`csvdiff.js`: quotes kept, each record's line ending) | `registry/tiers.csv.bak` vs the working `registry/tiers.csv` | BOM kept on both; 713 records each; CRLF on all 713, 0 line-ending changes; the header gains only `discriminator`, after `player_id`; 0 quoting changes; exactly 18 rows differ, in `discriminator` (18) and `player_id` (11), nothing else |
+| the 18 rows against the live pool | each tiers row with a discriminator vs `out/mixfest-26-mbaacc/<current>/players.csv` | 18 of 18: the row's `player_id` is a Mixfest player whose `user_slug` is `user/<the row's discriminator>`, game 22407. The 11 with a new `player_id` are exactly the summary's *Linked by tag* list (Spiraler, Mishi, Alterchemist, Blixby, Ricefield, NITROUS, Wishy, Leebzz, Scrub Jay, Hydrous, Javonero); the other 7 are its "7 matched by start.gg id"; 0 ambiguous, 14 with no row |
+| the tiers file in git | `git hash-object` vs `HEAD:registry/tiers.csv`; `git ls-files --eol`; `git log -- registry/tiers.csv` | equal (`359f543…`); `i/lf w/crlf`, as before the build; last written by `6c49b79`; `.bak` sha1 `ffb8898…` (build B's close), ignored by `.gitignore:5` |
+| idempotence | `migrateTiers` on the current file | `changed: false`, text identical |
+| tag-only today (E2-2's correction) | `readNotes` over each pool's current players with the real tiers file | Eclipse: 182 rows, 0 tag-only; Mixfest: 18 rows, 0 tag-only; no tiers row matches Crescendo's players. The correction is true |
+| the 8765 loader (E2-3's correction) | `app/app-main.js` lines 45–52; `Get-Process` on `seeding-server.exe` | the loader `require`s `<repo>/app/server.js` when it exists, and the exe sits in `app/`. The correction is true. The process started at 10:16:50, **before** pass 3's commits (10:37–10:40); see E4-3 |
+| routes and leaks (`routes.js`: `createApp` over copies of the three pools plus a planted `.env`) | 19 paths: `.env` in plain, `%2e`, `../`, `..%2f`, `%5c` and double-slash forms; `state.json` and `current` under `/t/`, `/out/`, `/api/t/`, `/static/`; `registry/tiers.csv` | all 404; nothing leaked |
+| the upload page's guards (on the copy) | `POST` to `events`, `schedule/refresh`, `linked`, `push/upload/dry-run`, `push/upload/post`; `lifecycle` archive | 409 with the upload guard's own message on the first five; archive refused; `GET /api/t/mixfest-26-mbaacc` → `source: upload`, one event, `controls.archive: false` |
+| upload names and path safety (on the copy) | `../../evil`, `..\..\evil`, `CON`, `a/b\c`, `%2e%2e`, blanks, `.env`, `state.json`, an existing pool's name, an accented name, 100 characters | slugs are only `[a-z0-9-]`: `evil` (then 409 for the second), `con`, `a-bc`, `2e-2e`, 400 for blanks, `env`, `state-json`, 409 for `eclipse 1st cour`, `unicode-fest`, 60 characters. Nothing written outside the scratch `out/` |
+| the home page (copy: `GET /` through the handler, and the Browser pane, dark) | the order and text per both mid-pass messages | the header, the link row with Add, *Import from CSV* with its one-line description, then the list; one done-note above Eclipse; no "Live tournaments" text; badges: Mixfest `upload`, Eclipse and Crescendo `start.gg` (their `state.json` have no `source`, and their bytes are unchanged) |
+| **the Mixfest page, on a copy** | the clean clone on port 8799 (`--out` a copy of the three pools; `SEED_TIERS_FILE` a copy of the tiers file with Mishi's and Hydrous's ids blanked); Browser pane | one tab (Melty Blood Actress Again Current Code), no *Seeded events* box, *Push to start.gg…* hidden, no Schedule tab; the upload summary opened on the first visit (the copy's `shown_at` was set; the real one is still `null`) and listed the 11 tag links; Mishi's and Hydrous's Tier cells `match-tag` with the hover starting "Matched by tag only…", dark `#18406e`/`#d3e5ff`, after a reload in light `#cfe2ff`/`#12357a`, and the same light blue in the compare panel with both ticked |
+| the one queue | every `createClient` and `fetchFor` in `app/`, `lib/run.js`, `lib/upload.js` | the upload's lookups, pull and W-L all take `queue.fetchFor` (`app/jobs.js:115,158,170`); E2-1's `onSent` is stripped by `limit-fetch` before the real fetch |
+| `out/` and T1 before and after | sha1 of the 27 files in the three pools and `registry/` | identical. Eclipse and Crescendo: no file newer than the contract; mtimes 09:13:14, before `c7be7b3` (09:40) |
+
+Mutation detail, pass 3's fixes:
+
+| fix | mutation | failed |
+|---|---|---|
+| E2-5 | the guard removed from the push routes | the E2-5 test |
+| E2-5 | the guard on dry-run only | the E2-5 test (the post route is pinned too) |
+| E2-1 | the record stamped at queue entry (`at = t`) | the E2-1 test |
+| E2-1 | `limit-fetch` never reports the send | the E2-1 test |
+| E2-1 | `queued_ms` dropped | the E2-1 test |
+| E2-4 | an attempted code taken as the header | both E2-4 tests |
+| E2-4 | `user/` and links not counted as attempts | the E2-4 parse test |
+| E2-4 | the non-hex letter budget 2 → 0 | the E2-4 parse test |
+| E2-4 | **the "at least one digit" clause dropped** | **nothing** (E4-1) |
+| E2-4 | `header_row` not parsed / not in `state.json` / not in the summary / not on the page | 2, 1, 1, 1 tests |
+| E2-6 | a failed lookup treated as not found; render ignores `lookup_error`; `players.csv` drops the column; `loadRun` drops it | the E2-6 test, each |
+| E2-7 | no ceiling; `>=` for `>`; a ceiling of 5,000 | the E2-7 test, each |
+
+### Findings
+
+**On pass 3's dispositions.** Each one holds on the artifact.
+
+| # | pass 3 said | holds? | evidence |
+|---|---|---|---|
+| E2-1 | FIXED (the cheap half) | **holds** | records carry the send time, and `queued_ms` when they waited; three mutations fail the test; the "ceiling one below" half went nowhere, per ruling |
+| E2-2 | ACKNOWLEDGED, record correction | **holds; the correction is true** | 0 tag-only matches on every real pool; I saw the color on a copy with two rows' ids blanked (both themes, table and compare panel) |
+| E2-3 | ACKNOWLEDGED, record correction | **holds; the correction is true** | `app/app-main.js` loads the checkout's `app/server.js`. One consequence the correction did not spell out is E4-3 |
+| E2-4 | FIXED | **holds**, one clause unpinned (E4-1) | both tests; 7 of 8 mutations fail |
+| E2-5 | FIXED (test) | **holds** | the guard's exact message on both routes; removing it, or keeping it on dry-run only, fails the test |
+| E2-6 | FIXED | **holds** | four mutations fail the test; the live pool (no `lookup_error` column) renders as before |
+| E2-7 | FIXED | **holds** | 1,000 accepted, 1,001 refused with the count before any write or request; three mutations fail |
+| E2-8 | DECLINED (kept, per ruling) | **holds** | the ruling says keep, amendable; the README does not say it (E4-2) |
+| E2-9 | ACKNOWLEDGED | **holds** | no registry write since `6c49b79` |
+
+**Pass 3's E2-4 definition, judged** (the job asked me to). A first row is a header only when its second
+value is neither a code nor "an attempt at one": it contains `user/`, it is a link (`://`, `www.`,
+`start.gg/`), or it is one token of 6–10 letters and digits with at least one digit and at most two
+letters outside a–f. My probes: `abcd123`, `aaaa002`, `aaaa00002`, `abcd1234x` and `abcdefg1` count as
+attempts; `discriminator`, `Discrim`, `CodeID`, `Decode`, `StartGG`, `startgg id`, `user id`,
+`user_slug`, `slug`, `ID`, `gamertag1` and `tag2` stay headers. A mistype outside the rule (`zzzz1234`,
+a 5-character fragment) is still skipped as the header, but the summary now names that row with its line
+and both values, so nothing is silent; that is the ruling's own backstop. **The definition is sound, and
+Noah could sign it.** One cost to know: every list with a normal header now gets the note "Line 1 was
+read as the column header and skipped: name, discriminator. If that is a player, add a header row above
+it and upload again." It is dim text, and it is what the ruling asked for ("whenever a header row is
+skipped"). Noah may find it noise; that is his call (Open items).
+
+**E4-1 — NOTE — the digit clause of the attempted-code rule is not pinned.** Dropping "at least one digit"
+from `looksLikeAttemptedCode` leaves the suite green. The clause keeps a short all-letter column name such
+as `CodeID` or `Decode` a header. Without it, line 1 would be reported as malformed instead; nothing
+would be lost, because the rows below still read. **Resolves:** add one such name to the E2-4 test's
+header list. No user impact today.
+
+**E4-2 — NOTE — the README does not say the list's name is also a tag key.** E2-8 kept, by ruling, that an
+uploaded player answers to a tiers row by the name the list gave as well as by start.gg's tags, in the
+reader and the writer. The README's *Your tiers file on upload* and *Tiers and start.gg ids* paragraphs
+describe matching by tag without saying whose tag, so Noah would read them as start.gg's tag only. Every
+such link is in the summary's review list, so it is visible. **Resolves:** one clause, for example "by
+tag (start.gg's, or the name the list gave)".
+
+**E4-3 — NOTE, for Noah before his next upload — the app on 8765 runs pass 1's server code.** The process
+started at 10:16:50; pass 3's commits are from 10:37–10:40. The loader reads `app/server.js` and `lib/`
+once, at launch, while `app/public/` and `lib/view/render.js` are served from disk on each request. So
+until the app is relaunched, an upload made there still accepts more than 1,000 rows, still skips a
+mistyped first code as the header without naming it, still flags a failed lookup as "not found", and
+still stamps its request logs at queue entry. The pages render, because the new browser code only reads
+fields the old server does not send. Nothing is wrong on disk. **Resolves:** relaunch the desktop app
+(the orchestrator already plans to after this pass). A relaunch does not touch the Mixfest summary.
+
+**E4-4 — NOTE — Acceptance 10's "the resulting page checked by the orchestrator" is not on the record.**
+The contract's Passes table puts a browser check between passes. The record has no orchestrator section
+after pass 1, and the one after pass 3 says the checklist was not re-run, on purpose, so that Noah sees
+the Mixfest summary first. I rendered a copy of the live pool in the Browser pane (above): one tab, the
+controls, the summary with the 11 tag links, and the blue on blanked rows in both themes. That is the
+page's code over the real data. The first open of the real page is still Noah's, as intended. This is not
+a build defect.
+
+**Literal ask, both directions.** *Short of it:* nothing on the Acceptance list as written; item 10's
+orchestrator leg is E4-4. *Beyond it:* nothing to pull back. Every addition sits inside A1, the contract
+or a ruling: the upload request log and `lookup_error` (E2-1, E2-6); Refresh asking failed lookups again
+(A1.3: the pool is pulled "the same way as a tournament's"); the refusal to add a start.gg tournament over
+an uploaded page's slug (it protects A1.3's page); Archive off on an upload (A1.3 lists Mark done and
+Delete only); the `alias` column (A1.3's alias); and the list's name as a tag key (E2-8, ruled). No file
+outside the grants changed.
+
+**Comprehension.** Pass 3's code diff is 78 added and 18 removed lines over 9 files, plus 143 test
+lines. Each disposition reads straight from the ruling to a small function and the test that fails
+without it. Read whole, build C is A1 as written: one matcher with an id-then-tag order, one color class
+from one function, a CSV parser that keeps line numbers, and one upload route that writes a `state.json`
+and hands the rest to the existing pull. I could follow it in one sitting per area.
+
+### Acceptance
+
+| # | item | met | my evidence |
+|---|---|---|---|
+| 1 | `node --test` clean clone, offline, no regression (225 before) | **yes** | 262/262/0/0 on a clean offline clone at `345508f` and on the working tree; 225/225/0/0 at `c7be7b3`; 0 test names gone, 37 added; pass 3 removed no assertion |
+| 2 | T1 migration: `discriminator` after `player_id`, blank, every other byte identical, idempotent, round-trip; rows filled by pulls and uploads | **yes** | my own raw parser, `.bak` vs the file: only the column added; BOM, quoting and CRLF kept; the only later changes are the upload's 18 rows in two columns; idempotent; the BOM and round-trip mutants fail tests; no backfill from old pools (said which, pass 1) |
+| 3 | match order id → discriminator → tag; one matcher for reader and writer; tag-only marked and colored in table, compare panel, CLI, both themes; ✓ or edit writes both ids; A6-1 | **yes** | `matchTierRowBy` serves `readNotes`, `editTierRow`, `linkPlayers` and `lib/push.js`; the ordering, mark and class mutants fail 1 to 24 tests; the CLI's cell is pinned by the parity test; seen on a copy in the table and compare panel, dark and light; A6-1 in a batch fails its test when broken |
+| 4 | CSV contract | **yes** | pass 2's mutants, plus pass 3's: a mistyped first code is malformed at line 1, and a skipped header is named (E2-4); the attempted-code definition is judged sound (above; E4-1) |
+| 5 | one `user(slug)` per row through the queue; unresolved kept and flagged; fake resolver | **yes** | the lookups take `queue.fetchFor`; not-found and failed rows are flagged distinctly (E2-6); the live 32 lookups were recomputed by pass 2 |
+| 6 | `POST /api/uploads`; `state.json` source upload; one synthetic event; pull through the per-player code; one tab, no push, no Schedule; done by date; export and ✓; home lists it; form under "Add a tournament" | **yes** | probes on a copy: guards on every push, schedule, linked and tick route; slugs safe; 409 on collisions; the row ceiling; the page seen with one tab and no push or schedule; the home layout per both mid-pass messages |
+| 7 | current start.gg tag; list name as alias on hover; prefix fills Team | **yes** | `akaOf` and `poolPlayers`, tested; on Mixfest the list's names equal start.gg's prefix and tag, so no alias shows (Spiraler is listed as "RBS \| Spiraler", which is the team prefix) |
+| 8 | registry linking on upload; linked-by-tag listed; summary shown once and kept in `state.json.uploads`; scratch-file test | **yes** | the 18 rows match the pool and the summary exactly; the test uses a scratch file; "shown once" seen on the copy (opened, then `shown_at` set); the real one untouched |
+| 9 | badges, both themes; an old `state.json` reads as start.gg | **yes** | `readState` defaults `source` and never writes it (the pools' bytes are unchanged); dark seen by me on the copy, light by pass 2; start.gg's blue itself is unverified (Open items) |
+| 10 | live check recorded with request counts; the page checked by the orchestrator | **yes for the run**; the orchestrator's page check is open (E4-4) | pass 2 recomputed 168 requests, max 20 in any 60 s by sends; I rendered a copy of the live pool |
+| 11 | README: the upload, the discriminator column, the tag-only color, the badges | **yes, with E4-2** | each paragraph read against the code; pass 3's additions (the header rule, 1,000 rows, *lookup failed*, send-time logs) are true; the list's name as a tag key is missing |
+| 12 | closing approval by pass 4 on the actual artifact | **given** | this verdict, on the code at `345508f` |
+
+### Could not verify
+
+- **The real Mixfest page in a browser.** Not opened, on purpose: its first open is Noah's. I rendered a
+  byte copy of the pool with the same code.
+- **The light theme of the home page's badges.** The Browser pane refused my navigation back to the
+  copy's home page (an auto-mode classifier denial); I did not work around it. I saw dark; pass 2 saw
+  both; the tokens are in all three blocks.
+- **start.gg's brand blue** (`#3f80ff`) and **Mixfest's date** (2026-11-14): no start.gg or web access in
+  this job.
+- **Whether the 11 tag links are the right people.** The tags agree on the data; whether each tiers row
+  was written for that person is Noah's review (A1.3).
+- **The 8765 app after a relaunch.** Reasoned from the loader; it is not mine to restart.
+- **Windows reserved names on other machines.** A page named `CON` makes `out/con/` here (Windows 11, as
+  pass 2 saw). An older Windows may refuse that folder, and the upload would then fail with a server
+  error. Not exercised elsewhere.
+
+### Open items that belong to Noah
+
+From build C:
+
+1. **E2-1 — the second half of the candidate standing rule:** a live run under a self-imposed ceiling
+   sets the queue one below it. (The first half, send-time logs, is built.) Ratify or decline.
+2. **E2-8 — the list's name counts as a tag key** for matching tiers rows (kept, amendable), plus E4-2's
+   README clause if you keep it.
+3. **Pass 3's E2-4 definition of an "attempted" code** (amendable in one function), and whether the
+   "Line 1 was read as the column header" note on every normal upload is wanted or is noise.
+4. **Confirm Mixfest's date (2026-11-14) and start.gg's blue (`#3f80ff`).** Both are unverified: the date
+   came from an Exa search, the blue is model knowledge.
+5. **Review the 11 rows linked by tag** in the Mixfest upload summary (Spiraler, Mishi, Alterchemist,
+   Blixby, Ricefield, NITROUS, Wishy, Leebzz, Scrub Jay, Hydrous, Javonero). If one is the wrong person,
+   clear that row's `player_id` and `discriminator`.
+6. **E4-3 — relaunch the desktop app before the next upload**, so pass 3's server fixes are live there.
+7. **Pass 1's interpretations, still unconfirmed:** light blue replaces the recency color; Team takes the
+   list's prefix first; an upload links tag matches at once (so its own page shows no blue); two listed
+   players on one tag link neither; no discriminator backfill from old pools; done from the start of the
+   given date, local time; discriminators are 8 hex characters (model knowledge).
+8. **`registry/tiers.csv.bak`** may be deleted now (the contract keeps it until pass 4). That is your
+   action or the orchestrator's; this seat does not touch it.
+9. **The Mixfest list is in git:** `c7be7b3` committed `test/fixtures/mixfest-26-players.csv` (32 names
+   and discriminators; public start.gg data, allowed by the contract). Same share-phase note as D4-6.
+
+Carried from builds A and B (unchanged by build C):
+
+10. **B2-1 / B4-1** — what un-✓ restores (default option (a)).
+11. **B2-2** — majors for MBTL; **B2-5** — the CLI's HTML carries your tiers and notes; **B2-6** — "today"
+    is the UTC day.
+12. **D2-4** — "Mark live again" (kept, amendable); **D2-6** — an incremental pull keeps the pool's
+    window; **D2-11** — build B pass 1's 21 requests in 60 s, which needs your acknowledgement;
+    **D2-2 / D4-4** — `request_count` vs `requests_this_pull`.
+13. **D4-1 / P3-2** — a first Pull while another tournament's job runs; **D4-2 / D4-3** — a queued pull
+    is lost on a restart, and the candidate standing rule "nothing a click asked for is dropped quietly".
+14. **D4-6** — the recorded fixtures are real players' public data in git; scrub them before sharing.
+15. **A2-5, A2-6, A4-3, A4-6, C2-3 (+ C3-4, which needs a live allowance)**, build A's majors
+    interpretations, and drag-to-order if you still want it.
+
+### Verdict: APPROVE WITH NOTES
+
+**Acceptance item 12 is given.** The extra repair/re-review pair is not needed, and none is requested.
+
+**What it covers:** Acceptance 1–11 on the code at `345508f`, checked on the artifact, not the record.
+I re-ran the suite on the working tree and a clean offline clone (262/262/0/0) and both before-states. I
+diffed the tiers file column by column against its `.bak` with my own parser and matched all 18 linked
+rows to the live pool. I ran 28 mutations (26 killed, 1 equivalent, 1 survivor: E4-1). I probed 19 leak
+paths, the upload page's guards and 11 upload names over copies. I rendered a copy of the live Mixfest
+pool in the Browser pane and saw the tag-only blue in the table and the compare panel in both themes.
+Every pass-3 disposition holds, and both record corrections are true.
+
+**Why notes and not a return:** no Acceptance item is missed as written. E4-1 is one unpinned clause,
+E4-2 one README clause, E4-3 an operating note (relaunch 8765), and E4-4 an orchestrator leg that is
+deliberately waiting for Noah's first look. None changes what Noah gets from the build.
+
+**What it could not judge:** the first open of the real Mixfest page (Noah's); start.gg's blue and
+Mixfest's date; whether the 11 tag links are the right people; the 8765 app after a relaunch; the
+light-theme home page by my own eye in this pass.
+
+### REPORT
+
+```
+REPORT
+- Overview: Pass 4 (engineering auditor, closing re-review) of build C at 637485b (code 345508f).
+  Verdict: APPROVE WITH NOTES; Acceptance 12 is given. Every pass-3 disposition holds on the
+  artifact, and the E2-2 and E2-3 record corrections are true. Suite 262/262/0/0 on the working tree
+  and a clean offline clone. The tiers file differs from its .bak only by the discriminator column
+  and the upload's 18 rows. The three out/ pools and registry/ are unchanged (27 files, sha1).
+- Found: E4-1 NOTE (the attempted-code rule's digit clause is unpinned; one test line). E4-2 NOTE
+  (the README does not say the list's name is a tag key, E2-8). E4-3 NOTE (the 8765 app started
+  before pass 3's commits, so pass 3's server fixes are not live there until a relaunch). E4-4 NOTE
+  (Acceptance 10's orchestrator page check is not on the record; I rendered a copy of the live pool).
+  Pass 3's E2-4 definition is judged sound.
+- Ran: node --test on the working tree and on clean clones at 345508f, d19f853 and c7be7b3;
+  test-name diffs; 28 mutations (probes/mutate.js, m1.json, m2.json); csvdiff.js on tiers.csv.bak vs
+  tiers.csv; the 18 linked rows vs the Mixfest pool; routes.js (19 leak paths, the upload guards, 11
+  upload names) over copies; the clone on port 8799 over a copy of out/ in the Browser pane (the
+  Mixfest page; the tag-only blue in the table and compare panel, dark and light); protected-file
+  diff; out/ and registry hashes. Evidence: this section of docs/build-record-tool.md, one commit;
+  scripts in the session scratchpad p4c/probes/.
+- Attributed: core / seeding-ops increment 4, build C, pass 4. STATED: dispatch-contract-tool-c.md
+  (Passes table, Acceptance 12), design-tool.md Amendment A1, Noah's two mid-pass messages, the
+  caller's pass-4 dispatch.
+- Queued: E2-1's second half and E2-8 wait on Noah (process and product choices, not repairs).
+  E4-1 and E4-2 are small and optional; they do not justify the extra pair.
+- Spend: term = 4 passes + at most 1 repair pair; consumed pass 4 of 4; the extra pair is unused. No
+  skills, subagents or workflows. start.gg requests 0. Token never read. out/ and registry/ read only;
+  all writes in a scratch clone and copies. Port 8765 untouched; Mixfest shown_at still null.
+- Parked: none. Tree clean at the record commit. My port-8799 server is stopped; the scratch clone is
+  clean.
+- Needs attention:
+  1. Relaunch the desktop app before the next upload (E4-3), so the 1,000-row ceiling, the header rule
+     and the lookup-failed flag are live there.
+  2. Open /t/mixfest-26-mbaacc yourself and review the 11 "Linked by tag" rows (A1.3's review step).
+  3. Confirm Mixfest's date (2026-11-14) and start.gg's blue (#3f80ff).
+  4. Rule on: E2-1's "ceiling one below the limit"; E2-8 (the list's name as a tag key); E2-4's
+     definition and its header note on every upload.
+  5. registry/tiers.csv.bak may now be deleted. The carried items from builds A and B are listed above.
+```

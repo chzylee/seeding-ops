@@ -149,6 +149,8 @@
       let st;
       try { st = await (await fetch(tapi('status'), { cache: 'no-store' })).json(); } catch { return; }
       line(jobText(st), st.phase === 'error');
+      // The shared loading indicator (busy.js) follows the job: label, and W-L progress when known.
+      if (window.Busy) Busy.job(st.running || st.queued ? jobText(st) : null, st.running && st.wl && st.wl.total ? st.wl : null);
       if (st.running || st.busy || st.queued) return;
       clearInterval(polling); polling = null;
       if (reloadWhenDone && st.phase !== 'error') { location.reload(); return; }

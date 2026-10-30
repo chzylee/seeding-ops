@@ -3370,3 +3370,18 @@ in a title to filter."* Recorded per standing rule (a).
 - A duplicate `const list` in index.js (the right-click menu's and the combobox's) broke the whole script on
   first try; renamed. Checked in the browser pane: modal opens and closes, filtering "tek" leaves Tekken 8
   and Other, Enter picks it (id 49783, name "TEKKEN 8"), logos 20 px, date not required. Suite 262/262/0/0.
+
+---
+
+## Out-of-band: a loading indicator for every API operation (orchestrating session, 2026-10-30)
+
+Noah: *"we need some kind of loading indicator for all api operations that take time."* Recorded per
+standing rule (a). `app/public/busy.js`, loaded on every page after theme.js: wraps `window.fetch` so every
+same-origin `/api/` request (except the quick polls: GET …/status, GET /api/t/<t>, GET …/schedule) shows a
+3 px bar across the top and a bottom-right pill with a spinner and a label by path ("Asking start.gg…",
+"Checking the list…", "Saving…", "Reading the seeding from start.gg…", "Loading…"). Background jobs feed
+it from the pages' status polls (`Busy.job(label, {done,total})` in tournament.js, app.js, schedule.js): the
+bar is indeterminate without a figure and grows with W-L progress when there is one. The home page's
+server-rendered "pulling…" chips get a CSS spinner; disabled buttons read as waiting. Checked in the browser
+pane on the Eclipse page: idle hidden; a data fetch shows "Loading…" and clears; a status poll shows
+nothing; a job with 40/182 shows a 22 % bar and "W-L 40 / 182"; clearing hides everything. Suite 262/262/0/0.

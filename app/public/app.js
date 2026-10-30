@@ -533,6 +533,8 @@
     el.textContent = t || note;
     el.classList.toggle('err', t ? !!(st && st.phase === 'error') : noteErr);
     $('refresh').disabled = !!(st && (st.running || st.busy));
+    // The shared loading indicator (busy.js) follows the job: label, and W-L progress when known.
+    if (window.Busy) Busy.job(st && (st.running || st.busy) ? (t || 'Working…') : null, st && st.running && st.wl && st.wl.total ? st.wl : null);
     if (st && (st.running || st.busy)) startPolling();
   }
   function startPolling() {

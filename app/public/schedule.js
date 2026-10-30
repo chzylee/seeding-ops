@@ -166,6 +166,8 @@ function showStatus(st) {
   s.classList.toggle('err', !!(st && st.error));
   $('sRefresh').disabled = $('sRefreshSeeds').disabled = !!(st && st.running);
   s.textContent = st && st.running ? (st.kind === 'seeds' ? 'Pulling seeds from start.gg…' : 'Pulling from start.gg…') : st && st.error ? 'Refresh failed: ' + st.error : '';
+  // The shared loading indicator (busy.js) follows the schedule job.
+  if (window.Busy) Busy.job(st && st.running ? s.textContent : null);
 }
 
 async function poll() {

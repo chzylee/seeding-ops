@@ -75,6 +75,7 @@ const STATIC = {
   'index.js': [path.join(APP_DIR, 'public', 'index.js'), JS],
   'app.css': [path.join(APP_DIR, 'public', 'app.css'), 'text/css; charset=utf-8'],
   'theme.js': [path.join(APP_DIR, 'public', 'theme.js'), JS],
+  'busy.js': [path.join(APP_DIR, 'public', 'busy.js'), JS],
 };
 // The upload picker's game logos (config/games.json, copied from find-my-fgc), served as
 // /static/games/<file>: only files the config names, only image types, only under app/public/games.
@@ -153,7 +154,7 @@ function indexPage(outRoot, jobs, nowMs) {
     return `${i === firstDone ? DONE_NOTE : ''}<li class="st-${x.status} src-${esc(x.state.source)}" data-t="${esc(x.t)}" data-name="${esc(name)}" title="Right-click for options"><a href="/t/${esc(x.t)}">${esc(name)}</a> ${badge} <span class="pill st-${x.status}">${STATUS_LABEL[x.status]}</span>${busy}<div class="dim">${sub}</div></li>`;
   }).join('');
   return `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Seeding tournaments</title><link rel="stylesheet" href="/static/app.css"><script src="/static/theme.js"></script>
+<title>Seeding tournaments</title><link rel="stylesheet" href="/static/app.css"><script src="/static/theme.js"></script><script src="/static/busy.js"></script>
 <body class="index"><main><h1>Tournaments</h1>
 <section class="add-section" aria-labelledby="addHead"><h2 id="addHead">Add a tournament</h2>
 <form id="add" class="add-t"><label for="addUrl" class="sr-only">start.gg tournament or event link</label>
@@ -166,7 +167,7 @@ ${uploadForm()}
 }
 
 function notAddedPage(t) {
-  return `<!doctype html><html lang="en"><meta charset="utf-8"><title>Not added</title><link rel="stylesheet" href="/static/app.css"><script src="/static/theme.js"></script>
+  return `<!doctype html><html lang="en"><meta charset="utf-8"><title>Not added</title><link rel="stylesheet" href="/static/app.css"><script src="/static/theme.js"></script><script src="/static/busy.js"></script>
 <body class="index"><main><h1>Not added yet</h1><p>There is no data for <code>${esc(t)}</code>. Pull data happens per tournament now.
 <a href="/?add=${encodeURIComponent(t)}">Add the tournament</a> to seed it.</p></main></body></html>`;
 }

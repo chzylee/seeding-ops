@@ -270,3 +270,29 @@ test('a start.gg pull writes the discriminator into tiers rows already linked to
   assert.deepStrictEqual(rows.map((x) => [x.player_id, x.discriminator]), [['101', '14364d39'], ['', ''], ['', ''], ['102', 'aaaa0002']]);
   assert.strictEqual(w.app.jobs.status(T_SLUG).phase, 'done');
 });
+
+test('home page layout (Noah, mid-pass 2026-10-30): "Add a tournament" header, the link field and Add on one row, then "Import from CSV" with its description; no block for live ones, one sentence above the first done tournament', async () => {
+  const w = setup({ now: Date.parse('2026-11-08T12:00:00Z') });
+  const { makePool } = require('../testlib/pool-fixture');
+  makePool(w.outRoot, { t: 'a-live', events: [{ slug: 'e', game: { id: '1', name: 'G' }, start_at: '2026-12-01T00:00:00.000Z' }], players: [], startAt: '2026-12-01T00:00:00.000Z' });
+  makePool(w.outRoot, { t: 'b-done', events: [{ slug: 'e', game: { id: '1', name: 'G' }, start_at: '2026-10-01T00:00:00.000Z' }], players: [], startAt: '2026-10-01T00:00:00.000Z' });
+  makePool(w.outRoot, { t: 'c-done', events: [{ slug: 'e', game: { id: '1', name: 'G' }, start_at: '2026-09-01T00:00:00.000Z' }], players: [], startAt: '2026-09-01T00:00:00.000Z' });
+  const html = (await inject(w.app.handler, { url: '/' })).text;
+  const at = (s) => { const i = html.indexOf(s); assert.ok(i >= 0, `has ${s}`); return i; };
+  const order = [at('<h2 id="addHead">Add a tournament</h2>'), at('<form id="add"'), at('<input id="addUrl"'), at('<button type="submit">Add</button>'), at('</form>'),
+    at('<summary>Import from CSV <span'), at('It builds its own page for one game; no push and no schedule.'), at('<ul class="events">')];
+  assert.deepStrictEqual([...order].sort((a, b) => a - b), order, 'top to bottom in that order');
+  // The link field and Add share the one form (one row); the CSV import's description shows while folded.
+  assert.match(html, /<form id="add" class="add-t"><label[^>]*class="sr-only"[^>]*>[^<]*<\/label>\s*<input id="addUrl"[^>]*>\s*<button type="submit">Add<\/button>/);
+  assert.match(html, /<summary>Import from CSV <span class="dim import-desc">[^<]*two columns: name, then the start\.gg discriminator/i);
+  assert.ok(!/Live tournaments first/.test(html), 'no explanatory block for live ones');
+  const note = at('class="done-note dim"');
+  assert.ok(at('href="/t/a-live"') < note && note < at('href="/t/b-done"'), 'the sentence sits above the first done tournament');
+  assert.strictEqual(html.split('done-note').length, 2, 'once');
+  assert.match(html, /marked done automatically once their last seeded event's date has passed\. Delete one by hand/);
+  const css = fs.readFileSync(path.join(__dirname, '..', 'app', 'public', 'app.css'), 'utf8');
+  assert.match(css, /\.add-section \.add-t input \{ flex: 1 1 auto; min-width: 0; \}/);
+  // With nothing done yet there is no sentence.
+  const fresh = setup();
+  assert.ok(!(await inject(fresh.app.handler, { url: '/' })).text.includes('done-note'));
+});

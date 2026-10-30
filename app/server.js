@@ -103,9 +103,11 @@ function uploadGames() {
 }
 function uploadForm() {
   const opts = uploadGames().map((g) => `<option value="${esc(g.id)}">${esc(g.name)}</option>`).join('');
-  return `<details id="uploadBox" class="add-t upload-t"><summary>Upload a player list (CSV)</summary>
+  // Noah, mid-pass 2026-10-30: under the link row, "Import from CSV" with a short description that is
+  // visible while the form is folded.
+  return `<details id="uploadBox" class="upload-t"><summary>Import from CSV <span class="dim import-desc">A CSV of two columns: name, then the start.gg discriminator (the code in start.gg/user/&lt;code&gt;). It builds its own page for one game; no push and no schedule.</span></summary>
 <form id="upload" class="upload-form">
-<p class="dim">Two columns: name, then the start.gg discriminator (the code in start.gg/user/&lt;code&gt;, bare or as a link). A header row is optional. Each row costs one start.gg lookup, then the players' results are pulled as for a tournament.</p>
+<p class="dim">The code can be bare, user/&lt;code&gt; or the profile link; a header row is optional. Each row costs one start.gg lookup, then the players' results are pulled as for a tournament.</p>
 <label>Page name <input id="upName" name="name" required autocomplete="off" placeholder="e.g. Mixfest 26 MBAACC"></label>
 <label>Game <select id="upGame" name="game">${opts}<option value="other">Other (start.gg game id)…</option></select></label>
 <label id="upOtherWrap" hidden>Game id <input id="upGameId" inputmode="numeric" pattern="\\d+" autocomplete="off" placeholder="start.gg videogame id"> name <input id="upGameName" autocomplete="off" placeholder="optional"></label>
@@ -114,8 +116,13 @@ function uploadForm() {
 <button type="submit">Upload</button><span id="upMsg" class="status" role="status" aria-live="polite"></span>
 </form></details>`;
 }
+// Noah, mid-pass 2026-10-30: no block or heading for the live ones; one sentence sits above the first
+// tournament that is no longer live (the list is always live, then done, then archived).
+const DONE_NOTE = '<li class="done-note dim">Tournaments are marked done automatically once their last seeded event\'s date has passed. Delete one by hand from its page when you no longer need it.</li>';
 function indexPage(outRoot, jobs, nowMs) {
-  const items = pool.listTournaments(outRoot, nowMs).map((x) => {
+  const list = pool.listTournaments(outRoot, nowMs);
+  const firstDone = list.findIndex((x) => x.status !== 'live');
+  const items = list.map((x, i) => {
     const st = jobs.status(x.t);
     const name = (x.state.tournament && x.state.tournament.name) || x.t;
     const tabs = pool.tabsOf(x.state, x.current && x.current.meta).map((tab) => tab.game.name);
@@ -124,16 +131,17 @@ function indexPage(outRoot, jobs, nowMs) {
       .map(esc).join(' · ');
     const busy = st.running ? ` <span class="busy">${st.resolving ? 'looking up players…' : st.pulling ? 'pulling…' : st.kind === 'archive' ? 'archiving…' : 'fetching W-L…'}</span>` : '';
     const badge = SOURCE_BADGE[x.state.source] || SOURCE_BADGE.startgg;
-    return `<li class="st-${x.status} src-${esc(x.state.source)}"><a href="/t/${esc(x.t)}">${esc(name)}</a> ${badge} <span class="pill st-${x.status}">${STATUS_LABEL[x.status]}</span>${busy}<div class="dim">${sub}</div></li>`;
+    return `${i === firstDone ? DONE_NOTE : ''}<li class="st-${x.status} src-${esc(x.state.source)}"><a href="/t/${esc(x.t)}">${esc(name)}</a> ${badge} <span class="pill st-${x.status}">${STATUS_LABEL[x.status]}</span>${busy}<div class="dim">${sub}</div></li>`;
   }).join('');
   return `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Seeding tournaments</title><link rel="stylesheet" href="/static/app.css"><script src="/static/theme.js"></script>
 <body class="index"><main><h1>Tournaments</h1>
-<form id="add" class="add-t"><label for="addUrl">Add a tournament</label>
-<input id="addUrl" name="url" placeholder="start.gg tournament or event link" autocomplete="off" spellcheck="false" required>
+<section class="add-section" aria-labelledby="addHead"><h2 id="addHead">Add a tournament</h2>
+<form id="add" class="add-t"><label for="addUrl" class="sr-only">start.gg tournament or event link</label>
+<input id="addUrl" name="url" placeholder="start.gg tournament or event link" autocomplete="off" spellcheck="false" required title="Adding makes one request to start.gg for the tournament's events; you pick the singles events to seed on its page.">
 <button type="submit">Add</button><span id="addMsg" class="status" role="status" aria-live="polite"></span></form>
-<p class="dim">Live tournaments first, then done, then archived. Adding makes one request to start.gg for the tournament's events; you pick the singles events to seed on its page.</p>
 ${uploadForm()}
+</section>
 <ul class="events">${items || '<li class="dim">No tournaments yet. Add one above.</li>'}</ul></main>
 <script src="/static/index.js"></script></body></html>`;
 }

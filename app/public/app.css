@@ -463,3 +463,15 @@ details.upload-t > summary { font-weight: 600; cursor: pointer; }
 #summary a.aka b, table.summary a.aka b { text-decoration: underline dotted; text-underline-offset: 3px; }
 /* An uploaded row start.gg does not know: kept, flagged, not editable. */
 .flag-unresolved { display: inline-block; margin-top: 2px; font-size: 12px; background: var(--warn-bg); color: var(--warn-fg); border-radius: var(--radius-sm); padding: 0 5px; }
+/* Home page (Noah, mid-pass 2026-10-30): "Add a tournament", the link field and Add on one row, then
+   "Import from CSV" with its description underneath. */
+.add-section h2 { font-size: 15px; font-weight: 650; margin: var(--s-4) 0 var(--s-2); }
+.add-section .add-t input { flex: 1 1 auto; min-width: 0; }
+.add-section .add-t button { flex: 0 0 auto; }
+.add-section .add-t .status:not(:empty) { flex: 1 1 100%; }
+.add-section .add-t .status:empty { display: none; }
+.add-section .import-desc { display: block; margin: 2px 0 0 14px; font-weight: 400; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+/* The one sentence above the first done tournament: plain text, not a card. */
+ul.events li.done-note { background: none; border: 0; padding: var(--s-2) 2px var(--s-1); font-size: 13px; }
+ul.events li.done-note:hover { border: 0; }

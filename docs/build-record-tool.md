@@ -2807,3 +2807,24 @@ REPORT
   4. Confirm Mixfest's date (2026-11-14) and start.gg's blue (#3f80ff), both unverified.
   5. Review the 11 "linked by tag" rows in the upload summary (A1.3's own review step).
 ```
+
+---
+
+## Orchestrator rulings for build C pass 3 (2026-10-30)
+
+Defaults chosen by the orchestrating session under Noah's go for build C; product choices marked amendable.
+
+| finding | ruling |
+|---|---|
+| E2-1 | **Fix the cheap half:** the client's request log stamps the send time (consistent with D2-3's timeout), so a log can be read against the budget. The "ceiling one below the limit" rule for live scripts goes to Noah as a candidate standing rule; pass 3 adds it to nothing. |
+| E2-2 | **Record correction** in pass 3's section: no page in `out/` shows the tag-only color today because every Eclipse registrant's tiers row carries a player id; name a way to see it (a fixture or a scratch tiers copy with a row stripped of its ids) in the UI checklist. |
+| E2-3 | **Record correction:** the desktop app on 8765 runs the checkout's live code (app/app-main.js), not an older build; the sidecar needs rebuilding only when the loader changes. |
+| E2-4 | **Fix.** A header is assumed only when the first row's second value is not a discriminator **and** does not look like an attempted one (contains `user/`, a URL, or a 6–10 character hex-like token); an attempted-but-malformed first row is reported as malformed with its line number, never taken as the header. Whenever a header row is skipped, the upload summary says so with the row's two values, so nothing is silent. Tests for both. |
+| E2-5 | **Fix the test:** the push refusal on an uploaded page gets its own test, asserting the upload-specific message/status and failing when the guard is removed (not satisfied by the "no phases" 409). |
+| E2-6 | **Fix:** a failed lookup is flagged "lookup failed (<reason>)", distinct from "not found on start.gg". |
+| E2-7 | **Fix:** a row ceiling of 1,000 rows (a major's field is a few hundred); over it, the upload is refused with the count, before any start.gg request. Test. |
+| E2-8 | **Keep, amendable (Noah's):** the list's name counts as a tag key for matching tiers rows; the name is the tag in practice. |
+| E2-9 | Recorded. |
+
+Noah is using the desktop app against this checkout while pass 3 runs; it loads live code, so pass 3
+commits in small steps and keeps the tree working between commits.

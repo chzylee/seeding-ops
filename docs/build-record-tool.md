@@ -3385,3 +3385,13 @@ bar is indeterminate without a figure and grows with W-L progress when there is 
 server-rendered "pulling…" chips get a CSS spinner; disabled buttons read as waiting. Checked in the browser
 pane on the Eclipse page: idle hidden; a data fetch shows "Loading…" and clears; a status poll shows
 nothing; a job with 40/182 shows a 22 % bar and "W-L 40 / 182"; clearing hides everything. Suite 262/262/0/0.
+
+---
+
+## Out-of-band: the whole tournament row opens it (orchestrating session, 2026-10-30)
+
+Noah: *"shouldn't have to click specifically name to open up an event; clicking the button for its row
+should be enough."* index.js: a click anywhere on a row (except on its name link or a control) opens
+`/t/<t>`; rows are focusable and Enter or Space opens them; the right-click menu is unchanged. CSS: pointer
+cursor, hover highlight, focus ring. Checked in the browser pane (a click on the row's subtitle opened the
+Eclipse page). Suite 262/262/0/0.

@@ -532,3 +532,8 @@ dialog.upload-modal .upload-form button.plain { background: var(--cell); color: 
 .busy::before { content: ''; display: inline-block; width: 9px; height: 9px; margin-right: 5px; vertical-align: -1px; border-radius: 50%; border: 2px solid var(--warn-fg); border-top-color: transparent; opacity: .8; animation: spin .8s linear infinite; }
 /* While something is in flight, submit buttons that were disabled by the page read as waiting. */
 button:disabled { opacity: .6; cursor: progress; }
+
+/* The whole tournament row opens it (index.js): it reads as clickable. */
+ul.events li[data-t] { cursor: pointer; }
+ul.events li[data-t]:hover { border-color: var(--accent); background: var(--row-hover); }
+ul.events li[data-t]:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }

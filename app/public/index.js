@@ -26,8 +26,24 @@
     location.href = body.page;
   });
 
-  // ---- Right-click a tournament: Delete (Noah, 2026-10-30), always behind a confirmation ----
+  // ---- The whole row opens the tournament (Noah, 2026-10-30), not only its name ----
   const list = document.querySelector('ul.events');
+  if (list) {
+    list.querySelectorAll('li[data-t]').forEach((li) => { li.tabIndex = 0; li.setAttribute('role', 'link'); });
+    const openRow = (li) => { location.href = `/t/${encodeURIComponent(li.dataset.t)}`; };
+    list.addEventListener('click', (ev) => {
+      const li = ev.target.closest('li[data-t]');
+      if (!li || ev.target.closest('a, button')) return;   // the name link and any control keep their own behavior
+      if (ev.button !== 0 || ev.ctrlKey || ev.metaKey || ev.shiftKey) return;
+      openRow(li);
+    });
+    list.addEventListener('keydown', (ev) => {
+      const li = ev.target.closest('li[data-t]');
+      if (li && ev.target === li && (ev.key === 'Enter' || ev.key === ' ')) { ev.preventDefault(); openRow(li); }
+    });
+  }
+
+  // ---- Right-click a tournament: Delete (Noah, 2026-10-30), always behind a confirmation ----
   const menu = document.createElement('div');
   menu.className = 'ctx-menu';
   menu.hidden = true;

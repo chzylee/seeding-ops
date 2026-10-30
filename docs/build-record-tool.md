@@ -2579,3 +2579,231 @@ REPORT
      reads are by name). Rebuild the sidecar before relying on it.
   5. start.gg's brand blue (#3f80ff) is model knowledge; one CSS token to change if wrong.
 ```
+
+---
+
+## Build C — Pass 2 — engineering auditor
+
+Seat: engineering-auditor persona v0.2.0 (`personal-staff/personas/library/engineering-auditor.md`,
+Profile block). Model: Opus. Report-only: no source, test, config or data file edited; this section is
+the only change, in one commit. Reviewed `build/tool-c` at `109cbf6` (code commits `ff379d3`, `56c7c5d`,
+`c4cf4a3`, `00996c1`, `e26b22f`, `d72d3bb`, `c23be07`, `c6f0aee`, `6c49b79` on `c7be7b3`). No skills,
+subagents or workflows. **No start.gg calls**: every suite and probe ran with `testlib/no-network.js`
+preloaded, in a clean clone without `.env`, against the fake. The token was never read. `out/`,
+`registry/tiers.csv` and `registry/tiers.csv.bak` were read only (copies in the session scratchpad,
+`scratchpad/audit-c2/`, where the probe scripts `csvdiff.js`, `mutate.js` and `mutate2.js` are kept).
+The desktop app on 8765 was not started or stopped, and was sent only one `GET /` (the home page, which
+is not the Mixfest page and marks nothing seen). The Mixfest page and its `/api/t/` route were not
+opened on 8765.
+
+### Terms as understood
+
+- **Comparand:** `docs/dispatch-contract-tool-c.md` Acceptance 1–11 (12 is pass 4's); `docs/design-tool.md`
+  Amendment A1 with §T1, §Pages, §Lifecycle; the Ratified rows 192–194 of `docs/usage-log.md`; Noah's two
+  mid-pass home-page messages as pass 1 recorded them (binding per the caller). The builder's "Terms as
+  understood" and "Assumptions I supplied" are the drift comparand.
+- **Drift check:** the builder's terms match the contract on scope, grants and prohibitions. The one
+  stretch the builder flagged itself, grant (b) "the existing reader/writer" read as the write path
+  (`readTierTable`, `toCsv`, the atomic rename, now `writeTierTable`) rather than only the ✓ and edit
+  routes, is ruled under E2-9: inside the grant. The contract's "beside 'Add a tournament'" became
+  "under it" by Noah's first mid-pass message; that is an amendment, not drift.
+- **Ruling on Needs attention 1 (the 60 s count).** The limit means HTTP requests sent to start.gg, so the
+  queue's send stamps are the measure: **20, within the ceiling.** The client's records are stamped
+  before the request waits in the queue (`lib/startgg.js` `request`, `const t = now()` before
+  `sendOnce`; `app/limit-fetch.js` stamps at the send), so they measure queue entry, not sending. Two
+  facts go with the ruling: the margin is zero (the tightest 21-send span is exactly 60 000 ms), and
+  this is the second build whose request log could not be read against the budget directly (E2-1).
+- **Rulings on Needs attention 3 (interpretations):**
+  - *Light blue replaces the recency color:* fine. One class per cell, chosen in `tierCellClass`; the
+    recency stays in the hover. But the stated visible consequence is not true on the real data (E2-2).
+  - *Team takes the list's prefix first:* fine, and the literal reading. A1.3's "the Team column gets
+    the prefix" follows the sentence that splits the list's names into prefix and tag.
+  - *An upload links tag matches at once and lists them:* A1.3's own words ("gets its id and
+    discriminator written in and is reported as 'linked by tag'"). The consequence for Noah: the light
+    blue never shows for those rows; the summary is the review surface.
+  - *Two listed players on one tag links neither:* fine. A6-1 applied to a batch; the reader then shows
+    both blue, which is where the color earns its place.
+  - *No discriminator backfill from old pools:* allowed by the contract's "may"; said which.
+  - *Done from the start of the given date, local time:* consistent with §Lifecycle (done once the
+    latest seeded event's start has passed). Mixfest's stored `2026-11-14T06:00:00.000Z` is midnight
+    CST, correct after the 2026-11-01 DST change.
+  - *Mixfest's date 2026-11-14:* not verified by me (no start.gg access in this pass). Noah's to confirm.
+- **The other assumptions:** 1 and 3–20 fine (3 is model knowledge, disclosed; 4 includes the list's
+  name as an extra tag key, E2-8; 7's flag wording, E2-6; 11 checked by probes). **21 is wrong** (E2-3).
+- **Needs attention 2** (the summary's first open is Noah's): `out/mixfest-26-mbaacc/state.json`
+  `uploads[0].shown_at` is still `null` as of this pass; I did not change it.
+
+### What I re-ran
+
+| what | command / method | result |
+|---|---|---|
+| suite, working tree | `NODE_OPTIONS="--require ./testlib/no-network.js" node --test` | tests 256, pass 256, fail 0, skipped 0; sha1 of all 83 files under `out/` and `registry/` identical before and after |
+| suite, clean clone at `109cbf6`, offline (no `.env`) | `git clone -b build/tool-c`, same command | 256 / 256 / 0 / 0 (matches the claim) |
+| before-state, clone at `c7be7b3` | same | 225 / 225 / 0 / 0 (matches) |
+| test names, before vs after | sorted pass lines, `comm` | 0 gone, 31 new (match-order 9, upload-csv 10, upload 9, tiers-migrate 3) |
+| changed assertions | `git diff c7be7b3 109cbf6 -- test/` | the 7 listed changes only: `linked` added to three ✓ shapes; the sheet-only cell `rec-never` → `match-tag` with the B4-3 text still asserted after the tag-only text; the tiers-migrate script and real-file tests extended to the new shape, the pre-T1 branch unchanged. No weakening. |
+| protected paths | `git show --name-only` per commit | no usage log, design doc, contract, prior record, `.env`, `src-tauri/` or `.github/` touched; `out/eclipse-1st-cour` and `out/crescendo-of-night-3-episode-0` mtimes 09:13:14, before `c7be7b3` (09:40) |
+| **T1 migration**, own parser (`audit-c2/csvdiff.js`: raw fields with quotes kept, per-record line ending) | `.bak` (pre-migration working bytes, sha1 `ffb8898…`) vs `c4cf4a3`'s blob; `c4cf4a3^` blob vs `c4cf4a3` blob | BOM kept; 713 records each; header gains only `discriminator`, after `player_id`; every other raw field identical, 0 quoting changes, line endings identical (blob to blob); `migrateTiers(.bak)` equals the migrated blob with CRLF restored, byte for byte |
+| live linking commit | `6c49b79^` vs `6c49b79` blobs, same parser | only `discriminator` (18 rows) and `player_id` (11 of them) changed; 0 quoting changes. The 18: 7 already linked by `player_id` got a discriminator; 11 tag rows got both (Leebzz, Mishi, Spiraler, Wishy, Alterchemist, Blixby, Javonero, NITROUS, Ricefield, Scrub Jay, Hydrous) |
+| the whole chain in working bytes | `.bak` vs the working `registry/tiers.csv` | CRLF everywhere, kept; the same 18 rows and two columns; nothing else |
+| idempotence | `migrateTiers` on the current file; `scripts/migrate-tiers.js` on a copy | `changed: false`, text identical; the script says "already migrated", file byte-identical, no `.bak` written |
+| line endings in git | `git ls-files --eol`, `.gitattributes` | `i/lf w/crlf` (`* text=auto eol=lf`): the repository stores LF and the working file is CRLF, as before this build; `git hash-object` of the working file equals `HEAD:registry/tiers.csv` |
+| mutation checks, 40 mutants (`audit-c2/mutate.js`, `mutate2.js`; clone; restored after each; tree clean) | one replacement each, full suite | **Killed** (failing tests in brackets): tag before id (1), discriminator before `player_id` (1), no discriminator step (2), the other-`player_id` guard (1), a discriminator-only row answering to a tag (1), the tag-only mark in `readNotes` (7), the class in render (3), header always / never detected (3 / 5), URL form (7), `user/` form (7), first-bar split (1), no split (4), duplicates kept (5), malformed dropped (4), the unresolved flag (4), the tag link not written (1), A6-1 linking both (1), the write route's discriminator (5), the pull fill (2), `readState`'s source fallback (1), both badge fallbacks (1), schedule on upload (1), slug collision (1), add-tournament over an upload (1), the calendar date check (1), game id digits (1), the alias tag keys (1), Archive on upload (1), `linked` always true (2), unresolved row editable (1), unresolved players passed to `linkPlayers` (1), seen never marked (1). **Survived:** `linkPlayers`' own discriminator write on an id match (equivalent: `fillIds` writes the same value right after; no action), and **the push guard on an uploaded page (E2-5)**. The builder's own counts (2, 4, 3) differ from mine (2, 7, 5) by mutation shape, not substance. |
+| the live request record | `out/mixfest-26-mbaacc/` logs, recomputed with my own sliding window | ops UserBySlug 32, UserEvents 70, UserIds 2, SetsBatch 64 = 168; 0 retries, 0 non-200; complexity max 841; `refresh-sends.json` 168 sends, **max 20** in any 60 s; client stamps **21** (in each of the three stages); tightest 21-send span 60 000 ms |
+| the live pool | read-only: `state.json`, `players.csv`, `meta.json` | `source: "upload"`, one event `upload` for 22407, ticked `["upload"]`; 32 rows all `found`; `players.csv` has `alias`, 32 complete; meta `source: "upload"`, `request_count` 70; summary 7 by id, 11 by tag, 0 ambiguous, 14 unmatched, `shown_at: null` |
+| live matching after the upload | `matchTierRowBy` over copies of the current tiers rows and pools | Mixfest 18 by id, 14 none, **0 tag-only**; Eclipse 182 by `player_id`, **0 tag-only**, the same against the pre-build `.bak`; Crescendo's tabs are other games (no tiers rows apply) |
+| upload validation | `createApp` + `testlib/inject` on a scratch `out/` against the fake | names `CON`, `nul`, `Aux`, `COM1`, `lpt1` create `out/con/` etc. on this machine without error; `../../x` → `x`; `a/b\c` → `a-bc`; a 100-character name truncates to 60 and the next long name collides with 409; a 9 000-row, 134 kB file is accepted (E2-7); body cap 200 kB (413), the form refuses over 150 KB |
+| header edge | `parseUploadCsv('Alice,abcd123\nBob,bbbb0002\n')` | header `"Alice,abcd123"`, 1 row, **0 malformed**: a header-less file whose first code has a typo loses that player with no report (E2-4) |
+| home page, both themes | the clone on port 8797 (`--out` a copy of the three pools, `SEED_TIERS_FILE` a copy), Browser pane, `GET /` only | per both mid-pass messages: the header, the link row, *Import from CSV* with its description visible while folded, then the list; the sentence above Eclipse (the first done); upload badge violet, start.gg badge blue with white "start.gg" text, legible in light and dark |
+| the running desktop app | `Get-Process`; `app/app-main.js`; `GET http://127.0.0.1:8765/` | `seeding-server.exe` started 10:16:50, after the last code commit; `app-main.js` loads the checkout's live `app/server.js` when the exe sits in `<repo>/app/`; the 8765 home page carries `src-upload`, `src-startgg`, *Import from CSV* and the done note: build C's code (E2-3) |
+
+The Browser pane refused my navigation to the copy's `/t/eclipse-1st-cour` (an auto-mode classifier
+denial). I did not pursue that view another way; the tournament page's visuals are under Could not verify.
+
+### Findings
+
+**E2-1 — NOTE, with a standing-rule proposal for Noah (directive 9, second occurrence).** The budget
+ruling above holds: 20 by sends. But this is the second build whose own request records cannot be read
+against the budget: build B pass 1's pull log showed 21 where the sends were 20 (this file, §Build B
+Pass 1 "Live requests", and D2-11), and here every stage's client log shows 21 where the sends show 20.
+The cause is the same both times: `lib/startgg.js` stamps a request when it is handed to the queue, and
+only `refresh-sends.json` carries send times. The limiter also runs at exactly the ceiling (zero margin;
+start.gg's own 80 per 60 s is far off, so no harm). **Proposed standing rule:** the request records a
+build writes carry the send time (or both stamps), so the budget is checkable from them alone; and a
+live run under a self-imposed ceiling sets the queue one below it. Noah to ratify or decline; not a
+pass 3 repair unless he says so.
+
+**E2-2 — FINDING (handoff accuracy) — the tag-only color is not on the Eclipse page.** Assumption 2 says
+"on start.gg pages (Eclipse), sheet-only rows that were grey are now light blue", and UI checklist item 6
+sends the orchestrator there to see it. On the real files every one of Eclipse's 182 players matches a
+tiers row by `player_id` (before and after this build), so no Eclipse cell is blue; after the upload's
+linking, Mixfest has none either. No page in `out/` shows the color today. The orchestrator's
+between-pass check of "the tag-only highlight" will find nothing where the record points. Resolves:
+pass 3 corrects the assumption and the checklist and names a place the color can be seen (the offline
+fake page the builder used, or a scratch tiers copy with an unlinked row), with no change to the real
+tiers file.
+
+**E2-3 — FINDING (handoff accuracy) — the desktop app on 8765 runs build C's code.** Assumption 21 and
+Needs attention 4 say the exe is an older build that shows Mixfest without build C's behavior and would
+move the `discriminator` column on its next tier write; the checklist says not to use it.
+`app/app-main.js` (the sidecar's entry) loads the checkout's own `app/server.js` when the exe sits in
+`<repo>/app/`, which it does; the process started at 10:16:50, after the last code commit; and its home
+page serves the build C badges and form. So Noah's 8765 is build C, and the column-order warning does
+not apply to it. One correction for Noah follows: opening Mixfest there **will** use up the one-time
+summary (`/upload/seen`). Resolves: pass 3 corrects assumption 21, Needs attention 4 and the checklist's
+first line.
+
+**E2-4 — FINDING — a header-less file whose first code is mistyped loses that player silently.**
+Acceptance 4: "a malformed row reported with its line number, never silently dropped." By the ratified
+detection rule a first row whose second value is not a code is the header, so `Alice,abcd123` (seven
+characters) becomes the header and Alice is gone: 0 malformed, nothing on the page. The detected header
+is kept in `state.json` `upload.header` and in the POST response, but the form discards the response and
+neither the summary nor the page header shows it. The rule is Noah's and stays; the silence is the
+defect. User impact: a typo in row 1 of a list without a header drops a player from the seeding table
+with no trace. Resolves: show the line taken as the header in the summary (or the page's upload facts),
+for example "line 1 read as the header: Alice,abcd123", with a test.
+
+**E2-5 — FINDING (test) — the push refusal on an uploaded page is not pinned.** Removing
+`notForUpload(t, 'there is nothing to push to')` leaves the suite green. The test's 409 and
+`/uploaded list/` are satisfied by `push.dryRun`'s own refusal, "Combo Breaker 2026 (uploaded list) has
+no phases on start.gg yet." (the synthetic event's name contains the words). The behavior is safe today
+(no request is made; the page hides the control), but the guard the contract asks for has no test of its
+own. Resolves: assert the guard's own message, and cover the post route too.
+
+**E2-6 — NOTE — a failed lookup is flagged "not found on start.gg".** `poolPlayers` treats `error` rows
+like `not-found` ones, so a row whose lookup timed out shows "not found on start.gg (code)" with the
+hover "This discriminator is not a start.gg user…". The page's header and the summary say it correctly
+("lookups failed (Refresh asks again)"). Pass 3 may word the flag by status; optional.
+
+**E2-7 — NOTE — no ceiling on rows.** A 134 kB file of 9 000 rows is accepted: 9 000 lookups plus the
+pulls, hours on the one queue, behind which every other job waits. The 150 KB / 200 kB caps are the only
+limit. Noah's lists are tens of rows; no repair proposed. Recorded so the size check is known to be a
+byte cap, not a cost cap.
+
+**E2-8 — NOTE (interpretation for Noah) — the list's name is an extra tag key.** Assumption 4: an
+uploaded player also answers to a tiers row by the name the list gave, after start.gg's tags, in the
+reader and the writer alike. It can link a row the start.gg tag would not (the list calls someone "Bob",
+start.gg says "Robert"). Every such link lands in the summary's review list, so it is visible. Within
+A1.3's ambit; Noah's to keep or drop.
+
+**E2-9 — NOTE (ruling) — the registry writes stayed inside the grant.** `linkPlayers` and
+`fillDiscriminators` are new callers of the existing write path; A1.3 and Acceptance 8 require upload
+linking, which no ✓ or edit route can do. Verified on the artifact: one commit (`6c49b79`), two columns,
+18 rows, no other byte. No hand edit.
+
+### Acceptance
+
+| # | item | met | evidence |
+|---|---|---|---|
+| 1 | suite, clean clone, offline, no regression | yes | 256/256/0/0 in a clean clone without `.env` and on the working tree; before 225/225/0/0; 0 tests gone; 7 changed assertions, each traced to A1 |
+| 2 | T1 migration byte-safe, idempotent, round-trip; ids filled by pulls and uploads | yes | own parser: only `discriminator` added; BOM, quoting and line endings kept; idempotent by function and script; `6c49b79` changes only `discriminator` and `player_id` on 18 rows; the round-trip, pull-fill and upload-fill tests killed their mutants; no backfill, said which |
+| 3 | match order id → discriminator → tag; one matcher; tag-only marked and colored; ✓ or edit write both ids; A6-1 | yes, with E2-2 | `matchTierRowBy` is the one matcher for `readNotes`, `editTierRow`, `linkPlayers` and `lib/push.js`; ordering mutants killed; the class comes from `tierCellClass` for table, compare panel and CLI; tokens in light and both dark blocks, the CLI's CSS pinned by the parity test; A6-1 pinned in reader, writer and batch. Visual check of the cell not done by me (Could not verify). |
+| 4 | CSV parsing contract | yes, with E2-4 | header detection, three code forms, `|` split, duplicate collapse, malformed with lines: each mutant killed; the first-row typo case is silent |
+| 5 | one `user(slug)` per row through the queue; unresolved kept and flagged; fake resolver | yes | `jobs.client` uses `queue.fetchFor`; live 32 UserBySlug, 32 found; resumable and error rows tested; the unresolved-flag mutant killed |
+| 6 | `POST /api/uploads`, `state.json` source upload, one synthetic event, pull via per-player code; one tab, no push, no Schedule; done by date; export and ✓; home lists it; form on the home page | yes, with E2-5 | `createUpload`, `resolveUpload`, `run({ upload })`; validation probes above; schedule, side-tournament, tick, Archive and slug-collision guards each pinned; the push guard present but unpinned; home page seen in both themes per the mid-pass messages |
+| 7 | current tag shown; list name as alias on hover; prefix fills Team | yes | `akaOf`, `poolPlayers`; tested; live data has no differing names (0 of 32) |
+| 8 | registry linking on upload; linked-by-tag listed; summary shown once and kept | yes | `linkPlayers` mutants killed; the live summary matches the column diff (7 + 11); `shown_at` null, left for Noah |
+| 9 | source badges, both themes; old state.json reads as start.gg | yes | `readState` defaults `source` and never writes it; seen in both themes on a copy and in 8765's `GET /` |
+| 10 | live check recorded with counts | yes (the run); the orchestrator's page check is pending | counts recomputed: 168, 20 by sends (E2-1) |
+| 11 | README | yes | the upload's contract, what you get and what is missing, the discriminator column, the light blue, the badges: each sentence checked against the code |
+
+### Could not verify
+
+- **The tournament page's visuals:** the tag-only cell, the compare panel, the alias underline and the
+  upload summary, in either theme. My Browser pane navigation to a copy's tournament page was refused; I
+  relied on the tests, the CSS tokens and the builder's pane check on the fake.
+- **Mixfest's date** (2026-11-14) and **start.gg's brand blue** (`#3f80ff`): neither checkable without
+  start.gg or the web in this pass.
+- **The discriminator's shape** beyond the 8-hex values seen (the builder's assumption 3; model knowledge).
+- **Whether the 11 tag links are the right people:** the tags and teams agree on the data; whether each
+  tiers row was written for that person is Noah's review, as A1.3 says.
+- **The 8765 process's environment** (`SEEDING_PROJECT`): not read. The served home page shows build C's
+  code either way.
+
+### Verdict
+
+**APPROVE WITH FINDINGS.** Build C pass 1 meets Acceptance 1–11 on the artifact: the suite on a clean
+offline clone, the byte-level T1 migration and live linking diff on my own parser, the one matcher and its
+order under mutation, the CSV contract, the upload route and its guards, the badges, and the live request
+record, recomputed. For pass 3: **E2-4** (the silent first-row header) and **E2-5** (the unpinned push
+guard) are small repairs; **E2-2** and **E2-3** are record corrections the orchestrator needs before its
+browser check, since both point it at the wrong place. E2-6 is optional. E2-1's standing rule and E2-8 are
+Noah's. The verdict covers code, tests, records, the tiers file and the live pool's files. It does not
+cover the tournament page's rendering (Could not verify) or start.gg-side facts.
+
+### REPORT
+
+```
+REPORT
+- Overview: Pass 2 (engineering auditor, report-only) reviewed build C at 109cbf6. Acceptance 1-11 hold
+  on the artifact: 256/256/0/0 on a clean offline clone (before 225/225/0/0); the tiers migration adds
+  only `discriminator` with every other byte kept and is idempotent; the live linking changed only
+  discriminator and player_id on 18 rows. Verdict: APPROVE WITH FINDINGS. Two small repairs and two
+  record corrections for pass 3.
+- Found: E2-1 NOTE (60 s count ruled: 20 by sends, within; second build whose request log can't be read
+  against the budget; standing rule proposed); E2-2 FINDING (record: no page shows the tag-only color,
+  Eclipse included); E2-3 FINDING (record: the 8765 desktop app runs build C's live code, not an older
+  build); E2-4 FINDING (a header-less file's mistyped first row is taken as the header and dropped
+  silently); E2-5 FINDING (the push refusal on an uploaded page passes its test for the wrong reason);
+  notes E2-6 (failed lookups flagged "not found"), E2-7 (no row ceiling), E2-8 (the list's name as a tag
+  key, Noah's), E2-9 (registry writes inside the grant).
+- Ran: the suite on the working tree and in clean clones at 109cbf6 and c7be7b3; test-name and assertion
+  diff; protected-path and out/ hash checks; a column-level diff of tiers.csv (.bak, c4cf4a3, 6c49b79,
+  working bytes) with my own parser; idempotence; 40 mutants (38 killed, 1 equivalent, 1 survivor =
+  E2-5); recomputed live request windows; upload-validation probes against the fake; the home page in
+  both themes on a copy (port 8797) and GET / on 8765. Evidence: this section, one commit; probe scripts
+  in the session scratchpad audit-c2/.
+- Attributed: core / seeding-ops increment 4, build C. STATED: dispatch-contract-tool-c.md,
+  design-tool.md Amendment A1, usage-log rows 192-194, Noah's two mid-pass messages.
+- Queued: E2-1's standing rule and E2-8 wait on Noah (process and product choices, not repairs).
+- Spend: term = 4 passes + at most 1 repair pair; consumed pass 2 of 4. No skills, subagents or
+  workflows. start.gg requests 0. Token never read. All writes in scratch copies.
+- Parked: none. Tree clean after the record commit. registry/tiers.csv.bak kept for pass 4.
+- Needs attention:
+  1. The 8765 app is build C (E2-3): opening Mixfest there uses up the one-time summary.
+  2. E2-1: ratify or decline the standing rule (request records carry send times; live ceilings set
+     one below the limit).
+  3. E2-8: keep or drop the list's name as an extra tag key for linking.
+  4. Confirm Mixfest's date (2026-11-14) and start.gg's blue (#3f80ff), both unverified.
+  5. Review the 11 "linked by tag" rows in the upload summary (A1.3's own review step).
+```

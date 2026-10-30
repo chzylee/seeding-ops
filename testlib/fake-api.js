@@ -275,6 +275,18 @@ function createFakeFetch(world, opts = {}) {
         !s.container.videogame || String(s.container.videogame.id) === String(v.videogameId));
       return jsonResponse(200, { data: { player: { recentStandings: list } }, extensions: ext(196) });
     }
+    // ---- Build C (Amendment A1.3): a user by discriminator, for a CSV upload ----
+    // Any world player with a linked user answers to user/<code>; world.extraUsers adds users with
+    // no player profile ({ slug, id }). opts.userBySlugFail: a code whose lookup returns 503.
+    if (op === 'UserBySlug') {
+      if (opts.onUserBySlug) opts.onUserBySlug(v.slug);
+      if (opts.userBySlugFail && v.slug === `user/${opts.userBySlugFail}`) return jsonResponse(503, { message: 'Service Unavailable' });
+      const p = world.players.find((x) => x.user && x.user.slug.toLowerCase() === String(v.slug).toLowerCase());
+      const extra = !p && (world.extraUsers || []).find((u) => u.slug === v.slug);
+      const user = p ? { id: p.user.id, discriminator: p.user.slug.replace(/^user\//, ''), location: p.user.location, player: { id: p.id, gamerTag: p.gamerTag, prefix: p.prefix } }
+        : extra ? { id: extra.id, discriminator: extra.slug.replace(/^user\//, ''), location: null, player: null } : null;
+      return jsonResponse(200, { data: { user }, extensions: ext(6) });
+    }
     // ---- The live-check instruments (scripts/ground-truth.js, scripts/reconcile.js --live) ----
     if (op === 'GTUser') {
       const p = world.players.find((x) => x.user && x.user.slug === v.slug);

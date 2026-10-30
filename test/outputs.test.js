@@ -241,9 +241,11 @@ test('B4-3: the grey hover says "never reviewed" and names the sheet import only
   fs.writeFileSync(tiersFile, out.toCsv(data.TIER_COLS, [tierRow({ player_id: '1', tier: '6', source: 'app' }), tierRow({ sheet_tag: 'Sheet', tier: '6', source: 'sheet import' })]));
   const vm = data.viewModel(data.tabSource(outRoot, 'tour', G.id), { tiersFile, today: '2026-11-03' });
   const c = R.contextFromViewModel(vm, { app: true });
-  const title = (pid) => /<td class="tier rec-never"[^>]*title="([^"]*)"/.exec(R.summaryRow(vm.players.find((p) => p.player_id === pid), c))[1];
-  assert.strictEqual(title('1'), 'Never reviewed');
-  assert.strictEqual(title('2'), 'Never reviewed (tier from the sheet import)');
+  const title = (pid, cls) => new RegExp(`<td class="tier ${cls}"[^>]*title="([^"]*)"`).exec(R.summaryRow(vm.players.find((p) => p.player_id === pid), c))[1];
+  assert.strictEqual(title('1', 'rec-never'), 'Never reviewed');
+  // Build C (A1.2): the sheet row has no id, so it is matched by tag only: light blue instead of
+  // grey, and the hover leads with that before the same "never reviewed" text.
+  assert.strictEqual(title('2', 'match-tag'), `${R.TAG_ONLY_TITLE} · Never reviewed (tier from the sheet import)`);
 });
 
 test('B4-5: the CLI view\'s header comment matches what it renders (tiers, notes and reviews from registry/tiers.csv, not views/notes.json)', () => {

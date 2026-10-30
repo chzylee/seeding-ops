@@ -158,7 +158,9 @@
     showMsg('');
     showNote(M.reviewNote(tag, on, body, ctx.tournament));
     ctx.notes[pid] = { ...n, tier: body.tier == null ? undefined : body.tier, notes: body.notes,
-      last_reviewed_on: body.last_reviewed_on, last_reviewed_tournament: body.last_reviewed_tournament };
+      last_reviewed_on: body.last_reviewed_on, last_reviewed_tournament: body.last_reviewed_tournament,
+      // A1.2: a write that linked the row (both ids written) ends the tag-only color.
+      tag_only: body.linked ? undefined : n.tag_only };
     rerenderRow(pid, null);
     const btn = table.querySelector(`tbody tr[data-pid="${CSS.escape(pid)}"] button.seed-btn`);
     if (btn) btn.focus({ preventScroll: true });
@@ -714,7 +716,9 @@
     if (!res.ok) { notSaved(body, [td]); return; }
     showMsg('');
     ctx.notes[pid] = { ...n, tier: body.tier == null ? undefined : body.tier, notes: body.notes,
-      last_reviewed_on: body.last_reviewed_on, last_reviewed_tournament: body.last_reviewed_tournament };
+      last_reviewed_on: body.last_reviewed_on, last_reviewed_tournament: body.last_reviewed_tournament,
+      // A1.2: a write that linked the row (both ids written) ends the tag-only color.
+      tag_only: body.linked ? undefined : n.tag_only };
     ctx.hasTiers = true;
     rerenderRow(pid, kind);
   }

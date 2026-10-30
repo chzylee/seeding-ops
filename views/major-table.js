@@ -81,7 +81,7 @@ table.res td.each{min-width:240px}table.res td.each .line{white-space:nowrap}
 table.sortable th{cursor:pointer}table.sortable th:hover{background:#e6e6e6}
 .dim{color:#888}a{color:#2459a6;text-decoration:none}
 table.summary tr.reviewed-row>td{background:#e3f4e8}table.summary td.tier{text-align:center}
-table.summary td.tier.rec-here{background:#bfe3c9;color:#14532d}table.summary td.tier.rec-old{background:#fdebcc;color:#6e4300}table.summary td.tier.rec-never{background:#e6e8ec}
+table.summary td.tier.rec-here{background:#bfe3c9;color:#14532d}table.summary td.tier.rec-old{background:#fdebcc;color:#6e4300}table.summary td.tier.rec-never{background:#e6e8ec}table.summary td.tier.match-tag{background:#cfe2ff;color:#12357a}
 .tag{font-size:11px;background:#eef;border-radius:3px;padding:0 4px;color:#446;margin-left:4px}.tag.major{background:#fde8c8;color:#7a4a00}
 details{margin-top:8px}summary{cursor:pointer;color:#2459a6}
 </style>

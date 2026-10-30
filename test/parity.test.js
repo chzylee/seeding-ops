@@ -93,7 +93,9 @@ test('parity: the CLI view prints exactly the app\'s summary cells (minus the ap
   assert.match(appRows[0], /^<tr class="reviewed-row">/);
   assert.match(html, /class="tier rec-here" data-v="9" title="Last reviewed 2026-10-16 at eclipse-1st-cour \(this tournament\)"/);
   assert.match(html, /class="tier rec-old" data-v="7" title="Last reviewed 2026-03-01 at climax-of-night-final \(over 6 months ago\)"/);
-  assert.match(html, /class="tier rec-never" data-v="0" title="Never reviewed/);
+  // Build C (A1.2): the sheet-only row is matched by tag only: the tag-only color, the same in the CLI.
+  assert.match(html, /class="tier match-tag" data-v="0" title="Matched by tag only: [^"]* · Never reviewed \(tier from the sheet import\)"/);
+  assert.match(html, /table\.summary td\.tier\.match-tag\{background:#cfe2ff/, 'the CLI view carries the color');
   assert.match(html, /<b>9th \/ 145<\/b> · 4-2 <span class="dim">'25<\/span>/, 'Frosty main event, with its W-L');
   assert.ok(!/3rd \/ 17/.test(html.split('</tbody>')[0].split('<tbody>')[1].replace(/<details[\s\S]*?<\/details>/g, '')), 'the 2v2 is not in a major cell');
 });

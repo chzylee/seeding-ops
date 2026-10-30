@@ -20,6 +20,8 @@
   --on-accent: #fff; --tag-bg: #eceef8; --tag-fg: #3f4566; --both-hover: #dde8f8; --flash: #fff1a8;
   --ok: #2e8b57; --reviewed-row: #e3f4e8; --reviewed-row-hover: #d3edda;
   --rec-here-bg: #bfe3c9; --rec-here-fg: #14532d; --rec-never-bg: #e6e8ec;
+  --tag-only-bg: #cfe2ff; --tag-only-fg: #12357a; /* A1.2 tag-only match (light blue) */
+  --src-startgg-bg: #3f80ff; --src-startgg-fg: #fff; --src-upload-bg: #ece4f7; --src-upload-fg: #4b2a7a; /* A1.4 source badges */
   --clash-bg: #fde4e4; --clash-hover: #fbd5d5; --clash-side-bg: #feead6; --clash-side-hover: #fddcbd; --clash-line: #e3a3a3; --clash-fg: #7a1d1d;
   --ev0-bg: #e3ecfa; --ev0-fg: #183d73; --ev1-bg: #fde8d7; --ev1-fg: #6b3410; --ev2-bg: #e6f2e1; --ev2-fg: #24502a;
   --ev3-bg: #f1e4f6; --ev3-fg: #55276a; --ev4-bg: #eceef1; --ev4-fg: #33363c; --ev5-bg: #fdf3c8; --ev5-fg: #5a4600;
@@ -297,6 +299,9 @@ td.seeded.saving button.seed-btn { opacity: .5; }
 #summary td.tier.rec-here, table.summary td.tier.rec-here { background: var(--rec-here-bg); color: var(--rec-here-fg); }
 #summary td.tier.rec-old, table.summary td.tier.rec-old { background: var(--warn-bg); color: var(--warn-fg); }
 #summary td.tier.rec-never, table.summary td.tier.rec-never { background: var(--rec-never-bg); color: var(--ink-2); }
+/* A1.2: a tiers row matched by tag only (no start.gg id on it yet): light blue, in place of the recency
+   color (lib/view/render.js tierCellClass). Hover says so; a ✓ or an edit links it and the color goes. */
+#summary td.tier.match-tag, table.summary td.tier.match-tag { background: var(--tag-only-bg); color: var(--tag-only-fg); }
 .editor-tier { min-width: 160px; }
 
 /* ---- Schedule tab (T3; moved from conflicts/public/schedule.html) ---- */
@@ -395,6 +400,8 @@ table.push-diff tr.crosses td { background: var(--warn-bg); }
     --on-accent: #0b0d11; --tag-bg: #2a2f45; --tag-fg: #c5cbee; --both-hover: #273b5e; --flash: #5a4d12;
     --ok: #4caf7a; --reviewed-row: #16301f; --reviewed-row-hover: #1c3b27;
     --rec-here-bg: #1f5a34; --rec-here-fg: #c7f0d4; --rec-never-bg: #2a2e35;
+    --tag-only-bg: #18406e; --tag-only-fg: #d3e5ff;
+    --src-startgg-bg: #3f80ff; --src-startgg-fg: #fff; --src-upload-bg: #3a2a52; --src-upload-fg: #dccbf5;
     --clash-bg: #4a1f1f; --clash-hover: #5a2626; --clash-side-bg: #4a2f14; --clash-side-hover: #5a3a1a; --clash-line: #8a4b4b; --clash-fg: #f3b3b3;
     --ev0-bg: #1e2f4d; --ev0-fg: #b9d0f5; --ev1-bg: #4a2c17; --ev1-fg: #f5c9a6; --ev2-bg: #1f3a24; --ev2-fg: #bfe6c5;
     --ev3-bg: #3a2347; --ev3-fg: #e1c2ee; --ev4-bg: #2a2e35; --ev4-fg: #d5d8de; --ev5-bg: #4a3e0f; --ev5-fg: #f1dd8a;
@@ -413,6 +420,8 @@ table.push-diff tr.crosses td { background: var(--warn-bg); }
     --on-accent: #0b0d11; --tag-bg: #2a2f45; --tag-fg: #c5cbee; --both-hover: #273b5e; --flash: #5a4d12;
     --ok: #4caf7a; --reviewed-row: #16301f; --reviewed-row-hover: #1c3b27;
     --rec-here-bg: #1f5a34; --rec-here-fg: #c7f0d4; --rec-never-bg: #2a2e35;
+    --tag-only-bg: #18406e; --tag-only-fg: #d3e5ff;
+    --src-startgg-bg: #3f80ff; --src-startgg-fg: #fff; --src-upload-bg: #3a2a52; --src-upload-fg: #dccbf5;
     --clash-bg: #4a1f1f; --clash-hover: #5a2626; --clash-side-bg: #4a2f14; --clash-side-hover: #5a3a1a; --clash-line: #8a4b4b; --clash-fg: #f3b3b3;
     --ev0-bg: #1e2f4d; --ev0-fg: #b9d0f5; --ev1-bg: #4a2c17; --ev1-fg: #f5c9a6; --ev2-bg: #1f3a24; --ev2-fg: #bfe6c5;
     --ev3-bg: #3a2347; --ev3-fg: #e1c2ee; --ev4-bg: #2a2e35; --ev4-fg: #d5d8de; --ev5-bg: #4a3e0f; --ev5-fg: #f1dd8a;

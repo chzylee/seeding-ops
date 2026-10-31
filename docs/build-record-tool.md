@@ -3421,3 +3421,26 @@ batching, per-player set paging and a cross-tournament W-L cache is in the usage
   were dropped into the checkout.
 
 Suite 263/263/0/0.
+
+---
+
+## Out-of-band: one Export to CSV with a save dialog and a progress card (orchestrating session, 2026-10-30)
+
+Noah: *"both exports also don't work great and it's not clear what the difference is … lets just do export
+to csv and it should give a dialogue for where to save then show progress bar and exported in a small modal
+that goes away after a few seconds."* Recorded per standing rule (a).
+
+- One button, **Export to CSV**, replaces "Download for Google Sheets" and "Export seeds CSV". The file is
+  the summary table in seed order with a leading **Seed** column (lib/view/model.js `seedSequence`, the
+  push's numbering; the table's current order within a tier via `?order=`; untiered last), so it serves
+  both the Sheets import and the seed list. `GET …/export.csv` gained `?order=` and a Content-Length;
+  `seeds.csv` stays as a route (tests, scripts) but has no button.
+- Flow (app.js): the save dialog first (`showSaveFilePicker`, which the app's WebView2 and Chromium
+  browsers have; cancelling does nothing; elsewhere a plain download), then a small card at the bottom
+  right: "Exporting…" with a progress bar read from Content-Length, then "Exported · <file> · <size>",
+  gone after 3 s (6 s on an error, which it names).
+- Checked in the browser pane with a stubbed picker: suggested name
+  `eclipse-1st-cour-melty-blood-actress-again-current-code-seeding.csv`, 536,163 bytes written, states
+  Exporting 0 % → 100 % → Saving → Exported, hidden after 3 s. Tests: Seed column first and 1..N, `?order=`
+  kept within a tier, Content-Length equals the body; the page source no longer references seeds.csv.
+  README updated. Suite 264/264/0/0.

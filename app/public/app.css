@@ -537,3 +537,16 @@ button:disabled { opacity: .6; cursor: progress; }
 ul.events li[data-t] { cursor: pointer; }
 ul.events li[data-t]:hover { border-color: var(--accent); background: var(--row-hover); }
 ul.events li[data-t]:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* ---- Export to CSV: a small progress card at the bottom right that goes away by itself (app.js) ---- */
+.mini-modal { position: fixed; right: 12px; bottom: 52px; z-index: var(--z-popover); width: min(360px, calc(100vw - 24px)); padding: 10px 12px; background: var(--cell); color: var(--fg);
+  border: 1px solid var(--line-strong); border-radius: var(--radius); box-shadow: 0 6px 24px rgba(0, 0, 0, .18); font-size: 13px; }
+.mini-modal[hidden] { display: none; }
+.mini-modal .mini-head { display: flex; align-items: center; gap: 8px; font-weight: 600; }
+.mini-modal .mini-bar { height: 5px; margin: 8px 0 6px; border-radius: 999px; background: var(--line); overflow: hidden; }
+.mini-modal .mini-fill { height: 100%; width: 0; background: var(--accent); transition: width .2s var(--ease); }
+.mini-modal.done .mini-fill { background: var(--ok); }
+.mini-modal.done .spinner { border-color: var(--ok); border-top-color: var(--ok); animation: none; }
+.mini-modal.err .mini-fill { background: var(--err); }
+.mini-modal.err .spinner { border-color: var(--err); border-top-color: var(--err); animation: none; }
+.mini-modal.err .mini-head { color: var(--err); }

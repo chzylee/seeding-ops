@@ -569,15 +569,66 @@
   });
   $('update').addEventListener('click', () => load({ keep: true }));
 
-  $('export').href = api('export.csv');
-
-  // ---- Export seeds CSV (docs/design-tool.md, Outputs 1): the table's current order, as shown ------
-  // (pinned rows at their place in the sort), numbered by tier on the server with the same function
-  // the push uses (lib/view/model.js seedSequence). No start.gg request.
+  // ---- Export to CSV (Noah, 2026-10-30): one export. The summary table in seed order with a Seed
+  // column first (numbered by tier with the push's sequence; this table's current order within a
+  // tier). A save dialog first (the File System Access API, which the app's webview and Chromium
+  // browsers have; a plain download elsewhere), then a small progress card that goes away by itself.
   function tableOrder() {
     return [...table.querySelectorAll('tbody tr[data-pid]')].sort((a, b) => Number(a.dataset.i) - Number(b.dataset.i)).map((tr) => tr.dataset.pid);
   }
-  $('exportSeeds').addEventListener('click', () => { $('exportSeeds').href = api(`seeds.csv?order=${tableOrder().join(',')}`); });
+  const exportUi = {
+    show(title, detail) { $('exportTitle').textContent = title; $('exportDetail').textContent = detail || ''; $('exportBar').style.width = '0%'; $('exportModal').classList.remove('done', 'err'); $('exportModal').hidden = false; },
+    progress(frac) { $('exportBar').style.width = `${Math.round(100 * Math.max(0, Math.min(1, frac)))}%`; },
+    finish(title, detail, err) {
+      $('exportTitle').textContent = title; $('exportDetail').textContent = detail || ''; $('exportBar').style.width = '100%';
+      $('exportModal').classList.toggle('done', !err); $('exportModal').classList.toggle('err', !!err);
+      clearTimeout(exportUi.t); exportUi.t = setTimeout(() => { $('exportModal').hidden = true; }, err ? 6000 : 3000);
+    },
+  };
+  function suggestedName() {
+    const slug = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
+    return `${slug(T)}-${slug(vm && vm.tab && vm.tab.game && vm.tab.game.name)}-seeding.csv`;
+  }
+  async function fetchCsvWithProgress(url, onProgress) {
+    const res = await fetch(url, { cache: 'no-store' });
+    if (!res.ok) throw new Error(`The server answered ${res.status}.`);
+    const total = Number(res.headers.get('Content-Length')) || 0;
+    const fromHeader = /filename="([^"]+)"/.exec(res.headers.get('Content-Disposition') || '');
+    const chunks = []; let got = 0;
+    const reader = res.body.getReader();
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value); got += value.length;
+      onProgress(total ? got / total : 0.5);
+    }
+    return { blob: new Blob(chunks, { type: 'text/csv;charset=utf-8' }), filename: fromHeader ? fromHeader[1] : suggestedName(), bytes: got };
+  }
+  $('exportCsv').addEventListener('click', async () => {
+    const url = api(`export.csv?order=${tableOrder().join(',')}`);
+    let handle = null;
+    if (window.showSaveFilePicker) {
+      try {
+        handle = await window.showSaveFilePicker({ suggestedName: suggestedName(), types: [{ description: 'CSV', accept: { 'text/csv': ['.csv'] } }] });
+      } catch (err) { if (err && err.name === 'AbortError') return; handle = null; }   // cancelled: nothing happens; unavailable: plain download
+    }
+    exportUi.show('Exporting…', 'Building the table');
+    $('exportCsv').disabled = true;
+    try {
+      const { blob, filename, bytes } = await fetchCsvWithProgress(url, exportUi.progress);
+      if (handle) {
+        exportUi.progress(0.95); $('exportDetail').textContent = 'Saving';
+        const w = await handle.createWritable(); await w.write(blob); await w.close();
+        exportUi.finish('Exported', `${handle.name || filename} · ${(bytes / 1024).toFixed(0)} KB`);
+      } else {
+        const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = filename; document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+        exportUi.finish('Exported', `${filename} · ${(bytes / 1024).toFixed(0)} KB (to your downloads)`);
+      }
+    } catch (err) {
+      exportUi.finish('Export failed', err.message, true);
+    } finally { $('exportCsv').disabled = false; }
+  });
 
   // ---- Push to start.gg (docs/design-tool.md, Outputs 2): dry run first, always --------------------
   // A dry run reads the phase's seeds (start.gg's current order) and shows current -> proposed. The

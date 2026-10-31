@@ -111,9 +111,11 @@ never changes, and a **browser reload** shows the newest data. Old event links
 - **⇅ Compare** splits the window: tick up to three players and the lower half shows their summary
   rows, the events they entered together (each one's placement and W-L there; this is *not*
   head-to-head sets), and their series side by side.
-- **Download for Google Sheets** saves the tab's summary table as a CSV. In Sheets: *File → Import →
-  Upload*, then *Replace current sheet*. Tags that start with `=`, `+`, `-` or `@` get a leading `'`
-  so Sheets keeps them as text.
+- **Export to CSV** saves this table as a CSV, in seed order with a **Seed** column first (numbered by
+  tier with the same sequence the push uses; the table's current order within a tier; untiered last).
+  You pick where to save it; a small card shows the progress and goes away when done. For Google Sheets:
+  *File → Import → Upload*, then *Replace current sheet*. Tags that start with `=`, `+`, `-` or `@` get a
+  leading `'` so Sheets keeps them as text.
 - **Tier and Notes** are edited in place: double-click the cell (or focus it and press Enter).
   Enter saves, Esc cancels. Saves go to `registry/tiers.csv`. There is no reason field: the results
   are the justification, and notes are for what results don't show. Changing a tier stamps its
@@ -154,9 +156,6 @@ game's tab hand them over. Both number seeds the same way: **higher tier gets th
 number**, one sequence 1..N, untiered players after tiered ones. The tool never orders players
 beyond their tiers.
 
-- **Export seeds CSV** downloads the tab's players as `tier, tag, player_id, proposed_seed`, in seed
-  order, keeping **the table's current order within a tier** (sort the table first if you like).
-  No start.gg request; it works without being a tournament admin.
 - **Push to start.gg… → Dry run** reads the event's seeding from start.gg (its first phase by phase
   order, named in the dry run; nothing is sent) and shows current seed → proposed seed: tiered
   players by tier with **start.gg's current order within a tier**, then players without a tier,

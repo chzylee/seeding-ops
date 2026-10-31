@@ -213,7 +213,9 @@ test('the page: posting needs a click on a dry run and a confirm, sends the fing
   assert.match(postFn, /\{ fingerprint: dry\.fingerprint, confirm: true \}/);
   assert.match(postFn, /pushLine\(r\.body\.error \|\| 'Not posted\.', true\)/);
   assert.match(fn('runDry'), /R\.pushDiffTable\(dry\)/);
-  assert.match(src, /api\(`seeds\.csv\?order=\$\{tableOrder\(\)\.join\(','\)\}`\)/);
+  // Noah, 2026-10-30: one export; it carries the table's order to export.csv (the Seed column uses it).
+  assert.match(src, /api\(`export\.csv\?order=\$\{tableOrder\(\)\.join\(','\)\}`\)/);
+  assert.doesNotMatch(src, /seeds\.csv/, 'the seeds.csv button is gone from the page');
 });
 
 // ---- Acceptance 13: build A follow-ups ---------------------------------------------------------------

@@ -509,8 +509,11 @@ function createApp(opts = {}) {
             return json(res, 200, vm);
           }
           if (g[2] === 'export.csv') {
-            const { filename, csv } = data.summaryExport(src, { records, tiersFile, today: data.todayOf(nowDate()) });
-            return send(res, 200, csv, 'text/csv; charset=utf-8', { 'Content-Disposition': `attachment; filename="${filename}"` });
+            // ?order=<player ids>: the table's current order, kept within a tier (the page sends it).
+            const order = (url.searchParams.get('order') || '').split(',').filter((x) => /^\d+$/.test(x));
+            const { filename, csv } = data.summaryExport(src, { records, tiersFile, today: data.todayOf(nowDate()), order });
+            // Content-Length lets the page show a real progress bar while it downloads.
+            return send(res, 200, csv, 'text/csv; charset=utf-8', { 'Content-Disposition': `attachment; filename="${filename}"`, 'Content-Length': Buffer.byteLength(csv) });
           }
           const order = (url.searchParams.get('order') || '').split(',').filter((x) => /^\d+$/.test(x));
           const { filename, csv } = data.seedsExport(src, { order, tiersFile });

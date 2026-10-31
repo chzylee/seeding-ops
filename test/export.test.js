@@ -61,3 +61,25 @@ test('export: GET /api/t/<t>/g/<game>/export.csv serves the live pull\'s tab sum
   assert.strictEqual((await inject(app.handler, { url: '/api/t/nope/g/1/export.csv' })).status, 404);
   assert.strictEqual((await inject(app.handler, { url: `/api/t/${T_SLUG}/g/999/export.csv` })).status, 404, 'a game that is not a tab');
 });
+
+// Noah, 2026-10-30: one export. The table in seed order with a Seed column first; ?order= keeps the
+// table's order within a tier, like the seeds.csv the page no longer offers.
+test('export: the CSV carries a leading Seed column in tier order, honours ?order= within a tier, and sets Content-Length', async () => {
+  const outRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'seeding-export-'));
+  const START = Date.UTC(2026, 9, 12, 15, 0, 0);
+  const world = buildWorld(START / 1000);
+  const clock = virtualClock(START);
+  assert.strictEqual(await run({ url: 'https://www.start.gg/' + EVENT_SLUG, token: 'T', outRoot, fetchImpl: createFakeFetch(world), now: clock.now, sleep: clock.sleep, stderr: sink(), stdout: sink() }), 0);
+  addTournament(outRoot, world, [E_SLUG]);
+  const app = createApp({ outRoot, getToken: () => '' });
+  const r = await inject(app.handler, { url: `/api/t/${T_SLUG}/g/${GAME.id}/export.csv` });
+  assert.strictEqual(r.status, 200);
+  assert.strictEqual(Number(r.headers['Content-Length']), Buffer.byteLength(r.text), 'Content-Length matches the body (the page draws a progress bar from it)');
+  const rows = parseCsv(r.text);
+  assert.strictEqual(Object.keys(rows[0])[0], 'Seed', 'Seed is the first column');
+  assert.deepStrictEqual(rows.map((x) => Number(x.Seed)), rows.map((_, i) => i + 1), 'seeds are 1..N in file order');
+  // ?order= reverses the untiered players' relative order (no tiers in this world: all one group).
+  const ids = rows.map((x) => x['start.gg player id']);
+  const rev = await inject(app.handler, { url: `/api/t/${T_SLUG}/g/${GAME.id}/export.csv?order=${[...ids].reverse().join(',')}` });
+  assert.deepStrictEqual(parseCsv(rev.text).map((x) => x['start.gg player id']), [...ids].reverse(), 'the table order is kept within a tier');
+});

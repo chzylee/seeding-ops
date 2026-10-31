@@ -535,6 +535,7 @@
     $('refresh').disabled = !!(st && (st.running || st.busy));
     // The shared loading indicator (busy.js) follows the job: label, and W-L progress when known.
     if (window.Busy) Busy.job(st && (st.running || st.busy) ? (t || 'Working…') : null, st && st.running && st.wl && st.wl.total ? st.wl : null);
+    if (window.showStopJob) window.showStopJob(st);   // the header's Stop button (tournament.js) follows this poll too
     if (st && (st.running || st.busy)) startPolling();
   }
   function startPolling() {

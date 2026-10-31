@@ -49,11 +49,14 @@ test('add a tournament: an event URL makes ONE synchronous events request; state
   assert.strictEqual(fake.calls.length, 0);
   const r = await post(app, '/api/tournaments', { url: `https://www.start.gg/${EVENT_SLUG}/overview` });
   assert.strictEqual(r.status, 200, r.text);
-  assert.deepStrictEqual(r.json(), { t: T_SLUG, added: true, page: `/t/${T_SLUG}?tick=${E_SLUG}` });
-  assert.deepStrictEqual(fake.calls.map((c) => c.op), ['TournamentEvents']);
+  // Noah, 2026-10-30: the link says what to pull. An event link ticks that event and the pull starts at once.
+  assert.deepStrictEqual(r.json(), { t: T_SLUG, added: true, ticked: [E_SLUG], started: true, queued: false, page: `/t/${T_SLUG}` });
+  assert.strictEqual(fake.calls[0].op, 'TournamentEvents', 'the catalog request comes first');
+  await app.jobs.idle();
   const st = pool.readState(path.join(outRoot, T_SLUG));
   assert.deepStrictEqual(st.events.map((e) => [e.slug, e.singles]), [[E_SLUG, true], [E2_SLUG, true], ['mbaacc-2v2', false]]);
-  assert.deepStrictEqual(st.ticked, [], 'Noah ticks; adding ticks nothing');
+  assert.deepStrictEqual(st.ticked, [E_SLUG], 'the linked event is ticked by the add');
+  assert.ok(pool.currentPull(path.join(outRoot, T_SLUG)), 'the automatic pull finished');
   // The picker is singles-only: a teams event cannot be ticked.
   const bad = await post(app, `${TAPI}/events`, { ticked: ['mbaacc-2v2'] });
   assert.strictEqual(bad.status, 400);
@@ -61,13 +64,17 @@ test('add a tournament: an event URL makes ONE synchronous events request; state
   assert.strictEqual((await post(app, `${TAPI}/events`, { ticked: ['nope'] })).status, 400);
   const ok = await post(app, `${TAPI}/events`, { ticked: [E2_SLUG, E_SLUG] });
   // Build B pass 3 (D2-1): the response also names the added events and says whether a pull was queued.
-  assert.deepStrictEqual(ok.json(), { ticked: [E_SLUG, E2_SLUG], added: [E_SLUG, E2_SLUG], addedNames: ['Melty Blood: Actress Again Current Code', 'Melee Singles'], started: null, queued: false }, 'catalog order; no pool yet, so no pull');
-  // Re-adding refreshes the catalog and keeps every decision.
-  await post(app, '/api/tournaments', { url: `https://start.gg/tournament/${T_SLUG}` });
+  // The linked event is already pooled, so ticking the second one starts its incremental pull at once.
+  assert.deepStrictEqual(ok.json(), { ticked: [E_SLUG, E2_SLUG], added: [E2_SLUG], addedNames: ['Melee Singles'], started: true, queued: false }, 'catalog order; the new event pulls now');
+  await app.jobs.idle();
+  // Re-adding refreshes the catalog and keeps every decision; it ticks nothing and starts nothing.
+  const callsBefore = fake.calls.length;
+  const again = await post(app, '/api/tournaments', { url: `https://start.gg/tournament/${T_SLUG}` });
+  assert.deepStrictEqual(again.json(), { t: T_SLUG, added: false, ticked: [E_SLUG, E2_SLUG], started: false, queued: false, page: `/t/${T_SLUG}` });
+  assert.strictEqual(fake.calls.length, callsBefore + 1, 'one catalog request, no pull');
   assert.deepStrictEqual(pool.readState(path.join(outRoot, T_SLUG)).ticked, [E_SLUG, E2_SLUG]);
-  // Before the first pool: the page, the picker, no tabs.
   const info = (await inject(app.handler, { url: TAPI })).json();
-  assert.strictEqual(info.pull, null);
+  assert.ok(info.pull, 'pooled');
   assert.deepStrictEqual(info.tabs.map((t) => t.game.id), [String(GAME.id), String(OTHER_GAME.id)]);
   assert.strictEqual((await inject(app.handler, { url: `/t/${T_SLUG}` })).status, 200);
 });
@@ -347,4 +354,47 @@ test('lifecycle: Mark done; done blocks nothing; Archive standings makes one sta
   assert.ok(fs.existsSync(path.join(outRoot, 'another-t', 'state.json')), 'another tournament is untouched');
   assert.strictEqual((await inject(app.handler, { url: `/t/${T_SLUG}` })).status, 404);
   assert.ok(!(await inject(app.handler, { url: '/' })).text.includes(`/t/${T_SLUG}"`));
+});
+
+// ---- Stop (Noah, 2026-10-30): a running job can be stopped; what was saved stays; Refresh resumes ----
+
+test('Stop: a running pull stops after the request in flight, the previous pull stays live, status reads stopped, a queued pull is dropped, and Refresh resumes', async () => {
+  const outRoot = tmp();
+  const world = buildWorld(START / 1000);
+  const tDir = await pooled(outRoot, world);
+  const liveBefore = pool.currentPull(tDir).name;
+  // A fake that can be held: every call after the first waits until released.
+  const base = createFakeFetch(world);
+  let release; const gate = new Promise((r) => { release = r; });
+  let n = 0;
+  const held = async (url, init) => { n++; if (n > 1) await gate; return base(url, init); };
+  held.calls = base.calls;
+  const now = START + DAY;
+  const clock = virtualClock(now);
+  const app = createApp({ outRoot, getToken: () => TOKEN, fetchImpl: held, now: () => now, sleep: clock.sleep });
+  assert.strictEqual((await post(app, `${TAPI}/refresh`)).status, 202);
+  // Wait until the pull is past its first request, then stop it.
+  while (n < 2) await new Promise((r) => setTimeout(r, 5));
+  const c = await post(app, `${TAPI}/cancel`);
+  assert.deepStrictEqual(c.json(), { running: true, queued: false, schedule: false });
+  let st = (await inject(app.handler, { url: `${TAPI}/status` })).json();
+  assert.strictEqual(st.stopping, true, 'stopping while the request in flight finishes');
+  release();
+  await app.jobs.idle();
+  st = (await inject(app.handler, { url: `${TAPI}/status` })).json();
+  assert.strictEqual(st.running, false);
+  assert.strictEqual(st.phase, 'stopped');
+  assert.strictEqual(st.stopped, true);
+  assert.strictEqual(st.error, null, 'a stop is not an error');
+  assert.ok(n < 10, `the job stopped early (${n} requests)`);
+  assert.strictEqual(pool.currentPull(tDir).name, liveBefore, 'the previous pull stays live');
+  // Stopping when nothing runs is a no-op; a queued pull is dropped.
+  assert.deepStrictEqual((await post(app, `${TAPI}/cancel`)).json(), { running: false, queued: false, schedule: false });
+  // Refresh afterwards runs to completion (the stopped pull folder is resumed or replaced).
+  n = 0;
+  assert.strictEqual((await post(app, `${TAPI}/refresh`)).status, 202);
+  await app.jobs.idle();
+  st = (await inject(app.handler, { url: `${TAPI}/status` })).json();
+  assert.strictEqual(st.phase, 'done', st.error || st.message);
+  assert.notStrictEqual(pool.currentPull(tDir).name, liveBefore, 'the refresh swapped in a new pull');
 });

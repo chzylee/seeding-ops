@@ -301,10 +301,16 @@ function createApp(opts = {}) {
     if (pool.isUpload(had)) throw bad(409, `out/${catalog.tournament.slug}/ is an uploaded list with the same name. Delete it first, or keep both by renaming the list.`);
     // Re-adding refreshes the catalog (names, start times, phases) and keeps every decision.
     const state = had ? { ...had, tournament: catalog.tournament, events: catalog.events } : pool.newState(catalog);
-    pool.writeState(tDir, state);
+    // Noah, 2026-10-30: the link already says what to pull, so there is no manual step. An event link
+    // ticks that event; a tournament link ticks every singles event. The pull starts at once (or queues
+    // behind a running job). Re-adding an existing tournament keeps its ticks and starts nothing.
     const ev = /\/event\/([^/?#\s]+)/i.exec(String(fields.url));
-    const tick = ev && catalog.events.some((e) => e.slug === ev[1].toLowerCase() && e.singles) ? ev[1].toLowerCase() : null;
-    return { t: catalog.tournament.slug, added: !had, page: `/t/${catalog.tournament.slug}${tick ? `?tick=${encodeURIComponent(tick)}` : ''}` };
+    const fromLink = ev ? catalog.events.filter((e) => e.slug === ev[1].toLowerCase() && e.singles) : catalog.events.filter((e) => e.singles);
+    let started = false, queued = false;
+    if (!had && fromLink.length) state.ticked = fromLink.map((e) => e.slug);
+    pool.writeState(tDir, state);
+    if (!had && state.ticked.length) ({ started, queued } = jobs.queuePull(catalog.tournament.slug, { mode: 'full' }));
+    return { t: catalog.tournament.slug, added: !had, ticked: state.ticked, started, queued, page: `/t/${catalog.tournament.slug}` };
   }
 
   function setTicked(t, fields) {
@@ -511,7 +517,7 @@ function createApp(opts = {}) {
           return send(res, 200, csv, 'text/csv; charset=utf-8', { 'Content-Disposition': `attachment; filename="${filename}"` });
         }
         const getRoute = /^(\/status|\/schedule|\/g\/\d+\/(data|export\.csv|seeds\.csv))$/;
-        const postRoute = /^(\/g\/\d+\/player\/\d+(\/review)?|\/events|\/refresh|\/lifecycle|\/linked|\/schedule\/refresh|\/upload\/seen|\/push\/[^/]+\/(dry-run|post))$/;
+        const postRoute = /^(\/g\/\d+\/player\/\d+(\/review)?|\/events|\/refresh|\/cancel|\/lifecycle|\/linked|\/schedule\/refresh|\/upload\/seen|\/push\/[^/]+\/(dry-run|post))$/;
         if (method !== 'POST' || getRoute.test(rest)) {
           return postRoute.test(rest) || getRoute.test(rest) ? send(res, 405, 'Method not allowed') : notFound(res);
         }
@@ -542,6 +548,8 @@ function createApp(opts = {}) {
           return json(res, started ? 202 : 409, jobs.status(t));
         }
         if (rest === '/lifecycle') return json(res, 200, lifecycle(t, await readBody(req)));
+        // Stop (Noah, 2026-10-30): asks the running job (or the queued pull, or the schedule pull) to stop.
+        if (rest === '/cancel') { if (!pool.readState(pool.tournamentDir(outRoot, t))) return notFound(res); return json(res, 200, jobs.cancel(t)); }
         if (rest === '/upload/seen') {
           await readBody(req);
           const tDir = pool.tournamentDir(outRoot, t);

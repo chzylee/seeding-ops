@@ -168,7 +168,15 @@ function showStatus(st) {
   s.textContent = st && st.running ? (st.kind === 'seeds' ? 'Pulling seeds from start.gg…' : 'Pulling from start.gg…') : st && st.error ? 'Refresh failed: ' + st.error : '';
   // The shared loading indicator (busy.js) follows the schedule job.
   if (window.Busy) Busy.job(st && st.running ? s.textContent : null);
+  const stop = $('sStop');
+  if (stop) { stop.hidden = !(st && st.running); stop.disabled = !!(st && st.stopping); stop.textContent = st && st.stopping ? 'Stopping…' : 'Stop'; }
 }
+$('sStop').addEventListener('click', async () => {
+  $('sStop').disabled = true;
+  await fetch(API + '/cancel', { method: 'POST', headers: { 'X-Seeding-App': '1' } });
+  $('sStatus').textContent = 'Stopping after the current request…';
+  setTimeout(poll, 800);
+});
 
 async function poll() {
   const st = (await (await fetch(API + '/status', { cache: 'no-store' })).json()).schedule;

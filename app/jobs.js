@@ -48,10 +48,34 @@ class Jobs {
   now() { return (this.opts.now || Date.now)(); }
   tDir(t) { return pool.tournamentDir(this.opts.outRoot, t); }
 
+  // Stop (Noah, 2026-10-30): a running job is asked to stop; the next request it would send is
+  // refused instead, the loop ends on that error, and whatever was saved stays (the previous pull
+  // stays live, a stopped pull folder resumes next time, the W-L cache keeps what it has). A queued
+  // pull is simply dropped. Returns what happened, for the page.
+  cancel(t) {
+    const r = { running: false, queued: false, schedule: false };
+    if (this.current && this.current.t === t && !this.current.cancelled) { this.current.cancelled = true; this.current.message = 'Stopping…'; r.running = true; }
+    const before = this.waiting.length;
+    this.waiting = this.waiting.filter((w) => w.t !== t);
+    r.queued = this.waiting.length < before;
+    const s = this.schedules.get(t);
+    if (s && s.running && !s.cancelled) { s.cancelled = true; r.schedule = true; }
+    return r;
+  }
+  // A fetch that refuses every send once the job is stopped. The client sees kind 'cancelled'.
+  stoppable(job, inner) {
+    const f = (url, init) => {
+      if (job.cancelled) return Promise.reject(Object.assign(new Error('stopped'), { kind: 'cancelled' }));
+      return inner(url, init);
+    };
+    f.timeoutAtSend = inner.timeoutAtSend;
+    return f;
+  }
+
   begin(t, kind, extra) {
     if (this.current) return { started: false, job: this.current };
     const job = {
-      t, kind, phase: kind === 'pull' ? 'pulling' : kind, message: 'Starting…', error: null,
+      t, kind, phase: kind === 'pull' ? 'pulling' : kind, message: 'Starting…', error: null, cancelled: false,
       startedAt: new Date(this.now()).toISOString(), finishedAt: null, pullDir: null, cache: null, sends: [],
       wl: { done: 0, total: 0, summaryDone: 0, summaryTotal: 0, noUser: 0 }, requests: 0, ...extra,
     };
@@ -59,6 +83,7 @@ class Jobs {
     this.last.set(t, job);
     const exec = kind === 'pull' ? this.executePull(job) : this.executeArchive(job);
     job.promise = exec.catch((err) => {
+      if (job.cancelled) { job.phase = 'stopped'; job.error = null; job.message = 'Stopped. What was saved stays; Refresh resumes.'; return; }
       job.phase = 'error';
       job.error = (err && err.message) || String(err);
     }).finally(() => {
@@ -105,16 +130,16 @@ class Jobs {
   startSchedule(t, { seedsOnly = false } = {}) {
     const cur = this.schedules.get(t);
     if (cur && cur.running) return { started: false, job: cur };
-    const job = { t, running: true, kind: seedsOnly ? 'seeds' : 'full', error: null, startedAt: new Date(this.now()).toISOString(), finishedAt: null };
+    const job = { t, running: true, kind: seedsOnly ? 'seeds' : 'full', error: null, cancelled: false, startedAt: new Date(this.now()).toISOString(), finishedAt: null };
     this.schedules.set(t, job);
     job.promise = Promise.resolve()
       .then(() => {
         const token = this.opts.getToken();
         if (!token) throw new Error('No start.gg token. Paste it after STARTGG_TOKEN= in the .env file and restart the app.');
         return (this.opts.pullSchedule || pullSchedule)({ slug: t, token, seedsOnly, outRoot: this.opts.outRoot,
-          fetchImpl: this.opts.queue.fetchFor(), now: this.opts.now, sleep: this.opts.sleep });
+          fetchImpl: this.stoppable(job, this.opts.queue.fetchFor()), now: this.opts.now, sleep: this.opts.sleep });
       })
-      .catch((err) => { job.error = (err && err.message) || String(err); })
+      .catch((err) => { job.error = job.cancelled ? 'Stopped.' : (err && err.message) || String(err); })
       .finally(() => { job.running = false; job.finishedAt = new Date(this.now()).toISOString(); });
     return { started: true, job };
   }
@@ -146,16 +171,18 @@ class Jobs {
       lastRunAt: cur ? cur.meta.run_at : null,
       run: cur ? cur.name : null,
       error: job ? job.error : null,
+      stopping: running && !!job.cancelled,
+      stopped: !!(job && job.phase === 'stopped'),
       busy: this.current && this.current.t !== t ? this.current.t : null,
       queued: this.waiting.some((w) => w.t === t),
       startedAt: job ? job.startedAt : null,
       finishedAt: job ? job.finishedAt : null,
-      schedule: s ? { running: s.running, kind: s.kind, error: s.error, startedAt: s.startedAt, finishedAt: s.finishedAt } : { running: false, error: null },
+      schedule: s ? { running: s.running, kind: s.kind, error: s.error, stopping: s.running && !!s.cancelled, startedAt: s.startedAt, finishedAt: s.finishedAt } : { running: false, error: null },
     };
   }
 
   client(job, token, onRequest) {
-    return sgg.createClient({ token, fetchImpl: this.opts.queue.fetchFor((t) => { job.requests++; job.sends.push(t); }), now: this.opts.now, sleep: this.opts.sleep, onRequest });
+    return sgg.createClient({ token, fetchImpl: this.stoppable(job, this.opts.queue.fetchFor((t) => { job.requests++; job.sends.push(t); })), now: this.opts.now, sleep: this.opts.sleep, onRequest });
   }
 
   async executePull(job) {
@@ -167,7 +194,7 @@ class Jobs {
     if (!state) throw new Error('This tournament has not been added.');
     const ticked = state.ticked || [];
     if (!ticked.length) throw new Error('Tick at least one event to seed first.');
-    const fetchImpl = this.opts.queue.fetchFor((t) => { job.requests++; job.sends.push(t); });
+    const fetchImpl = this.stoppable(job, this.opts.queue.fetchFor((t) => { job.requests++; job.sends.push(t); }));
     // Amendment A1.3: an uploaded list first resolves its rows (one user lookup each, saved to
     // state.json as they come, so a stopped job resumes), links the registry, then pulls like any page.
     const upload = pool.isUpload(state) ? await this.resolveUpload(job, tDir, token) : null;

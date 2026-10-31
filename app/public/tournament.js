@@ -151,6 +151,7 @@
       line(jobText(st), st.phase === 'error');
       // The shared loading indicator (busy.js) follows the job: label, and W-L progress when known.
       if (window.Busy) Busy.job(st.running || st.queued ? jobText(st) : null, st.running && st.wl && st.wl.total ? st.wl : null);
+      showStop(st);
       if (st.running || st.busy || st.queued) return;
       clearInterval(polling); polling = null;
       if (reloadWhenDone && st.phase !== 'error') { location.reload(); return; }
@@ -163,6 +164,23 @@
     info = await r.json();
     renderHeader();
   }
+
+  // Stop (Noah, 2026-10-30): shown while this tournament's job runs or waits; asks the server to stop it.
+  function showStop(st) {
+    const b = $('stopJob');
+    if (!b) return;
+    b.hidden = !(st && (st.running || st.queued));
+    b.disabled = !!(st && st.stopping);
+    b.textContent = st && st.stopping ? 'Stopping…' : 'Stop';
+  }
+  window.showStopJob = showStop;
+  $('stopJob').addEventListener('click', async () => {
+    $('stopJob').disabled = true; $('stopJob').textContent = 'Stopping…';
+    const r = await post(tapi('cancel'));
+    if (!r.ok) { line(r.body.error || 'Could not stop it.', true); $('stopJob').disabled = false; $('stopJob').textContent = 'Stop'; return; }
+    line(r.body.running ? 'Stopping after the current request…' : r.body.queued ? 'The queued pull was dropped.' : 'Nothing was running.');
+    poll();
+  });
 
   $('pullFirst').addEventListener('click', async () => {
     if (isUpload()) {

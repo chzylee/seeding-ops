@@ -22,6 +22,7 @@
     <div class="group" role="group" aria-label="Data">
       <button id="refresh" type="button" title="Pull every seeded event's registrants and every player's results again, then fetch W-L">Refresh data</button>
       <span id="tline" class="status" role="status" aria-live="polite"></span>
+      <button id="stopJob" type="button" hidden class="danger" title="Stop the running job. What was saved stays; Refresh resumes it.">Stop</button>
     </div>
     <details id="eventsBox" class="about"><summary>Seeded events</summary>
       <div class="about-body">
@@ -103,6 +104,7 @@
       <button id="sRefreshSeeds" type="button" title="Re-pull only this tournament's pools and seeds. Side games are kept from the last full refresh.">Refresh seeds</button>
       <button id="clashToggle" type="button" aria-pressed="false" title="Move players with two pools at the same time to the top. Red: two main-event pools clash. Orange: the only clash is with a side game.">Conflicts first</button>
       <button id="lowerToggle" type="button" aria-pressed="false" title="Open a second copy of the table below, sortable by any column">▤ Block view</button>
+      <button id="sStop" type="button" hidden class="danger" title="Stop the schedule pull">Stop</button>
       <span id="sStatus" class="s-status" role="status" aria-live="polite"></span>
       <label>Players in <select id="eventFilter"><option value="">any event</option></select></label>
       <label>Find <input id="find" placeholder="type a tag" autocomplete="off" spellcheck="false"></label>

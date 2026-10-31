@@ -3395,3 +3395,29 @@ should be enough."* index.js: a click anywhere on a row (except on its name link
 `/t/<t>`; rows are focusable and Enter or Space opens them; the right-click menu is unchanged. CSS: pointer
 cursor, hover highlight, focus ring. Checked in the browser pane (a click on the row's subtitle opened the
 Eclipse page). Suite 262/262/0/0.
+
+---
+
+## Out-of-band: Stop for running jobs; a start.gg link pulls at once; the app icon (orchestrating session, 2026-10-30)
+
+Noah: *"we'll leave it as it is. it's slow but that's fine. we should have an option to stop though … startgg
+link entry should go to an event and thus the pull should be automatic. there shouldn't be a manual step."*
+Recorded per standing rule (a). Performance of the pull and W-L is unchanged by ruling (the assessment of
+batching, per-player set paging and a cross-tournament W-L cache is in the usage log as candidates).
+
+- **Stop.** `POST /api/t/<t>/cancel` → `jobs.cancel(t)`: the running job's fetch wrapper refuses every send
+  from then on (error kind `cancelled`, never retried: lib/startgg.js, and fatal for the whole pull in
+  lib/run.js so the pull folder stays resumable); the job ends with phase `stopped`, no error; a queued pull
+  is dropped; a schedule pull stops the same way. The W-L cache keeps what it fetched (saved in the job's
+  finally); the previous pull stays live. Status carries `stopping` / `stopped`. UI: a Stop button beside the
+  header's status line (tournament.js, also toggled by the game tab's poll in app.js) and one on the Schedule
+  tab; the loading indicator follows. Test: a held fake, cancel mid-pull, previous pull still live, status
+  stopped, a later Refresh completes.
+- **A link pulls at once.** `POST /api/tournaments`: an event link ticks that event, a tournament link ticks
+  every singles event, and the pull starts (or queues behind a running job). Re-adding an existing tournament
+  keeps its ticks and starts nothing. The `?tick=` round trip is gone; the page opens on the running job.
+- **App icon:** Noah's pixel-art portrait, upscaled 95→1024 px with nearest-neighbor, `tauri icon` set
+  generated (desktop files kept; the Android/iOS sets removed); release run 41151091243 built the exes, which
+  were dropped into the checkout.
+
+Suite 263/263/0/0.

@@ -21,6 +21,7 @@
   <div class="bar">
     <div class="group" role="group" aria-label="Data">
       <button id="refresh" type="button" title="Pull every seeded event's registrants and every player's results again, then fetch W-L">Refresh data</button>
+      <button id="exportCsv" type="button" hidden title="This table as a CSV in seed order (a Seed column first, then the table's columns), for Google Sheets or anything else. You pick where to save it.">Export to CSV</button>
       <span id="tline" class="status" role="status" aria-live="polite"></span>
       <button id="stopJob" type="button" hidden class="danger" title="Stop the running job. What was saved stays; Refresh resumes it.">Stop</button>
       <div id="exportModal" class="mini-modal" role="status" aria-live="polite" hidden>
@@ -57,7 +58,6 @@
       <label class="needs-ctl team-ctl" title="Show or hide the Team column"><input type="checkbox" id="showTeam" checked> Show team</label>
     </div>
     <div class="group right" role="group" aria-label="Outputs">
-      <button id="exportCsv" type="button" title="This table as a CSV in seed order (a Seed column first, then the table's columns), for Google Sheets or anything else. You pick where to save it.">Export to CSV</button>
       <button id="pushToggle" type="button" aria-pressed="false" title="Dry run first: see start.gg's seeding against your tiers. Posting needs a second, confirmed click.">Push to start.gg…</button>
     </div>
     <details class="about"><summary>How to read this</summary>

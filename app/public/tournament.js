@@ -110,6 +110,7 @@
   function openTab(tab) {
     if (active === 'game') {
       $('seedBar').hidden = false;
+      $('exportCsv').hidden = false;   // the export lives beside Refresh data; it needs a game tab's table
       $('pane').hidden = false;
       const eventInfo = Object.fromEntries(info.events.map((e) => [e.slug, { name: e.name }]));
       window.SEED_TAB = { t: T, game: tab.game, events: tab.events, eventInfo };

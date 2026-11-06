@@ -40,7 +40,7 @@ function makeApp({ installed = true, signer = makeSigner(), gh, current = '0.2.0
   // The launcher: a fake child that emits 'spawn', or 'error' with the given code.
   const spawnImpl = (cmd, args, opts) => {
     const script = args[args.length - 1];
-    spawned.push({ cmd, args, opts, file: (/-FilePath '((?:[^']|'')+)'/.exec(script) || [])[1] });
+    spawned.push({ cmd, args, opts, file: ((/::Start\('((?:[^']|'')+)'/.exec(script) || [])[1] || '').replace(/''/g, "'") });
     const c = new EventEmitter(); c.unref = () => {};
     process.nextTick(() => (spawnOutcome === 'spawn' ? c.emit('spawn') : c.emit('error', Object.assign(new Error('x'), { code: spawnOutcome }))));
     return c;
@@ -75,7 +75,7 @@ test('update routes: install downloads, checks the signature, starts the install
   assert.strictEqual(spawned.length, 1);
   assert.strictEqual(spawned[0].cmd, 'powershell.exe', 'started through the delayed launcher');
   assert.strictEqual(spawned[0].file, path.join(tmpDir, 'Seeding-Ops-0.3.0-setup.exe'));
-  assert.match(spawned[0].args[spawned[0].args.length - 1], /^Start-Sleep -Seconds \d+; Start-Process .* -ArgumentList '\/P','\/UPDATE','\/R'$/);
+  assert.match(spawned[0].args[spawned[0].args.length - 1], /^Start-Sleep -Seconds \d+; \[Diagnostics\.Process\]::Start\('.*', '\/P \/UPDATE \/R'\) \| Out-Null$/);
   assert.ok(fs.readFileSync(spawned[0].file).equals(INSTALLER));
   assert.strictEqual(exits.length, 1, 'the app closes so the installer can replace it');
   const again = await post(app, '/api/update/install', { version: '0.3.0' });

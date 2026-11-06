@@ -112,9 +112,23 @@ test('update: the installer is started by a detached launcher after a delay, wit
   assert.strictEqual(calls[0].opts.detached, true);
   assert.strictEqual(calls[0].opts.windowsHide, true);
   const script = calls[0].args[calls[0].args.length - 1];
-  assert.strictEqual(script, `Start-Sleep -Seconds ${U.LAUNCH_DELAY_S}; Start-Process -FilePath 'C:\\Users\\O''Brien\\AppData\\Local\\Temp\\Seeding-Ops-0.3.0-setup.exe' -ArgumentList '/P','/UPDATE','/R'`, 'the path is quoted for PowerShell, apostrophe doubled');
+  assert.strictEqual(script, `Start-Sleep -Seconds ${U.LAUNCH_DELAY_S}; [Diagnostics.Process]::Start('C:\\Users\\O''Brien\\AppData\\Local\\Temp\\Seeding-Ops-0.3.0-setup.exe', '/P /UPDATE /R') | Out-Null`, 'the path is quoted for PowerShell, apostrophe doubled');
   assert.ok(U.LAUNCH_DELAY_S >= 2, 'long enough for the server to answer and exit first');
   assert.strictEqual(calls[1], 'unref');
+});
+
+// Audit round 2, #3: Start-Process -FilePath treats [ ] as wildcards, so a temp path with brackets
+// failed silently. The launcher hands the path to .NET's Process.Start, which takes it literally.
+test('update: a temp path with brackets (and spaces, and an apostrophe) reaches the launcher literally, with no wildcard-matching cmdlet', () => {
+  const file = "C:\\Users\\Ann [Team]\\AppData\\Local\\Temp\\run[1]\\O'Neil's\\Seeding-Ops-0.3.0-setup.exe";
+  const { cmd, args } = U.launcherCommand(file, 3);
+  assert.strictEqual(cmd, 'powershell.exe');
+  const script = args[args.length - 1];
+  assert.strictEqual(script, "Start-Sleep -Seconds 3; [Diagnostics.Process]::Start('C:\\Users\\Ann [Team]\\AppData\\Local\\Temp\\run[1]\\O''Neil''s\\Seeding-Ops-0.3.0-setup.exe', '/P /UPDATE /R') | Out-Null");
+  assert.doesNotMatch(script, /Start-Process|-FilePath|-Path\b/, 'no cmdlet that would glob the path');
+  // The single-quoted literal reads back as the path itself (PowerShell: '' is one quote, nothing else is special).
+  const literal = /::Start\('((?:[^']|'')*)'/.exec(script)[1].replace(/''/g, "'");
+  assert.strictEqual(literal, file);
 });
 
 // Audit #3: a launch that fails (no launcher, or the downloaded exe removed by antivirus) used to be an

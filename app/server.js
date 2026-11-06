@@ -569,7 +569,16 @@ function createApp(opts = {}) {
           return json(res, 200, { ...body, status });
         }
         let g = /^\/g\/(\d+)\/(data|export\.csv|seeds\.csv)$/.exec(rest);
-        if (g && method === 'GET') {
+        // The CSVs also take POST { order: [player ids] }: the page's table order for every registrant
+        // does not fit in a URL (2000+ ids pass Node's 16 KB header limit: 431, "Export failed").
+        let postedOrder = null;
+        if (g && g[2] !== 'data' && method === 'POST') {
+          requireApp(req);
+          const fields = await readBody(req, 2_000_000);
+          if (fields.order != null && !Array.isArray(fields.order)) throw bad(400, '"order" must be a list of player ids.');
+          postedOrder = (fields.order || []).map(String).filter((x) => /^\d+$/.test(x));
+        }
+        if (g && (method === 'GET' || postedOrder)) {
           const src = tabOr404(t, g[1]);
           const records = jobs.liveRecords(t);
           if (g[2] === 'data') {
@@ -580,12 +589,12 @@ function createApp(opts = {}) {
           }
           if (g[2] === 'export.csv') {
             // ?order=<player ids>: the table's current order, kept within a tier (the page sends it).
-            const order = (url.searchParams.get('order') || '').split(',').filter((x) => /^\d+$/.test(x));
+            const order = postedOrder || (url.searchParams.get('order') || '').split(',').filter((x) => /^\d+$/.test(x));
             const { filename, csv } = data.summaryExport(src, { records, tiersFile, today: data.todayOf(nowDate()), order });
             // Content-Length lets the page show a real progress bar while it downloads.
             return send(res, 200, csv, 'text/csv; charset=utf-8', { 'Content-Disposition': `attachment; filename="${filename}"`, 'Content-Length': Buffer.byteLength(csv) });
           }
-          const order = (url.searchParams.get('order') || '').split(',').filter((x) => /^\d+$/.test(x));
+          const order = postedOrder || (url.searchParams.get('order') || '').split(',').filter((x) => /^\d+$/.test(x));
           const { filename, csv } = data.seedsExport(src, { order, tiersFile });
           return send(res, 200, csv, 'text/csv; charset=utf-8', { 'Content-Disposition': `attachment; filename="${filename}"` });
         }

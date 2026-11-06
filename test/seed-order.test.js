@@ -278,6 +278,8 @@ test('the page: every drop saves at once (no debounce), Post awaits pending save
   // After a post the panel stays with a Post button: a re-push needs no new dry run.
   assert.match(postFn, /dry = \{ \.\.\.dry, entries: r\.body\.entries, fingerprint: r\.body\.fingerprint \};/);
   assert.doesNotMatch(postFn, /btn\.remove\(\)|dry = null/);
+  const after = postFn.slice(postFn.indexOf('dry = { ...dry, entries: r.body.entries'));
+  assert.match(after, /redrawPush\(\);\n\s+if \(\$\('pushPost'\)\) \$\('pushPost'\)\.disabled = false;/, 'and its Post button is enabled again (redrawPush keeps a disabled state)');
   assert.match(fn('applySeedMove'), /redrawPush\(\)/, 'an open dry run is redrawn after every move');
   assert.match(fn('redrawPush'), /M\.pushPlan\(/);
   assert.doesNotMatch(src, /seedsLocked|lockSeeds|disableDrag/);
@@ -286,6 +288,11 @@ test('the page: every drop saves at once (no debounce), Post awaits pending save
   const keys = /const MOVE_KEYS = \{[^}]*\}/.exec(src)[0];
   for (const k of ['ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown']) assert.ok(keys.includes(`'${k}'`), k);
   assert.match(src, /table\.addEventListener\('keydown', onHandleKey\)/);
+  // The row's id is read before ensureSeedOrder() can redraw (and detach) the handle, in both handlers.
+  const kb = fn('onHandleKey');
+  assert.ok(kb.indexOf("const id = btn.closest('tr').dataset.pid") < kb.indexOf('ensureSeedOrder()'));
+  const down = src.slice(src.indexOf("table.addEventListener('pointerdown'"));
+  assert.ok(down.indexOf("const pid = btn.closest('tr').dataset.pid") < down.indexOf('ensureSeedOrder()'));
   // The handle and the indicator exist in the page.
   const html = fs.readFileSync(path.join(ROOT, 'app', 'public', 'tournament.html'), 'utf8');
   for (const id of ['seedMode', 'seedSort', 'seedReset', 'seedEvent', 'seedLive']) assert.match(html, new RegExp(`id="${id}"`));

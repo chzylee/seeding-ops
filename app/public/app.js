@@ -305,8 +305,8 @@
     const btn = ev.target.closest && ev.target.closest('button.drag');
     if (!btn || !(ev.key in MOVE_KEYS) || ev.altKey || ev.ctrlKey || ev.metaKey) return;
     ev.preventDefault();
+    const id = btn.closest('tr').dataset.pid;   // read before ensureSeedOrder redraws the Seed cells
     ensureSeedOrder();
-    const id = btn.closest('tr').dataset.pid;
     const vis = visibleSeedIds();
     const i = vis.indexOf(id);
     if (i < 0) return;
@@ -942,6 +942,7 @@
     // start.gg now has the posted order: the dry run's "current" becomes it, so a re-push needs no new dry run.
     dry = { ...dry, entries: r.body.entries, fingerprint: r.body.fingerprint };
     redrawPush();
+    if ($('pushPost')) $('pushPost').disabled = false;   // a re-push is one click away
     pushLine(`Posted: ${r.body.seed_count} seeds for ${dry.event.name} in ${r.body.seed_order === 'arranged' ? 'your arranged order' : 'tier order'} at ${new Date(r.body.at).toLocaleString()}. Recorded in this tournament's pushes. Rows stay draggable: drag and post again to update start.gg.`);
   }
   pushPanel.addEventListener('click', (ev) => {

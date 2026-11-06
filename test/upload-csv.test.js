@@ -169,3 +169,16 @@ test('E2-4: a first row whose second value is an attempted discriminator is malf
   // The Mixfest file's header is still a header.
   assert.deepStrictEqual(U.parseUploadCsv(MIXFEST).header_row, { line: 1, values: ['name', 'discriminator'] });
 });
+
+// Found 2026-11-06 (reproduced on 4e35890): a header-less list whose first player has a blank code
+// ("Alpha,") had that row read as the header. It is a player row missing its code.
+test('upload: a first row with a blank second column is a malformed player row at line 1, not the header; a one-column first row is still a header', () => {
+  for (const first of ['Alpha,', 'Alpha, ', '"Alpha",""', 'Alpha,,extra']) {
+    const r = U.parseUploadCsv(`${first}\nBeta,abcd1234\n`);
+    assert.strictEqual(r.header, null, first);
+    assert.strictEqual(r.header_row, null, first);
+    assert.deepStrictEqual(r.malformed.map((m) => [m.line, m.reason]), [[1, 'no discriminator in the second column']], first);
+    assert.deepStrictEqual(r.rows.map((x) => [x.line, x.tag]), [[2, 'Beta']], first);
+  }
+  assert.deepStrictEqual(U.parseUploadCsv('Gamertag\nBeta,abcd1234\n').header_row, { line: 1, values: ['Gamertag', ''] });
+});

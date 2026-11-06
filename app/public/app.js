@@ -76,6 +76,12 @@
     const samePlayers = vm && model.players.length === vm.players.length && model.players.every((p, i) => p.player_id === vm.players[i].player_id);
     vm = model;
     ({ ctx, byId, ordered } = hydrate(model));
+    // A2.3: the Seed column's numbers, and the table's first order is the seed order (which, with
+    // nothing arranged, is the tier order the table always had).
+    pickSeedEvent();
+    computeSeeds();
+    ordered = seedOrdered();
+    sortedBy = null;
     showMsg('');
     renderHeader();
     renderSummary();
@@ -86,6 +92,8 @@
     }, 0));
     renderDetails(samePlayers ? rendered : []);
     fillPickers();
+    renderSeedBar();
+    redrawPush();
     if (cmp.on) renderCompare();
     if (scroll) { pane.scrollTop = scroll.top; pane.scrollLeft = scroll.left; }
     showStatus(model.status);
@@ -165,6 +173,225 @@
     const btn = table.querySelector(`tbody tr[data-pid="${CSS.escape(pid)}"] button.seed-btn`);
     if (btn) btn.focus({ preventScroll: true });
   }
+
+  // ---- Seeds (docs/design-tool.md, Amendment A2.3) ------------------------------------------------
+  // The Seed column numbers one event's entrants (the tab's first event; a select picks another when
+  // the tab has several). Nothing arranged: tier order (lib/view/model.js seedOrder 'tiers', the
+  // table's own tie-break), recomputed after every tier edit. A drag, or the arrow keys on a row's ⠿
+  // handle, arranges it: the whole order is saved for the event at once, every move (no debounce),
+  // through one serialized chain (seedWrites), and is what the push posts. Rows stay draggable while
+  // the push panel is open and after a push; an open dry run is redrawn after every move.
+  let seedEvent = null;           // the event slug the Seed column shows
+  let seedState = null;           // { mode, order, at } for that event (M.seedOrder)
+  let seedWrites = Promise.resolve();
+  let sortedBy = null;            // null: the table is in its first order (the seed order); else { key, dir }
+  const SEED_EVENT_KEY = `seeding:seedEvent:${SLUG}`;
+  const seedEvents = () => (vm && vm.seeding && vm.seeding.events) || [];
+  const seedInfo = (slug = seedEvent) => seedEvents().find((e) => e.slug === slug) || null;
+  const tierOfId = (id) => (ctx && ctx.notes[id] && Number.isFinite(ctx.notes[id].tier) ? ctx.notes[id].tier : null);
+  const entrantsOf = (ev) => ev.entrants.filter((id) => byId.has(id)).map((id) => ({ id, tier: tierOfId(id), tag: byId.get(id).gamer_tag }));
+  function pickSeedEvent() {
+    const evs = seedEvents();
+    const want = store.get(SEED_EVENT_KEY, null);
+    seedEvent = evs.some((e) => e.slug === want) ? want : (evs[0] ? evs[0].slug : null);
+    const sel = $('seedEvent');
+    sel.innerHTML = evs.map((e) => `<option value="${R.esc(e.slug)}"${e.slug === seedEvent ? ' selected' : ''}>${R.esc(e.name)}</option>`).join('');
+    $('seedEventWrap').hidden = evs.length < 2;
+  }
+  function computeSeeds() {
+    const ev = seedInfo();
+    if (!ev || !ctx) { if (ctx) ctx.seeds = null; seedState = null; return; }
+    seedState = M.seedOrder(entrantsOf(ev), ev.saved);
+    ctx.seeds = new Map(seedState.order.map((id, i) => [id, i + 1]));
+    ctx.seedMode = seedState.mode;
+    ctx.seedEventName = ev.name;
+  }
+  // The table in seed order: the event's entrants by seed, then the tab's other players in tier order.
+  function seedOrdered() {
+    const base = M.orderPlayers([...byId.values()], ctx.notes);
+    if (!seedState) return base;
+    const inIt = new Set(seedState.order);
+    return [...seedState.order.map((id) => byId.get(id)), ...base.filter((p) => !inIt.has(String(p.player_id)))];
+  }
+  // The seeding a push uses for one event, as the page shows it right now (ev.saved is updated on
+  // every move before the save is sent).
+  function currentSeeding(slug) {
+    const ev = seedInfo(slug);
+    if (!ev || !ev.saved) return { mode: 'tiers' };
+    return { mode: 'arranged', order: M.seedOrder(entrantsOf(ev), ev.saved).order };
+  }
+  function renderSeedBar() {
+    const has = !!seedState;
+    $('seedMode').hidden = !has; $('seedSort').hidden = !has;
+    if (!has) { $('seedReset').hidden = true; return; }
+    const arranged = seedState.mode === 'arranged';
+    const when = arranged && seedState.at ? new Date(seedState.at).toLocaleString() : '';
+    $('seedMode').textContent = arranged ? 'Seeds: arranged by hand' : 'Seeds: tier order';
+    $('seedMode').classList.toggle('arranged', arranged);
+    $('seedMode').title = arranged
+      ? `Push to start.gg posts this order exactly${when ? ` (saved ${when})` : ''}. New registrants slot in by tier; withdrawn ones close the gap.`
+      : 'Nothing arranged: seeds follow tiers. Push to start.gg sets tiers and keeps start.gg\'s current order within each tier. Drag a row by its ⠿ handle (or focus it and use the arrow keys) to fix an exact order.';
+    $('seedReset').hidden = !arranged;
+  }
+  // The Seed cells, every row (and the compare panel), after the numbers change; in seed order the
+  // rows move too.
+  function refreshSeeds() {
+    for (const td of table.querySelectorAll('tbody tr[data-pid] > td.seed')) {
+      const p = byId.get(td.parentElement.dataset.pid);
+      if (p) td.outerHTML = R.seedCell(p, ctx, { app: true });
+    }
+    if (!sortedBy) {
+      ordered = seedOrdered();
+      const at = new Map(ordered.map((p, i) => [String(p.player_id), i]));
+      const rows = [...mainBody.rows].sort((a, b) => at.get(a.dataset.pid) - at.get(b.dataset.pid));
+      mainBody.append(...rows);
+      for (const tr of table.querySelectorAll('tbody tr[data-pid]')) tr.dataset.i = String(at.get(tr.dataset.pid));
+    }
+    applyFreeze();
+    layoutPins();
+    if (cmp.on) renderCompare();
+  }
+  // Moving needs the rows on screen in seed order; any other sort is undone first. (Sorting by the Seed
+  // header, ascending, IS the seed order: sortSummary sets sortedBy back to null for it.)
+  function ensureSeedOrder() {
+    if (!sortedBy) return;
+    for (const h of thead.rows[0].cells) delete h.dataset.dir;
+    sortedBy = null;
+    refreshSeeds();
+  }
+  function announce(id) {
+    const n = ctx.seeds && ctx.seeds.get(String(id));
+    const p = byId.get(String(id));
+    $('seedLive').textContent = n ? `${p ? p.gamer_tag : id}: seed ${n} of ${ctx.seeds.size}` : '';
+  }
+  function saveSeeds(body) {
+    const slug = seedEvent;
+    seedWrites = seedWrites.then(async () => {
+      const r = await postJson(api('seeds'), { event: slug, ...body });
+      if (!r.ok) { showNote(`Seed order not saved: ${r.body.error || 'error'}`, { err: true }); return; }
+      // Only the save time comes back into the page: a later move's order is already in ev.saved.
+      const ev = seedInfo(slug);
+      if (ev && ev.saved && r.body.saved && ev.saved.order.join(',') === r.body.saved.order.join(',')) ev.saved.at = r.body.saved.at;
+      if (slug === seedEvent) { computeSeeds(); renderSeedBar(); }
+    });
+    return seedWrites;
+  }
+  function applySeedMove(id, targetId, where) {
+    const ev = seedInfo();
+    if (!seedState || !ev) return;
+    const next = M.moveSeed(seedState.order, id, targetId, where);
+    if (next.join(',') === seedState.order.join(',')) return;
+    ev.saved = { order: next, at: new Date().toISOString() };
+    computeSeeds();
+    refreshSeeds();
+    renderSeedBar();
+    announce(id);
+    saveSeeds({ mode: 'arranged', order: next });
+    redrawPush();
+  }
+  function focusHandle(id) {
+    const b = table.querySelector(`tbody tr[data-pid="${CSS.escape(String(id))}"] button.drag`);
+    if (b) { b.focus({ preventScroll: true }); b.closest('tr').scrollIntoView({ block: 'nearest' }); }
+  }
+  // The rows a keyboard move steps over: seeded and shown (Needs tier only hides tiered rows).
+  function visibleSeedIds() {
+    const needsOnly = document.body.classList.contains('needs-only');
+    return seedState.order.filter((id) => !needsOnly || !Number.isFinite(tierOfId(id)));
+  }
+  // Keyboard reordering on the ⠿ handle (WAI-ARIA practice for a reorderable list): Arrow Up / Down
+  // one row, Page Up / Down ten, Home / End to the first / last seed; focus stays on the moved row.
+  const MOVE_KEYS = { 'ArrowUp': -1, 'ArrowDown': 1, 'PageUp': -10, 'PageDown': 10, 'Home': -Infinity, 'End': Infinity };
+  function onHandleKey(ev) {
+    const btn = ev.target.closest && ev.target.closest('button.drag');
+    if (!btn || !(ev.key in MOVE_KEYS) || ev.altKey || ev.ctrlKey || ev.metaKey) return;
+    ev.preventDefault();
+    ensureSeedOrder();
+    const id = btn.closest('tr').dataset.pid;
+    const vis = visibleSeedIds();
+    const i = vis.indexOf(id);
+    if (i < 0) return;
+    const step = MOVE_KEYS[ev.key];
+    const j = Math.max(0, Math.min(vis.length - 1, Number.isFinite(step) ? i + step : step > 0 ? vis.length - 1 : 0));
+    if (j !== i) applySeedMove(id, vis[j], j > i ? 'after' : 'before');
+    focusHandle(id);
+  }
+  table.addEventListener('keydown', onHandleKey);
+  // Drag with the pointer (pointer events, not HTML5 drag-and-drop, so it works the same in the
+  // desktop app's webview and in a browser): press the handle, move, release. A line shows where the
+  // row lands; the table scrolls near its edges.
+  let drag = null;
+  function dropTargets() {
+    return [...table.querySelectorAll('tbody tr[data-pid]')].filter((tr) => tr.querySelector('button.drag') && tr.getClientRects().length && tr.dataset.pid !== drag.id);
+  }
+  function clearDropMark() { for (const tr of table.querySelectorAll('tr.drop-before, tr.drop-after')) tr.classList.remove('drop-before', 'drop-after'); }
+  table.addEventListener('pointerdown', (ev) => {
+    const btn = ev.target.closest('button.drag');
+    if (!btn || ev.button !== 0) return;
+    ev.preventDefault();
+    const pid = btn.closest('tr').dataset.pid;   // read before ensureSeedOrder redraws the Seed cells
+    ensureSeedOrder();
+    const tr = table.querySelector(`tbody tr[data-pid="${CSS.escape(pid)}"]`);
+    const handle = tr.querySelector('button.drag');
+    drag = { id: tr.dataset.pid, tr, target: null, where: null };
+    try { handle.setPointerCapture(ev.pointerId); } catch { /* the move still works while the pointer stays over the table */ }
+    tr.classList.add('dragging');
+    document.body.classList.add('seed-dragging');
+    handle.focus({ preventScroll: true });
+  });
+  table.addEventListener('pointermove', (ev) => {
+    if (!drag) return;
+    const y = ev.clientY;
+    const box = pane.getBoundingClientRect();
+    if (y < box.top + 48) pane.scrollTop -= 14; else if (y > box.bottom - 48) pane.scrollTop += 14;
+    let hit = null;
+    for (const tr of dropTargets()) {
+      const r = tr.getBoundingClientRect();
+      if (y >= r.top && y < r.bottom) { hit = { tr, where: y < r.top + r.height / 2 ? 'before' : 'after' }; break; }
+    }
+    clearDropMark();
+    if (!hit) { drag.target = null; return; }
+    drag.target = hit.tr.dataset.pid; drag.where = hit.where;
+    hit.tr.classList.add(hit.where === 'before' ? 'drop-before' : 'drop-after');
+  });
+  function endDrag(commit) {
+    if (!drag) return;
+    const { id, tr, target, where } = drag;
+    drag = null;
+    clearDropMark();
+    tr.classList.remove('dragging');
+    document.body.classList.remove('seed-dragging');
+    if (commit && target) applySeedMove(id, target, where);
+    focusHandle(id);
+  }
+  table.addEventListener('pointerup', () => endDrag(true));
+  table.addEventListener('pointercancel', () => endDrag(false));
+  document.addEventListener('keydown', (ev) => { if (drag && ev.key === 'Escape') endDrag(false); });
+  $('seedSort').addEventListener('click', () => {
+    const th = thead.querySelector('th[data-col="seed"]');
+    for (const h of thead.rows[0].cells) delete h.dataset.dir;
+    if (th) th.dataset.dir = '1';
+    sortedBy = null;
+    refreshSeeds();
+  });
+  $('seedReset').addEventListener('click', () => {
+    const ev = seedInfo();
+    if (!ev || !ev.saved) return;
+    if (!window.confirm(`Reset the seeds of ${ev.name} to tier order?\n\nYour arranged order for this event is discarded; seeds follow tiers again, and the push keeps start.gg's order within each tier.`)) return;
+    ev.saved = null;
+    computeSeeds();
+    refreshSeeds();
+    renderSeedBar();
+    saveSeeds({ mode: 'tiers' });
+    redrawPush();
+    showNote(`${ev.name}: seeds reset to tier order.`);
+  });
+  $('seedEvent').addEventListener('change', (ev) => {
+    seedEvent = ev.target.value;
+    store.set(SEED_EVENT_KEY, seedEvent);
+    computeSeeds();
+    refreshSeeds();
+    renderSeedBar();
+  });
 
   // ---- Freeze columns --------------------------------------------------------------------------
   // A frozen column is sticky at the left edge plus the widths of the frozen columns before it, so
@@ -658,29 +885,64 @@
     } catch (err) { return { ok: false, body: { error: err.message } }; }
     return { ok: res.ok, body: out };
   }
+  // A2.3 (Noah, 2026-11-06: rows stay draggable right up to the push). The dry run sends the order on
+  // screen and is redrawn in the page after every move or tier edit (M.pushPlan over the dry run's
+  // entries: start.gg's seeds, with this page's tiers), so it never shows a stale order and dragging
+  // is never paused. Post waits for every seed save in flight, then sends the order as it is at the
+  // click; the server saves it and posts it. After a post the panel stays: drag and post again.
+  const postButton = () => `<p><button type="button" id="pushPost" class="danger">Post this seeding to start.gg</button> <span class="dim">Sets all ${dry.summary.seeds} seeds of phase "${R.esc(dry.phase.name || dry.phase.id)}" as proposed, in the order shown when you click.</span></p>`;
   async function runDry(e) {
     dry = null;
     pushLine(`Dry run for ${e}: reading start.gg's seeds…`);
     $('pushBody').innerHTML = '';
-    const r = await postJson(tapi(`push/${encodeURIComponent(e)}/dry-run`));
+    await seedWrites;
+    const r = await postJson(tapi(`push/${encodeURIComponent(e)}/dry-run`), { seeding: currentSeeding(e) });
     if (!r.ok) { pushLine(r.body.error || 'Dry run failed.', true); return; }
     dry = r.body;
     pushLine(`Dry run: ${dry.event.name}, phase "${dry.phase.name || dry.phase.id}". Nothing has been sent.`);
-    $('pushBody').innerHTML = R.pushDiffTable(dry)
-      + `<p><button type="button" id="pushPost" class="danger">Post this seeding to start.gg</button> <span class="dim">Sets all ${dry.summary.seeds} seeds of phase "${R.esc(dry.phase.name || dry.phase.id)}" as proposed.</span></p>`;
+    $('pushBody').innerHTML = R.pushDiffTable(dry) + postButton();
+  }
+  // The dry run's start.gg seeds with the tiers this page shows now (a tier edited since the dry run).
+  function liveEntries(entries) {
+    return entries.map((e) => (e.mappable && byId.has(String(e.player_id)) ? { ...e, tier: tierOfId(String(e.player_id)) } : e));
+  }
+  function redrawPush() {
+    if (!dry || !dry.entries || pushPanel.hidden) return;
+    const s = currentSeeding(dry.event.slug);
+    const plan = M.pushPlan(liveEntries(dry.entries), { arrangement: s.mode === 'arranged' ? s.order : null });
+    dry = { ...dry, mode: plan.mode, rows: plan.rows, summary: plan.summary };
+    const keep = document.activeElement && document.activeElement.id === 'pushPost';
+    const disabled = $('pushPost') && $('pushPost').disabled;
+    $('pushBody').innerHTML = R.pushDiffTable(dry) + postButton();
+    if (disabled) $('pushPost').disabled = true;
+    if (keep) $('pushPost').focus({ preventScroll: true });
   }
   async function postSeeding() {
     if (!dry) return;
-    const flagged = dry.summary.crosses_tier ? ` ${dry.summary.crosses_tier} seed(s) move across a tier boundary relative to start.gg's current order: a conflict fix made by hand there would be reverted.` : '';
-    if (!window.confirm(`Post the proposed seeding for ${dry.event.name} (phase "${dry.phase.name || dry.phase.id}") to start.gg?${flagged}`)) return;
     const btn = $('pushPost');
     if (btn) btn.disabled = true;
+    await seedWrites;   // every drag saved, in order, before anything is posted
+    redrawPush();       // the confirm counts from the order as it is now
+    const flagged = dry.summary.crosses_tier ? ` ${dry.summary.crosses_tier} seed(s) move across a tier boundary relative to start.gg's current order: a conflict fix made by hand there would be reverted.` : '';
+    const order = dry.mode === 'arranged' ? 'your arranged seed order' : 'tier order (start.gg\'s order within each tier)';
+    if (!window.confirm(`Post the proposed seeding for ${dry.event.name} (phase "${dry.phase.name || dry.phase.id}") to start.gg, in ${order}?${flagged}`)) { if ($('pushPost')) $('pushPost').disabled = false; return; }
     pushLine('Posting to start.gg…');
-    const r = await postJson(tapi(`push/${encodeURIComponent(dry.event.slug)}/post`), { fingerprint: dry.fingerprint, confirm: true });
-    if (!r.ok) { pushLine(r.body.error || 'Not posted.', true); if (btn) btn.disabled = false; return; }
-    pushLine(`Posted: ${r.body.seed_count} seeds for ${dry.event.name} at ${r.body.at}. Recorded in this tournament's pushes.`);
-    if (btn) btn.remove();
-    dry = null;
+    // The order is read here, after the confirm: the one on screen at the click.
+    const r = await postJson(tapi(`push/${encodeURIComponent(dry.event.slug)}/post`), { fingerprint: dry.fingerprint, confirm: true, seeding: currentSeeding(dry.event.slug) });
+    if (!r.ok) {
+      if (r.body && r.body.failure === 'stale') {
+        // start.gg's side changed (not this page's order): a fresh dry run, then Noah posts again.
+        const slug = dry.event.slug;
+        await runDry(slug);
+        pushLine('start.gg\'s seeding changed since the dry run, so nothing was posted. This is a fresh dry run: check it and post again.', true);
+        return;
+      }
+      pushLine(r.body.error || 'Not posted.', true); if ($('pushPost')) $('pushPost').disabled = false; return;
+    }
+    // start.gg now has the posted order: the dry run's "current" becomes it, so a re-push needs no new dry run.
+    dry = { ...dry, entries: r.body.entries, fingerprint: r.body.fingerprint };
+    redrawPush();
+    pushLine(`Posted: ${r.body.seed_count} seeds for ${dry.event.name} in ${r.body.seed_order === 'arranged' ? 'your arranged order' : 'tier order'} at ${new Date(r.body.at).toLocaleString()}. Recorded in this tournament's pushes. Rows stay draggable: drag and post again to update start.gg.`);
   }
   pushPanel.addEventListener('click', (ev) => {
     const d = ev.target.closest('button.push-dry');
@@ -699,6 +961,9 @@
     const dir = th.dataset.dir ? -Number(th.dataset.dir) : first;
     for (const h of thead.rows[0].cells) delete h.dataset.dir;
     th.dataset.dir = String(dir);
+    // A2.3: Seed ascending is the seed order itself (the order rows move in when dragged).
+    if (key === 'seed' && dir === 1) { sortedBy = null; refreshSeeds(); return; }
+    sortedBy = { key, dir };
     const val = (tr) => { const c = tr.cells[i]; return c && c.dataset.v != null ? c.dataset.v : (c ? c.innerText : ''); };
     const rows = [...mainBody.rows];
     rows.sort((a, b) => {
@@ -775,7 +1040,16 @@
       // A1.2: a write that linked the row (both ids written) ends the tag-only color.
       tag_only: body.linked ? undefined : n.tag_only };
     ctx.hasTiers = true;
+    // A2.3: in tier order a tier edit moves the player's seed (an arranged order keeps its place).
+    computeSeeds();
     rerenderRow(pid, kind);
+    if (kind === 'tier') {
+      refreshSeeds();
+      renderSeedBar();
+      redrawPush();
+      const cell = table.querySelector(`tbody tr[data-pid="${CSS.escape(pid)}"] td[data-edit="tier"]`);
+      if (cell && document.activeElement !== cell) { cell.focus({ preventScroll: true }); cell.scrollIntoView({ block: 'nearest' }); }
+    }
   }
   function rerenderRow(pid, focusKind) {
     const p = byId.get(String(pid));

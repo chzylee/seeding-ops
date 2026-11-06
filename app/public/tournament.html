@@ -58,6 +58,13 @@
       <label class="needs-ctl" title="Show only registrants with no tier in registry/tiers.csv"><input type="checkbox" id="needsOnly"> Needs tier only</label>
       <label class="needs-ctl team-ctl" title="Show or hide the Team column"><input type="checkbox" id="showTeam" checked> Show team</label>
     </div>
+    <div class="group seed-ctl" role="group" aria-label="Seeds">
+      <label id="seedEventWrap" hidden title="This tab has several events; the Seed column numbers one of them">Seeds for <select id="seedEvent"></select></label>
+      <span id="seedMode" class="seed-mode" hidden></span>
+      <button id="seedSort" type="button" hidden title="Put the table in seed order (the order you drag in)">Sort by seed</button>
+      <button id="seedReset" type="button" hidden title="Forget your arranged order for this event: seeds follow tiers again">Reset to tier order</button>
+      <span id="seedLive" class="seed-live" role="status" aria-live="assertive"></span>
+    </div>
     <div class="group right" role="group" aria-label="Outputs">
       <button id="pushToggle" type="button" aria-pressed="false" title="Dry run first: see start.gg's seeding against your tiers. Posting needs a second, confirmed click.">Push to start.gg…</button>
     </div>
@@ -68,6 +75,9 @@
       the most registrants played: best placement (with its W-L), best W-L, and average W-L when there are 2+
       events. Click a column header to sort; ❄ freezes that column; 📌 pins a row under the header.
       Tick up to 3 rows to compare them. Double-click Tier or Notes to edit (<kbd>Enter</kbd> saves, <kbd>Esc</kbd> cancels).
+      Seed starts as tier order (top tier is seed 1). Drag a row by its ⠿ handle, or focus the handle and press
+      <kbd>↑</kbd> <kbd>↓</kbd> (<kbd>Page Up</kbd>/<kbd>Page Down</kbd>: 10, <kbd>Home</kbd>/<kbd>End</kbd>: first/last), to arrange the seeds;
+      the arranged order is saved for the event and is what Push to start.gg posts. Reset to tier order forgets it.
       Click a player for their tables; click a column header in those tables to sort.
       </div>
     </details>

@@ -33,8 +33,12 @@
 //   GET  /api/t/<t>/g/<game>/seeds.csv        [?order=<player ids>] seeds in seed order (no start.gg request)
 //   POST /api/t/<t>/g/<game>/player/<id>      edit tier / notes in registry/tiers.csv
 //   POST /api/t/<t>/g/<game>/player/<id>/review   the ✓ review mark (T1)
-//   POST /api/t/<t>/push/<e>/dry-run          the push dry run (read-only: the phase's seeds)
-//   POST /api/t/<t>/push/<e>/post             { fingerprint, confirm: true } the seeding post
+//   POST /api/t/<t>/g/<game>/seeds            { event, mode: tiers | arranged, order? } the event's seed
+//                                             order (Amendment A2.3), saved to state.json `seeding`
+//   POST /api/t/<t>/push/<e>/dry-run          { seeding? } the push dry run (read-only: the phase's seeds),
+//                                             numbered from the seed order the page sends (else the saved one)
+//   POST /api/t/<t>/push/<e>/post             { fingerprint, confirm: true, seeding? } the seeding post: the
+//                                             order the page sends is saved, then posted (A2.3)
 //   GET  /api/tiers/export.csv?game=<id>      one game's tiers as a shareable file (Amendment A2.2)
 //   POST /api/tiers/import/preview            { game_id, csv, file_name? } the import's review (read-only)
 //   POST /api/tiers/import/apply              { game_id, csv, file_name?, fingerprint, take: [row key] }
@@ -58,6 +62,7 @@ const { readSchedule } = require('../lib/schedule-pull');
 const U = require('../lib/upload');
 const majorsConfig = require('../lib/view/majors');
 const share = require('../lib/tiers-share');
+const seeding = require('../lib/seeding');
 const { Jobs } = require('./jobs');
 const { createQueue } = require('./queue');
 
@@ -439,10 +444,27 @@ function createApp(opts = {}) {
     return { tDir, ev, ids };
   }
 
-  async function dryRun(t, e) {
+  // A2.3: the seed order a push numbers from. The page sends the order it shows at the click
+  // (`seeding`, the seeds route's shape: { mode: 'tiers' } or { mode: 'arranged', order }); the dry run
+  // uses it without saving it, the post saves it first, so the order posted is the one on screen
+  // when Post was clicked, a drag one second earlier included, and a reload shows that same order.
+  // Without one: the event's saved order, else tier order (null).
+  function arrangementFor(t, ev, body, { save }) {
+    const src = ev.game ? data.tabSource(outRoot, t, ev.game.id) : null;
+    if (!src) return null;
+    if (body !== undefined) {
+      if (save) { const s = seeding.setOrder(src, ev.slug, body, { now: nowDate() }); return s ? s.order : null; }
+      return seeding.checkBody(body, seeding.entrantsOf(data.loadRun(src).players, ev.slug));
+    }
+    const saved = seeding.savedFor(pool.readState(src.tDir), ev.slug);
+    return saved ? saved.order : null;
+  }
+
+  async function dryRun(t, e, fields = {}) {
     const { ev, ids } = seededEvent(t, e);
+    const arrangement = arrangementFor(t, ev, fields.seeding, { save: false });
     try {
-      return await push.dryRun({ client: client(), event: ev, poolIds: ids, tiersFile });
+      return await push.dryRun({ client: client(), event: ev, poolIds: ids, tiersFile, arrangement });
     } catch (err) {
       // A start.gg error carries start.gg's HTTP status; only our own errors pass through as they are.
       if (!(err instanceof sgg.StartggError)) throw err;
@@ -455,16 +477,20 @@ function createApp(opts = {}) {
     if (fields.confirm !== true) throw bad(400, 'Posting needs a confirmed click on the dry run.');
     const { tDir, ev, ids } = seededEvent(t, e);
     const c = client();
+    // A2.3: the order on screen at the click, saved, then read back for the push (never a debounced copy).
+    const arrangement = arrangementFor(t, ev, fields.seeding, { save: true });
     let dry;
     try {
-      dry = await push.dryRun({ client: c, event: ev, poolIds: ids, tiersFile });
+      dry = await push.dryRun({ client: c, event: ev, poolIds: ids, tiersFile, arrangement });
     } catch (err) {
       // A start.gg error carries start.gg's HTTP status; only our own errors pass through as they are.
       if (!(err instanceof sgg.StartggError)) throw err;
       const f = sgg.pushFailure(err);
       throw bad(502, f.text, { failure: f.kind });
     }
-    if (dry.fingerprint !== fields.fingerprint) throw bad(409, "start.gg's seeding or your tiers changed since this dry run. Run the dry run again before posting.", { failure: 'stale' });
+    // The fingerprint is start.gg's side only (lib/push.js): seeds moved on start.gg since the dry run
+    // stop the post; Noah's own drags and tier edits since then do not, they are what is posted.
+    if (dry.fingerprint !== fields.fingerprint) throw bad(409, "start.gg's seeding changed since this dry run (someone moved seeds there, or entrants changed). Run the dry run again before posting.", { failure: 'stale' });
     let posted;
     try {
       posted = await push.post({ client: c, dry });
@@ -472,9 +498,11 @@ function createApp(opts = {}) {
       const f = sgg.pushFailure(err);
       throw bad(502, f.text, { failure: f.kind });
     }
-    const entry = { event: ev.slug, phase_id: dry.phase.id, phase_name: dry.phase.name, at: nowDate().toISOString(), seed_count: posted.seed_count };
+    const entry = { event: ev.slug, phase_id: dry.phase.id, phase_name: dry.phase.name, at: nowDate().toISOString(), seed_count: posted.seed_count, seed_order: dry.mode };
     pool.updateState(tDir, (s) => { s.pushes = [...(s.pushes || []), entry]; });
-    return { posted: true, ...entry };
+    // What was posted, and start.gg's side as it now stands, so the page can show it and post again
+    // (a re-push) without a new dry run.
+    return { posted: true, ...entry, rows: dry.rows, summary: dry.summary, entries: posted.entries_after, fingerprint: posted.fingerprint_after };
   }
 
   async function handler(req, res) {
@@ -592,25 +620,38 @@ function createApp(opts = {}) {
             const vm = data.viewModel(src, { records, tiersFile, today: data.todayOf(nowDate()) });
             vm.status = jobs.status(t);
             vm.tab = { game: src.game, events: src.events };
+            // A2.3: each of the tab's events with its entrants and its saved seed order (or none: tier order).
+            vm.seeding = seeding.forTab(src);
             return json(res, 200, vm);
           }
+          // A2.3: an arranged seed order numbers the exports' Seed column (the tab's first event's).
+          const seeds = seeding.forTab(src).events[0];
           if (g[2] === 'export.csv') {
             // ?order=<player ids>: the table's current order, kept within a tier (the page sends it).
             const order = (url.searchParams.get('order') || '').split(',').filter((x) => /^\d+$/.test(x));
-            const { filename, csv } = data.summaryExport(src, { records, tiersFile, today: data.todayOf(nowDate()), order });
+            const { filename, csv } = data.summaryExport(src, { records, tiersFile, today: data.todayOf(nowDate()), order, seeds });
             // Content-Length lets the page show a real progress bar while it downloads.
             return send(res, 200, csv, 'text/csv; charset=utf-8', { 'Content-Disposition': `attachment; filename="${filename}"`, 'Content-Length': Buffer.byteLength(csv) });
           }
           const order = (url.searchParams.get('order') || '').split(',').filter((x) => /^\d+$/.test(x));
-          const { filename, csv } = data.seedsExport(src, { order, tiersFile });
+          const { filename, csv } = data.seedsExport(src, { order, tiersFile, seeds });
           return send(res, 200, csv, 'text/csv; charset=utf-8', { 'Content-Disposition': `attachment; filename="${filename}"` });
         }
         const getRoute = /^(\/status|\/schedule|\/g\/\d+\/(data|export\.csv|seeds\.csv))$/;
-        const postRoute = /^(\/g\/\d+\/player\/\d+(\/review)?|\/events|\/refresh|\/cancel|\/lifecycle|\/linked|\/schedule\/refresh|\/upload\/seen|\/push\/[^/]+\/(dry-run|post))$/;
+        const postRoute = /^(\/g\/\d+\/player\/\d+(\/review)?|\/g\/\d+\/seeds|\/events|\/refresh|\/cancel|\/lifecycle|\/linked|\/schedule\/refresh|\/upload\/seen|\/push\/[^/]+\/(dry-run|post))$/;
         if (method !== 'POST' || getRoute.test(rest)) {
           return postRoute.test(rest) || getRoute.test(rest) ? send(res, 405, 'Method not allowed') : notFound(res);
         }
         requireApp(req);
+        // A2.3: one event's seed order, saved at once (every drag; no debounce), or reset to tier order.
+        g = /^\/g\/(\d+)\/seeds$/.exec(rest);
+        if (g) {
+          const src = tabOr404(t, g[1]);
+          const fields = await readBody(req);
+          const ev = String(fields.event || '').toLowerCase();
+          const saved = seeding.setOrder(src, ev, fields, { now: nowDate() });
+          return json(res, 200, { event: ev, mode: saved ? 'arranged' : 'tiers', saved });
+        }
         // Edit one player's tier / notes, or set / undo the ✓ review mark, in registry/tiers.csv.
         // The tournament a review records is this URL's <t>.
         g = /^\/g\/(\d+)\/player\/(\d+)(\/review)?$/.exec(rest);
@@ -662,7 +703,7 @@ function createApp(opts = {}) {
         if (g && slug(g[1])) {
           notForUpload(t, 'there is nothing to push to');
           const fields = await readBody(req);
-          if (g[2] === 'dry-run') return json(res, 200, await dryRun(t, g[1].toLowerCase()));
+          if (g[2] === 'dry-run') return json(res, 200, await dryRun(t, g[1].toLowerCase(), fields));
           return json(res, 200, await postSeeding(t, g[1].toLowerCase(), fields));
         }
         return notFound(res);

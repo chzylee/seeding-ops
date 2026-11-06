@@ -46,7 +46,11 @@ test('the export and the push number with the same function (one source): both c
   const dataSrc = fs.readFileSync(path.join(ROOT, 'lib', 'view', 'data.js'), 'utf8');
   const pushSrc = fs.readFileSync(path.join(ROOT, 'lib', 'push.js'), 'utf8');
   assert.match(dataSrc, /M\.seedSequence\(/);
-  assert.match(pushSrc, /M\.seedSequence\(/);
+  // A2.3: the push's sequence is M.pushPlan, which numbers tier order with seedSequence (the same
+  // function the export calls) and an arranged order with the shared reconcileOrder.
+  assert.match(pushSrc, /M\.pushPlan\(/);
+  const modelSrc = fs.readFileSync(path.join(ROOT, 'lib', 'view', 'model.js'), 'utf8');
+  assert.match(modelSrc.slice(modelSrc.indexOf('function pushPlan(')), /else seq = seedSequence\(entries\);/);
   // The same players, tiers and order give the same numbers through both paths.
   const outRoot = tmp();
   const ps = [player(1, 'A'), player(2, 'B'), player(3, 'C'), player(4, 'D')];
@@ -174,8 +178,14 @@ test('push post: only on a confirmed click with the dry run\'s fingerprint; re-c
   const m = fake.calls[1].variables;
   assert.strictEqual(m.phaseId, '5001');
   assert.deepStrictEqual(m.seedMapping, dry.rows.map((x) => ({ seedId: x.seed_id, seedNum: x.proposed })));
-  assert.deepStrictEqual(r.json(), { posted: true, event: E_SLUG, phase_id: '5001', phase_name: 'Bracket', at: '2026-11-02T00:00:00.000Z', seed_count: 15 });
-  assert.deepStrictEqual(pool.readState(tDir).pushes, [{ event: E_SLUG, phase_id: '5001', phase_name: 'Bracket', at: '2026-11-02T00:00:00.000Z', seed_count: 15 }]);
+  // A2.3: the reply also carries what was posted and start.gg's side after it (for a re-push), and the
+  // push record says which order it used (tier order here: nothing was arranged).
+  const { rows: postedRows, summary: postedSummary, entries: after, fingerprint: fpAfter, ...entry } = r.json();
+  assert.deepStrictEqual(entry, { posted: true, event: E_SLUG, phase_id: '5001', phase_name: 'Bracket', at: '2026-11-02T00:00:00.000Z', seed_count: 15, seed_order: 'tiers' });
+  assert.deepStrictEqual(postedRows.map((x) => [x.seed_id, x.proposed]), dry.rows.map((x) => [x.seed_id, x.proposed]));
+  assert.strictEqual(postedSummary.seeds, 15);
+  assert.ok(after.every((e, i) => e.current === i + 1) && typeof fpAfter === 'string');
+  assert.deepStrictEqual(pool.readState(tDir).pushes, [{ event: E_SLUG, phase_id: '5001', phase_name: 'Bracket', at: '2026-11-02T00:00:00.000Z', seed_count: 15, seed_order: 'tiers' }]);
   // After the post start.gg's order is the proposed one: a new dry run moves nothing.
   const again = (await post(`${E_SLUG}/dry-run`)).json();
   assert.strictEqual(again.summary.moved, 0);
@@ -210,7 +220,8 @@ test('the page: posting needs a click on a dry run and a confirm, sends the fing
   const postFn = fn('postSeeding');
   assert.match(postFn, /if \(!dry\) return;/, 'no post without a dry run on the page');
   assert.match(postFn, /window\.confirm\(/);
-  assert.match(postFn, /\{ fingerprint: dry\.fingerprint, confirm: true \}/);
+  // A2.3: the post also carries the seed order on screen at the click (test/seed-order.test.js pins it).
+  assert.match(postFn, /\{ fingerprint: dry\.fingerprint, confirm: true, seeding: currentSeeding\(dry\.event\.slug\) \}/);
   assert.match(postFn, /pushLine\(r\.body\.error \|\| 'Not posted\.', true\)/);
   assert.match(fn('runDry'), /R\.pushDiffTable\(dry\)/);
   // Noah, 2026-10-30: one export; it carries the table's order to export.csv (the Seed column uses it).

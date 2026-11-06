@@ -587,3 +587,11 @@ dialog.account-dialog .actions button.plain { background: var(--cell); color: va
 .app-version button.primary { border-color: var(--accent); background: var(--accent); color: var(--on-accent); }
 .app-version button[hidden] { display: none; }
 .app-version .status.err { color: var(--err); }
+
+/* ---- Data notices on the home page (lib/data-dir.js; notices.js) ---- */
+.data-notices { display: grid; gap: var(--s-2); margin: var(--s-2) 0 var(--s-3); }
+.data-notice { display: flex; align-items: flex-start; gap: var(--s-3); padding: var(--s-2) var(--s-3); border: 1px solid var(--line-strong); border-radius: var(--radius); font-size: 13px; }
+.data-notice span { flex: 1 1 auto; }
+.data-notice.warn { background: var(--err-bg); border-color: var(--err); color: var(--err); }
+.data-notice.info { background: var(--warn-bg); border-color: var(--warn-fg); color: var(--warn-fg); }
+.data-notice button { flex: 0 0 auto; height: 24px; padding: 0 8px; border: 1px solid currentColor; border-radius: var(--radius-sm); background: var(--cell); color: inherit; font: inherit; font-size: 12px; }

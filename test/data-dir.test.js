@@ -124,6 +124,95 @@ test('data-dir: applyDataRoot on an installed copy sets SEEDING_DATA to the per-
   assert.ok(fs.existsSync(path.join(checkout, 'registry', 'tiers.csv')), 'a checkout\'s data is never moved');
 });
 
+// ---- Audit 2026-11-06 #2c: the tiers table the old uninstaller probably deleted is said, not silent ----
+test('data-dir: an old install folder with tournaments or a key but no tiers table gets a lasting home-page warning; a normal update does not', () => {
+  const inst = installFolder();
+  fs.rmSync(path.join(inst, 'registry', 'tiers.csv'));   // what 0.1.0's uninstaller does
+  const local = tmp('seeding-local-');
+  const env = { LOCALAPPDATA: local };
+  const r = D.applyDataRoot({ root: inst, exeDir: inst, env, platform: 'win32', log: () => {}, now: () => new Date('2026-11-06T00:00:00Z') });
+  const data = path.join(local, 'net.enpicie.seeding-ops');
+  assert.deepStrictEqual(r.notices.map((n) => n.id), ['tiers-missing']);
+  assert.match(r.notices[0].text, /tiers table may have been removed/);
+  assert.ok(r.notices[0].text.includes(path.join(data, 'registry', 'tiers.csv')), 'it says where to put the backup');
+  assert.strictEqual(r.seeded, true, 'an empty table is in use meanwhile');
+  assert.deepStrictEqual(D.readNotices(data).map((n) => n.id), ['tiers-missing'], 'kept in the data folder until dismissed');
+  assert.deepStrictEqual(JSON.parse(env.SEEDING_DATA_NOTICES), [], 'not repeated as a launch notice');
+  // The next launch finds nothing left to move and adds nothing; the warning stays until dismissed.
+  const again = D.applyDataRoot({ root: inst, exeDir: inst, env, platform: 'win32', log: () => {} });
+  assert.deepStrictEqual(again.notices, []);
+  assert.strictEqual(D.readNotices(data).length, 1);
+  assert.strictEqual(D.dismissNotice(data, 'tiers-missing'), true);
+  assert.deepStrictEqual(D.readNotices(data), []);
+  // No warning when the table came along, or when there was nothing to lose.
+  const fine = D.applyDataRoot({ root: installFolder(), exeDir: null, env: {}, log: () => {} });
+  assert.deepStrictEqual(fine.notices, []);
+  for (const legacy of [installFolder(), installFolder({ withUserData: false })]) {
+    const d = path.join(tmp('seeding-data-'), 'd');
+    assert.deepStrictEqual(D.prepareDataRoot({ dataRoot: d, legacyRoot: legacy, codeRoot: legacy }).notices, []);
+  }
+});
+
+// ---- Audit #4: never run on a half-moved state silently ----
+test('data-dir: a failed move after an earlier launch already moved tiers.csv runs on the data folder (where the table is) and names what is still in the old folder', () => {
+  const inst = installFolder();
+  const data = path.join(tmp('seeding-data-'), 'd');
+  write(path.join(data, 'registry', 'tiers.csv'), USER_TIERS);   // an earlier, interrupted launch moved it
+  fs.rmSync(path.join(inst, 'registry', 'tiers.csv'));
+  const fsi = { ...fs, renameSync: (a, b) => { if (path.basename(a) === '.env') throw Object.assign(new Error('locked'), { code: 'EBUSY' }); return fs.renameSync(a, b); } };
+  const r = D.prepareDataRoot({ dataRoot: data, legacyRoot: inst, codeRoot: inst, fsi });
+  assert.strictEqual(r.dataRoot, data, 'never the old folder, which has no tiers table');
+  assert.strictEqual(r.fellBack, false);
+  assert.deepStrictEqual(r.notices.map((n) => [n.id, n.lasting]), [['move-failed', false]]);
+  assert.match(r.notices[0].text, /EBUSY/);
+  assert.match(r.notices[0].text, /Still in .*: \.env, out/);
+  assert.strictEqual(fs.readFileSync(path.join(data, 'registry', 'tiers.csv'), 'utf8'), USER_TIERS);
+  assert.ok(!r.notices.some((n) => n.id === 'tiers-missing'), 'the table is in the data folder: nothing was lost');
+});
+
+test('data-dir: an undo that also fails is reported, and the launch follows the tiers table to wherever it ended up', () => {
+  const inst = installFolder();
+  const data = path.join(tmp('seeding-data-'), 'd');
+  let undo = false;
+  const fsi = { ...fs, renameSync: (a, b) => {
+    if (path.basename(a) === '.env') { undo = true; throw Object.assign(new Error('locked'), { code: 'EBUSY' }); }
+    if (undo && path.basename(a) === 'tiers.csv') throw Object.assign(new Error('denied'), { code: 'EPERM' });   // the undo
+    return fs.renameSync(a, b);
+  } };
+  const r = D.prepareDataRoot({ dataRoot: data, legacyRoot: inst, codeRoot: inst, fsi });
+  assert.strictEqual(r.dataRoot, data, 'tiers.csv could not go back, so the data folder is where it is');
+  assert.match(r.notices[0].text, /Could not put back: registry\/tiers\.csv \(EPERM\)/);
+  assert.strictEqual(fs.readFileSync(path.join(data, 'registry', 'tiers.csv'), 'utf8'), USER_TIERS);
+});
+
+test('data-dir: an older copy left in the old install folder is named, not silently ignored', () => {
+  const inst = installFolder();
+  const data = path.join(tmp('seeding-data-'), 'd');
+  write(path.join(data, 'registry', 'tiers.csv'), 'newer');
+  const r = D.prepareDataRoot({ dataRoot: data, legacyRoot: inst, codeRoot: inst });
+  assert.deepStrictEqual(r.left, [path.join('registry', 'tiers.csv')]);
+  assert.deepStrictEqual(r.notices.map((n) => [n.id, n.level]), [['left-in-old', 'info']]);
+  assert.match(r.notices[0].text, /older copy of registry\/tiers\.csv/);
+  assert.strictEqual(fs.readFileSync(path.join(data, 'registry', 'tiers.csv'), 'utf8'), 'newer');
+});
+
+test('data-dir: the home page shows the notices; a lasting one has Dismiss, which removes it', async () => {
+  const { createApp } = require('../app/server');
+  const { inject } = require('../testlib/inject');
+  const data = tmp('seeding-notice-');
+  fs.writeFileSync(path.join(data, 'notices.json'), JSON.stringify([{ id: 'tiers-missing', level: 'warn', text: 'Your tiers table may have been removed <here>.' }]));
+  const app = createApp({ outRoot: path.join(data, 'out'), dataRoot: data, getToken: () => 't', fetchImpl: async () => { throw new Error('offline'); },
+    dataNotices: [{ id: 'move-failed', level: 'warn', text: 'Your data could not all be moved.' }] });
+  const html = (await inject(app.handler, { url: '/' })).text;
+  assert.match(html, /<div class="data-notice warn" role="alert" data-id="move-failed"><span>Your data could not all be moved\.<\/span><\/div>/);
+  assert.match(html, /data-id="tiers-missing"><span>Your tiers table may have been removed &lt;here&gt;\.<\/span><button type="button" class="plain" data-dismiss="tiers-missing">Dismiss<\/button>/);
+  const H = { 'X-Seeding-App': '1', 'Content-Type': 'application/json' };
+  assert.strictEqual((await inject(app.handler, { url: '/api/notices/dismiss', method: 'POST', body: '{"id":"tiers-missing"}' })).status, 403);
+  const r = await inject(app.handler, { url: '/api/notices/dismiss', method: 'POST', headers: H, body: '{"id":"tiers-missing"}' });
+  assert.deepStrictEqual(r.json(), { dismissed: true });
+  assert.doesNotMatch((await inject(app.handler, { url: '/' })).text, /tiers-missing/);
+});
+
 test('data-dir: the installer ships nothing named like user data, ships the marker and the template, and the identifier matches', () => {
   const conf = JSON.parse(fs.readFileSync(path.join(REPO, 'src-tauri', 'tauri.conf.json'), 'utf8'));
   assert.strictEqual(conf.identifier, D.IDENTIFIER);

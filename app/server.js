@@ -59,6 +59,7 @@ const { readSchedule } = require('../lib/schedule-pull');
 const U = require('../lib/upload');
 const majorsConfig = require('../lib/view/majors');
 const update = require('../lib/update');
+const dataDir = require('../lib/data-dir');
 const { Jobs } = require('./jobs');
 const { createQueue } = require('./queue');
 
@@ -86,6 +87,7 @@ const STATIC = {
   'busy.js': [path.join(APP_DIR, 'public', 'busy.js'), JS],
   'account.js': [path.join(APP_DIR, 'public', 'account.js'), JS],
   'update.js': [path.join(APP_DIR, 'public', 'update.js'), JS],
+  'notices.js': [path.join(APP_DIR, 'public', 'notices.js'), JS],
 };
 // The upload picker's game logos (config/games.json, copied from find-my-fgc), served as
 // /static/games/<file>: only files the config names, only image types, only under app/public/games.
@@ -149,7 +151,14 @@ function uploadForm() {
 // Noah, mid-pass 2026-10-30: no block or heading for the live ones; one sentence sits above the first
 // tournament that is no longer live (the list is always live, then done, then archived).
 const DONE_NOTE = '<li class="done-note dim">Tournaments are marked done automatically once their last seeded event\'s date has passed. Delete one when you no longer need it: right-click it here, or use Delete on its page; both ask first.</li>';
-function indexPage(outRoot, jobs, nowMs) {
+// The data folder's notices (lib/data-dir.js): a tiers table the old uninstaller probably removed, a
+// move out of the old install folder that failed or was partial, an old copy left behind. Lasting ones
+// have Dismiss (notices.js).
+function noticesHtml(notices) {
+  if (!notices.length) return '';
+  return `<section class="data-notices" aria-label="About your data">${notices.map((n) => `<div class="data-notice ${n.level === 'warn' ? 'warn' : 'info'}" role="${n.level === 'warn' ? 'alert' : 'status'}" data-id="${esc(n.id)}"><span>${esc(n.text)}</span>${n.lasting ? `<button type="button" class="plain" data-dismiss="${esc(n.id)}">Dismiss</button>` : ''}</div>`).join('')}</section>`;
+}
+function indexPage(outRoot, jobs, nowMs, notices = []) {
   const list = pool.listTournaments(outRoot, nowMs);
   const firstDone = list.findIndex((x) => x.status !== 'live');
   const items = list.map((x, i) => {
@@ -165,7 +174,7 @@ function indexPage(outRoot, jobs, nowMs) {
   }).join('');
   return `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Seeding tournaments</title><link rel="stylesheet" href="/static/app.css"><script src="/static/theme.js"></script><script src="/static/busy.js"></script><script src="/static/account.js" defer></script>
-<body class="index"><main><h1>Tournaments</h1>
+<body class="index"><main><h1>Tournaments</h1>${noticesHtml(notices)}
 <section class="add-section" aria-labelledby="addHead"><h2 id="addHead">Add a tournament</h2>
 <form id="add" class="add-t"><label for="addUrl" class="sr-only">start.gg tournament or event link</label>
 <input id="addUrl" name="url" placeholder="start.gg tournament or event link" autocomplete="off" spellcheck="false" required title="Adding makes one request to start.gg for the tournament's events; you pick the singles events to seed on its page.">
@@ -174,7 +183,7 @@ ${uploadForm()}
 </section>
 <ul class="events">${items || '<li class="dim">No tournaments yet. Add one above.</li>'}</ul>
 <footer class="app-version" aria-label="Version and updates"><span id="appVersion" class="dim">Seeding Ops ${esc(update.currentVersion(ROOT))}</span><button type="button" id="updateCheck">Check for updates</button><button type="button" id="updateInstall" class="primary" hidden>Install</button><a id="updateLink" href="#" target="_blank" rel="noopener" hidden>Release page</a><span id="updateMsg" class="status" role="status" aria-live="polite"></span></footer></main>
-<script src="/static/index.js"></script><script src="/static/update.js"></script></body></html>`;
+<script src="/static/index.js"></script><script src="/static/update.js"></script><script src="/static/notices.js"></script></body></html>`;
 }
 
 function notAddedPage(t) {
@@ -254,6 +263,15 @@ function createApp(opts = {}) {
     return sgg.createClient({ token, fetchImpl: queue.fetch, now: opts.now, sleep: opts.sleep });
   };
   const requireApp = (req) => { if (req.headers['x-seeding-app'] !== '1') throw bad(403, 'Missing X-Seeding-App header'); };
+
+  // ---- The data folder's notices (lib/data-dir.js): this launch's (SEEDING_DATA_NOTICES, set by
+  // app/app-main.js) and the lasting ones in <data>/notices.json ----
+  const dataRoot = opts.dataRoot || DATA_ROOT;
+  function dataNotices() {
+    let launch = opts.dataNotices;
+    if (!launch) { try { launch = JSON.parse(process.env.SEEDING_DATA_NOTICES || '[]'); } catch { launch = []; } }
+    return [...(Array.isArray(launch) ? launch : []), ...dataDir.readNotices(dataRoot).map((n) => ({ ...n, lasting: true }))];
+  }
 
   // ---- Check for updates (lib/update.js; Noah, 2026-11-06) ----
   // opts.update injects the network, the installer launch and the exit for tests.
@@ -548,7 +566,7 @@ function createApp(opts = {}) {
       const method = req.method;
       const slug = (x) => pool.SLUG_PART.test(x);
 
-      if (p === '/' && method === 'GET') return send(res, 200, indexPage(outRoot, jobs, nowMs()), 'text/html; charset=utf-8');
+      if (p === '/' && method === 'GET') return send(res, 200, indexPage(outRoot, jobs, nowMs(), dataNotices()), 'text/html; charset=utf-8');
 
       let m = /^\/static\/((?:games\/)?[a-z0-9._-]+)$/i.exec(p);
       if (m && method === 'GET') {
@@ -610,6 +628,12 @@ function createApp(opts = {}) {
         saveToken({ envFile, token });
         tokenCheck.token = token; tokenCheck.at = nowMs(); tokenCheck.result = { ...r, state: 'ok' };
         return json(res, 200, { ok: true, as: r.as, saved: path.basename(envFile), env_wins: false });
+      }
+      if (p === '/api/notices/dismiss') {
+        if (method !== 'POST') return send(res, 405, 'Method not allowed');
+        requireApp(req);
+        const fields = await readBody(req);
+        return json(res, 200, { dismissed: dataDir.dismissNotice(dataRoot, String(fields.id || '')) });
       }
       if (p === '/api/update') {
         if (method !== 'GET') return send(res, 405, 'Method not allowed');

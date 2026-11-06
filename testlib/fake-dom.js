@@ -66,9 +66,11 @@ function elementsFromHtml(html) {
 
 // Runs a page script against a fake document. html: the page the server rendered (for ids).
 // fetch(url, init) -> { status, body } (a plain object, sent as JSON) or a Response-like object.
-function loadPage(src, { html = '', fetch, search = '', confirm = () => true } = {}) {
+function loadPage(src, { html = '', fetch, search = '', confirm = () => true, globals = {} } = {}) {
   const { byId, options } = elementsFromHtml(html);
   if (byId.has('upGameList')) byId.get('upGameList').setAll('[role="option"]', options);
+  const events = /<ul class="events">/.test(html) ? makeEl('ul') : null;
+  const misses = [];
   const created = [];
   const docListeners = {};
   const body = makeEl('body');
@@ -77,8 +79,8 @@ function loadPage(src, { html = '', fetch, search = '', confirm = () => true } =
   const location = { search, href: 'http://127.0.0.1:8765/', reload() { this.reloaded = true; } };
   const document = {
     readyState: 'complete', body,
-    getElementById: (id) => byId.get(id) || null,
-    querySelector: (sel) => (sel === 'ul.events' ? (byId.get('__events') || null) : null),
+    getElementById: (id) => { if (!byId.has(id)) misses.push(id); return byId.get(id) || null; },
+    querySelector: (sel) => (sel === 'ul.events' ? events : null),
     createElement: (tag) => { const e = makeEl(tag); created.push(e); return e; },
     addEventListener: (t, fn) => { (docListeners[t] = docListeners[t] || []).push(fn); },
   };
@@ -94,12 +96,13 @@ function loadPage(src, { html = '', fetch, search = '', confirm = () => true } =
     confirm,
     fetch: async (url, init = {}) => { requests.push({ url, ...init }); return respond(await fetch(url, init)); },
     addEventListener: () => {},
+    ...globals,
   };
   ctx.window = ctx;
   vm.createContext(ctx);
   vm.runInContext(src, ctx, { filename: 'page-script.js' });
   return {
-    window: ctx, document, created, requests, location, timers,
+    window: ctx, document, created, requests, location, timers, misses, events,
     runTimers() { const t = timers.splice(0); t.forEach((x) => x.fn()); },
     async flush(n = 6) { for (let i = 0; i < n; i++) await new Promise((r) => setImmediate(r)); },
   };

@@ -408,7 +408,12 @@ Tauri shell ships as a Windows installer from GitHub Releases. Two rules follow,
   installer's minisign signature (Tauri's updater format). The home page's *Check for updates* verifies
   the signature against `config/updater.json`'s public key before running the installer. The client is
   the Node server (lib/update.js), not Tauri's Rust plugin, so the shell stays as thin as this spec has
-  it.
+  it. The workflow refuses to publish without the committed public key and a signature that verifies
+  against it (scripts/release-check.js).
+- **The one manual step, 0.1.0 -> 0.2.0, runs the installer in update mode (`/P /UPDATE /R`) after a
+  required backup of the tiers table.** Double-clicked, the installer uninstalls 0.1.0 first by default,
+  and 0.1.0's uninstaller deletes `registry\tiers.csv`. When the first launch finds that has happened,
+  the home page says so until dismissed.
 
 ## Next steps (build order; each step is usable alone)
 

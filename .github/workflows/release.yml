@@ -231,9 +231,26 @@ jobs:
           choose **More info**, then **Run anyway**.
 
           **Already have Seeding Ops?** From 0.2.0 on, use **Check for updates** at the bottom of the
-          home page. Updating from 0.1.0 (no such button) takes this installer once: close the app, run
-          it, and if it asks whether to uninstall the older version first, choose **Do not uninstall**.
-          Your tiers, tournaments and start.gg key are kept (README, Desktop app > Updates).
+          home page.
+
+          **Updating from 0.1.0** (it has no such button): don't double-click the installer. That way
+          it uninstalls 0.1.0 first, which deletes your tiers table. Instead:
+          1. Download **Seeding-Ops-windows-setup.exe** into your Downloads folder, and close Seeding Ops.
+          2. Open **PowerShell** (Start menu, type PowerShell, Enter), paste this line and press Enter.
+             It copies your tiers table to your Desktop first (required: if that fails, nothing is
+             installed), then runs the installer in update mode, which keeps everything:
+
+          ```
+          Copy-Item "$env:LOCALAPPDATA\Seeding Ops\registry\tiers.csv" (Join-Path ([Environment]::GetFolderPath('Desktop')) 'seeding-ops-tiers-backup.csv') -ErrorAction Stop; & "$env:USERPROFILE\Downloads\Seeding-Ops-windows-setup.exe" /P /UPDATE /R
+          ```
+
+          3. The app opens by itself and moves your tiers, tournaments and start.gg key to its data
+             folder. Keep the Desktop backup until you've checked your tiers are there.
+
+          If the copy fails because the tiers table is already gone, run only
+          `& "$env:USERPROFILE\Downloads\Seeding-Ops-windows-setup.exe" /P /UPDATE /R`.
+          If your tiers are missing afterwards (the home page warns you), close the app and run
+          `Copy-Item (Join-Path ([Environment]::GetFolderPath('Desktop')) 'seeding-ops-tiers-backup.csv') "$env:LOCALAPPDATA\net.enpicie.seeding-ops\registry\tiers.csv"`.
           NOTES
           if ! gh release view "$TAG" >/dev/null 2>&1; then
             gh release create "$TAG" --title "Seeding Ops $VERSION" --notes-file dist/notes.md --target "$GITHUB_SHA"

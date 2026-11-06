@@ -386,10 +386,20 @@ leave alone:
 
 The only thing that removes it is ticking **Delete the application data** when uninstalling. The
 first launch of 0.2.0 or later moves these three out of the install folder if an older install left
-them there (all or nothing; if any move fails, that launch runs on the old folder as before, and
-the next launch tries again). A checkout and the portable ZIP keep their data beside the exe, as
-always. How the app tells them apart: the installer ships `installed.json` beside the exe
-(`src-tauri/installed.json`); nothing else has it. Code: `lib/data-dir.js`.
+them there. If a move fails, what moved this launch is put back, the app runs wherever the tiers table
+is, and the next launch tries again. None of this is silent; the home page says so in a notice:
+- a failed or partial move: what is still in the old folder;
+- an older copy left behind in the old folder;
+- the old folder having tournaments or a key but no tiers table. That one means the old uninstaller
+  probably deleted it; the notice says where to put a backup, and stays until dismissed.
+
+A checkout and the portable ZIP keep their data beside the exe, as always. How the app tells them
+apart: the installer ships `installed.json` beside the exe (`src-tauri/installed.json`); nothing else
+has it. Code: `lib/data-dir.js`.
+
+Known limit: macOS. The macOS bundle is built but has never run on real hardware, and its installed
+layout keeps the code in `Contents/Resources`, which the loader (`app/app-main.js`) does not look in.
+So none of the above (data folder, move, updates) applies to it yet.
 
 Why this matters: through 0.1.0 the installer shipped `registry/tiers.csv` itself. The 0.1.0
 uninstaller (decoded from the installed copy's `uninstall.exe`) deletes `registry\tiers.csv` by name
@@ -408,25 +418,49 @@ refused while a pull, schedule pull or archive is running or queued.
 How it works: `lib/update.js`, called from the app's server (`/api/update/check`,
 `/api/update/install`). The release format is Tauri's updater format: `latest.json` plus a minisign
 `.sig` from `tauri signer`. The client is ours, not Tauri's Rust updater plugin, because the shell only
-builds in CI. The installer runs with `/P /UPDATE /R` (passive, update mode, restart).
+builds in CI. The server starts a hidden launcher that waits three seconds, then runs the installer
+with `/P /UPDATE /R` (passive, update mode, restart), and exits at once. Both exes must be closed
+before the installer replaces them.
 
 **Coming from 0.1.0 (one manual install).** 0.1.0 has no button, so a copy installed from 0.1.0
-takes the 0.2.0 installer once, by hand:
+takes the 0.2.0 installer once, by hand. **Don't just double-click it.** Run by double-click, the
+installer's "older version installed" page has *Uninstall before installing* ticked by default, and
+0.1.0's uninstaller deletes `registry\tiers.csv`. Run it in update mode instead, which skips that
+step (the same mode the button uses):
 
-1. Close Seeding Ops.
-2. *Belt and braces, optional:* copy `%LOCALAPPDATA%\Seeding Ops\registry\tiers.csv` somewhere safe.
-3. Run `Seeding-Ops-windows-setup.exe`. If it asks whether to uninstall the older version first,
-   choose **Do not uninstall**. (Uninstalling 0.1.0 first deletes its `registry\tiers.csv`; your
-   tournaments and key survive either way.)
-4. Open the app. It moves your tiers, tournaments and key to the data folder by itself.
+1. Download `Seeding-Ops-windows-setup.exe` from the release page into your **Downloads** folder.
+2. Close Seeding Ops.
+3. Open **PowerShell** (Start menu, type `PowerShell`, Enter) and paste this line, then Enter. It
+   first copies your tiers table to your Desktop (**required**: if the copy fails, the installer does
+   not run), then runs the installer in update mode:
 
-If the tiers came back empty (the old version was uninstalled first), close the app and copy the
-saved `tiers.csv` to `%LOCALAPPDATA%\net.enpicie.seeding-ops\registry\tiers.csv`. From then on, use
-**Check for updates**.
+   ```
+   Copy-Item "$env:LOCALAPPDATA\Seeding Ops\registry\tiers.csv" (Join-Path ([Environment]::GetFolderPath('Desktop')) 'seeding-ops-tiers-backup.csv') -ErrorAction Stop; & "$env:USERPROFILE\Downloads\Seeding-Ops-windows-setup.exe" /P /UPDATE /R
+   ```
+
+   If Windows says the publisher is unknown, choose **More info**, then **Run anyway**.
+4. The installer shows a progress bar and opens the app when done. The app moves your tiers,
+   tournaments and key to the data folder by itself. Keep the Desktop backup until you have checked
+   your tiers are there.
+
+If the copy fails because there is no `tiers.csv` (it was already lost), run only the second half:
+`& "$env:USERPROFILE\Downloads\Seeding-Ops-windows-setup.exe" /P /UPDATE /R`.
+
+If the tiers come back empty anyway (the home page warns when it looks that way), close the app and
+copy the backup to `%LOCALAPPDATA%\net.enpicie.seeding-ops\registry\tiers.csv`:
+
+```
+Copy-Item (Join-Path ([Environment]::GetFolderPath('Desktop')) 'seeding-ops-tiers-backup.csv') "$env:LOCALAPPDATA\net.enpicie.seeding-ops\registry\tiers.csv"
+```
+
+From then on, use **Check for updates**. (A Tauri installer hook can't do the backup itself: it runs
+after the old uninstaller.)
 
 **Setting up signing (once, by Noah, before publishing 0.2.0).** The app installs only updates signed
-with the key it trusts. Until these steps are done, releases publish the installer without a
-signature, and the button says "download it from the release page" instead of installing.
+with the key it trusts. **The release workflow refuses to publish until these steps are done**
+(`scripts/release-check.js`). It checks that `config/updater.json` has the public key before it
+builds, and that the installer's signature verifies against that key before it uploads anything.
+Test builds (publish unticked) still run without a key.
 
 1. Generate the key pair on your own machine (it asks for a password; remember it):
 
@@ -459,7 +493,7 @@ toolchain is needed locally.
   installed copies won't see it as an update.
 - *Share it*: Actions → `release` → Run workflow with `publish` ticked, or push the tag `v<version>`.
   It publishes a release tagged `v<version>`, marked Latest, carrying the installer
-  (`Seeding-Ops-windows-setup.exe`) and, when signed, its `.sig` and `latest.json`. A new user installs
+  (`Seeding-Ops-windows-setup.exe`), its `.sig` and `latest.json` (it refuses to publish unsigned). A new user installs
   it, opens the app, pastes a start.gg API key, presses Save. The installer ships an **empty tiers
   table** (`registry/tiers.template.csv`), never this checkout's. The link
   `https://github.com/<repo>/releases/latest/download/Seeding-Ops-windows-setup.exe` always fetches

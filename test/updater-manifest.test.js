@@ -73,6 +73,26 @@ test('release check: the command line reads config/updater.json from a root and 
   assert.strictEqual(run('--file', file, '--sig', file + '.sig').code, 0);
 });
 
+// Audit #2a/b: the 0.1.0 -> 0.2.0 manual install. Double-clicking the installer runs 0.1.0's uninstaller
+// first (Tauri's reinstall page ticks it by default), which deletes registry\tiers.csv. The documented
+// path backs the table up (required: -ErrorAction Stop keeps the installer from running if the copy
+// fails) and then runs the installer in update mode, which skips the uninstall. README and the release
+// notes carry the same line.
+test('0.1.0 upgrade instructions: one copy-paste line, backup first and required, then /P /UPDATE /R; README and release notes agree', () => {
+  const readme = fs.readFileSync(path.join(__dirname, '..', 'README.md'), 'utf8');
+  const yml = fs.readFileSync(path.join(__dirname, '..', '.github', 'workflows', 'release.yml'), 'utf8');
+  const lineIn = (text) => (text.split(/\r?\n/).map((l) => l.trim()).find((l) => /^Copy-Item ".*Seeding Ops\\registry\\tiers\.csv"/.test(l)) || '');
+  const line = lineIn(readme);
+  assert.ok(line, 'README has the line');
+  assert.strictEqual(lineIn(yml), line, 'the release notes carry the same line');
+  const [backup, install] = line.split('; ');
+  assert.match(backup, /-ErrorAction Stop$/, 'a failed backup stops the line before the installer runs');
+  assert.match(backup, /GetFolderPath\('Desktop'\)/, 'the real Desktop, OneDrive-redirected or not');
+  assert.match(install, /^& "\$env:USERPROFILE\\Downloads\\Seeding-Ops-windows-setup\.exe" \/P \/UPDATE \/R$/);
+  assert.match(readme, /\*\*Don't just double-click it\.\*\*/);
+  assert.doesNotMatch(readme, /Belt and braces, optional/, 'the backup is no longer optional');
+});
+
 test('release workflow: tags the release v<version> from tauri.conf.json, signs only with the secret, and publishes the installer, its .sig and latest.json', () => {
   const yml = fs.readFileSync(path.join(__dirname, '..', '.github', 'workflows', 'release.yml'), 'utf8');
   // A source check of the workflow (it only runs on GitHub): the parts the updater depends on.

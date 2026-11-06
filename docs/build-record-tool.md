@@ -3511,3 +3511,157 @@ Fix: the handler restored; `test/home-script.test.js` pins the Add and upload ha
 right-click wiring, and that every id the script reads at load is rendered by the server. The fixed
 script was also dropped into the installed copy (`%LOCALAPPDATA%\Seeding Ops\app\public\index.js`, read per
 request) so Noah could continue; a new release follows. Suite 269/269/0/0.
+
+## Build D — Pass 1 — lead engineer (tiers per game, sharing tiers, seeds you arrange; 2026-11-06)
+
+Branch `worktree-agent-a85de818d452d2b6a` (an isolated worktree), from `main` @ 4e35890. Spec:
+`docs/design-tool.md` **Amendment A2** (A2.1 keying, A2.2 sharing, A2.3 seed order), written in this
+pass. Seat: personal-staff lead-engineer persona v0.4.0, loaded from
+`personal-staff/personas/library/lead-engineer.md`; an engineering-auditor reviews this branch as its
+own job.
+
+### Terms as understood
+
+- **Features**, in Noah's words with his rulings, as relayed by the orchestrating session: (1) tiers
+  key on (player, game) on every path, audited first, plus export and import of one game's tiers with a
+  review step; (2) a Seed column, drag (and keyboard) reordering saved per event, the dragged order the
+  push's source of truth, reset to tier order, newcomers slot by tier, removals close the gap, a
+  sort-by-seed option, the push mode shown. **Added mid-pass (relayed, 2026-11-06):** rows stay
+  draggable right up to the push; the push posts the order at the click; no stale preview; re-push
+  works; pinned by a drag-then-push test.
+- **Do-nots:** no app, server, browser, installer or window launched; no network (no fetch, pull,
+  push, gh, installs); commits on this branch only; `main` untouched.
+- **Parallel work:** another engineer edits `lib/view/data.js` (readTierTable / editTierRow error
+  handling, atomic write), `app/server.js` (readBody, token status), `app/public/account.js`,
+  `app/public/app.js` (~608, the export call), `lib/token.js`, `lib/upload.js:96`, `app/app-main.js`,
+  `src-tauri/`, `release.yml`. This pass did not restructure any of those spots (see *Merge notes*).
+- **Done** = `node --test` green, both features with behavioural tests, docs updated.
+
+### Assumptions I supplied
+
+1. **Tier mode keeps premise 1 in the push.** With nothing arranged, the push stays as it was (tiers,
+   start.gg's order within a tier); only an arranged order overrides start.gg's within-tier order.
+   Alternative: push the table's alphabetical tie-break in tier mode (one line in `pushPlan`). Recorded
+   in A2.3 as an amendable default.
+2. **The push's staleness check covers start.gg's side only** (seed ids, numbers, players), because the
+   relayed rule makes Noah's own drags and tier edits last-second inputs, not reasons to refuse. A
+   change on start.gg still refuses the post. This revises "Push mechanics" (A2.3 says so).
+3. **Bulk import buttons are per section** (conflicts: keep all mine / take all theirs; new: add all /
+   add none), since "keep mine" has no meaning for a player with no tier here.
+4. **Sharing lives on the home page** (tiers outlive tournaments), with a game picker.
+5. **Exports number the tab's first event** when a tab has several events of one game (the page's
+   export call is the other engineer's surface this pass).
+
+### Audit: which T1 paths keyed on game (A2.1)
+
+The table is in A2.1. Evidence: `test/tier-game-keying.test.js` run against 4e35890's `data.js` and
+`push.js` (swapped in, then restored) gave **3 pass, 4 fail**; the four failures are the four gaps
+(missing-game read of every game, a `game_id` "undefined" row on write, `linkPlayers` silently matching
+nothing, a game-less event pushed with every game's tiers). After A2.1: 7/7.
+
+### What changed (by file)
+
+- `lib/view/data.js`: `readTiers` reads no rows without a game; `editTierRow` 409 without a game;
+  `linkPlayers` throws without a game; `seedNumbers` (shared by both exports: arranged order when
+  `seeds` is given, else the old numbering); exports `readTierTable`, `writeTierTable`, `hasGame`,
+  `normTag`, `lastTag`, `seedNumbers`.
+- `lib/tiers-share.js` (new): export, review, apply.
+- `lib/seeding.js` (new): the per-event arrangement in `state.json` `seeding`.
+- `lib/view/model.js`: `tierOrder`, `reconcileOrder`, `seedOrder`, `moveSeed`, `pushPlan` (the push's
+  sequence, shared with the page), `importTake` / `importBulk` / `importChoice`; `orderPlayers` uses the
+  same comparator as `tierOrder`.
+- `lib/push.js`: entries + `M.pushPlan`; `arrangement`; start.gg-side fingerprint; `post` returns the
+  mapping and start.gg's side after it; game-less event 409.
+- `lib/view/render.js`: the Seed cell (`seedCell`, handle in the app), the dry run's order-mode line and
+  arranged grouping, the import review (`importReview`), the import provenance in the grey hover.
+- `app/server.js`: the Tiers section and its three routes; `vm.seeding`; `POST …/g/<game>/seeds`;
+  dry-run / post take `seeding`; post saves it first, records `seed_order`, returns rows, entries and
+  the after-fingerprint; exports pass `seeds`.
+- `app/public/app.js`: the seed section (state, save chain, drag, keyboard, reset, sort, event select),
+  tier edit re-seeds, push redraw / post.
+- `app/public/index.js`: export download, import review dialog, apply.
+- `app/public/tournament.html`, `app/public/app.css`: the seed controls, styles.
+- `README.md`, `docs/design-tool.md`: A2 and user docs. Tests: three new files, one updated.
+
+### Changed tests (oracle corrections, not weakenings)
+
+All in `test/outputs.test.js`, each because A2.3 redefined the behaviour it encodes:
+- *"the export and the push number with the same function"*: pinned `push.js` calling
+  `M.seedSequence(` directly; now pins `push.js` → `M.pushPlan(` → `seedSequence(entries)` for tier
+  order. Same numbering, one level down; the behavioural half of that test is unchanged and passes.
+- *"push post: …"*: the reply's exact shape gains `rows`, `summary`, `entries`, `fingerprint` (for the
+  re-push) and the push record gains `seed_order`; asserted explicitly instead of dropped.
+- *"the page: posting needs a click…"*: the post body pin now includes `seeding: currentSeeding(…)`.
+
+### Verification
+
+- Baseline before the first edit: `node --test` → 269 tests, 269 pass.
+- After: `node --test` → **298 tests, 298 pass, 0 fail** (29 new).
+- The relayed rule's pins (`test/seed-order.test.js`, the three *PIN* tests): a drag saved through the
+  seeds route, then an immediate post with a fingerprint taken **before** the drag → `updatePhaseSeeding`
+  receives the dragged order; a drag not yet saved, sent with Post → posted and saved; a post, a
+  further drag, a re-post with the returned fingerprint and no new dry run → the new order. Each asserts
+  that the drag changed the seeding and that it differs from the dry run shown, so a tier-order post
+  or a stale-on-drag fingerprint fails them. A start.gg-side change still 409s.
+
+### Could not verify
+
+- **The page was never run** (no app, no browser this pass). Drag, keyboard moves, the dry-run redraw,
+  the import dialog and the export save dialog are covered by their model functions (run in Node) and
+  by source pins of `app.js`, not by a browser. A browser pass is the open verification leg.
+- **No live start.gg.** Every push test runs against `testlib/fake-api.js`.
+- The Tauri claim behind pointer events (A2.3, Interaction) is model knowledge about Tauri 2; the
+  shell code was read, not run.
+
+### UI checklist for Noah (visual checks; nothing here was seen)
+
+1. A game tab: the **Seed** column sits left of Team, frozen; seeds 1..N run top to bottom on first
+   load; the bar says *Seeds: tier order*.
+2. Drag a row by ⠿: the row dims, a blue line shows the landing spot, the table scrolls near its
+   top/bottom edge, release moves it; the Seed numbers renumber; the bar turns *Seeds: arranged by hand*.
+   Esc mid-drag cancels. Try it in the **desktop app** as well as a browser.
+3. Keyboard: Tab to a ⠿, press ↑ / ↓ / Page Up / Page Down / Home / End; focus stays on the moved row;
+   a screen reader says "tag: seed n of N".
+4. Reload: the arranged order is still there. **Reset to tier order** asks, then restores tier order.
+5. Sort by Region, then drag: the table returns to seed order first. *Sort by seed* and the Seed header do the same.
+6. *Needs tier only* on: arrow moves skip the hidden rows.
+7. Edit a tier in tier mode: the row's seed moves. In arranged mode it stays.
+8. Push panel open, run a dry run, then drag: the diff redraws at once and its first line says
+   *your arranged seed order*. Post: the confirm names the order; after it, the panel stays and
+   Post works again.
+9. Home page: the **Tiers** section's game picker shows counts; *Export tiers…* saves a file (check it
+   has no notes); *Import tiers…* with a friend's file opens the review: new players with Add boxes,
+   conflicts side by side, the four bulk buttons, *Apply: add N, change M*; after Apply the message names
+   the import's `source`; a tier you took shows the grey hover "tier from import …".
+10. Dark mode: the drop line, the *arranged* pill and the push-mode banner are legible.
+
+### Merge notes (for the other engineer's branch)
+
+- `lib/view/data.js` `editTierRow`: two lines added right after `const gameId = …`, above
+  `readTierTable(tiersFile)`; their error-handling change in the same function is a few lines below.
+  `readTiers` changed (not `readTierTable`). New uses of `readTierTable` / `writeTierTable` in
+  `lib/tiers-share.js` will inherit their ENOENT-only and atomic-write behaviour unchanged.
+- `app/server.js`: new routes and the home page's Tiers section; `readBody` and the token code are not
+  touched (the tiers routes call `readBody`, so its 200 KB cap bounds an import file).
+- `app/public/app.js`: the export call (~608 before this pass) is not touched; this pass's hunks are
+  above it (the seed section) and below it (the push).
+- `test/outputs.test.js`: the post-body pin edit sits four lines above the export-URL pin they will
+  change in the same test.
+
+### REPORT
+
+- Overview: both features are built on this branch with behavioural tests, and the suite is
+  298/298 (baseline 269/269). Tiers now key on (player, game) on every path. The audit found four
+  paths that ignored a missing game, now fixed and pinned. One game's tiers can be exported and
+  imported through a per-row review. The Seed column can be dragged or moved by keyboard, is saved per
+  event, and is posted as it stands when Post is clicked.
+- Found: the four keying gaps above (all repaired); `.sr-only` has no CSS rule, so the home page's
+  "sr-only" label is visible today (not touched; a dedicated class is used instead); on a multi-event
+  tab the export numbers the first event (known limit, documented).
+- Ran: commits e28c71a, d0bb464, 2738aad, 0698b4a, d4064d7, plus this record.
+- Queued: the browser pass over the UI checklist (uncertainty: nothing was seen); the tier-mode push
+  tie-break default (A2.3), Noah's to confirm or flip.
+- Spend: no budget stated; no network, no app runs, local commits only.
+- Parked: none; the tree is committed and green.
+- Needs attention: (1) the UI checklist, in the desktop app too; (2) confirm or flip the tier-mode push
+  default; (3) the merge notes above when the parallel branch lands.

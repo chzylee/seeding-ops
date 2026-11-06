@@ -586,3 +586,14 @@ dialog.account-dialog .actions button.plain { background: var(--cell); color: va
 #accountBar.off { background: var(--err-bg); border-bottom-color: var(--err); color: var(--err); }
 #accountBar.off .name { color: var(--err); }
 #accountBar.off .change { border-color: var(--err); color: var(--err); background: var(--cell); }
+/* Amendment A2.2: share one game's tiers (the home page's Tiers section and the import's review). */
+.tiers-section { margin: var(--s-4) 0; }
+.tiers-section select { min-width: 220px; }
+dialog.tier-modal { width: min(920px, calc(100vw - 32px)); }
+dialog.tier-modal .tier-review { max-height: 62vh; overflow: auto; padding: var(--s-2) var(--s-4); }
+dialog.tier-modal .modal-actions { padding: var(--s-3) var(--s-4) var(--s-4); display: flex; gap: var(--s-2); align-items: center; }
+table.imp td.num { text-align: right; white-space: nowrap; }
+table.imp tr.take > td { background: var(--accent-weak); }
+table.imp td.imp-keep { white-space: nowrap; }
+table.imp td.imp-keep label { margin-right: var(--s-2); cursor: pointer; }
+.imp-bulk button { margin-right: var(--s-2); }

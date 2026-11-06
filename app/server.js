@@ -35,6 +35,9 @@
 //   POST /api/t/<t>/g/<game>/player/<id>/review   the ✓ review mark (T1)
 //   POST /api/t/<t>/push/<e>/dry-run          the push dry run (read-only: the phase's seeds)
 //   POST /api/t/<t>/push/<e>/post             { fingerprint, confirm: true } the seeding post
+//   GET  /api/tiers/export.csv?game=<id>      one game's tiers as a shareable file (Amendment A2.2)
+//   POST /api/tiers/import/preview            { game_id, csv, file_name? } the import's review (read-only)
+//   POST /api/tiers/import/apply              { game_id, csv, file_name?, fingerprint, take: [row key] }
 //   GET  /static/<file>                       the pages' JS/CSS (a fixed list; nothing else is served)
 // Nothing under out/ is served as a file: state.json, current, the pulls and the caches reach the
 // page only through these routes' JSON.
@@ -54,6 +57,7 @@ const push = require('../lib/push');
 const { readSchedule } = require('../lib/schedule-pull');
 const U = require('../lib/upload');
 const majorsConfig = require('../lib/view/majors');
+const share = require('../lib/tiers-share');
 const { Jobs } = require('./jobs');
 const { createQueue } = require('./queue');
 
@@ -139,8 +143,28 @@ function uploadForm() {
 }
 // Noah, mid-pass 2026-10-30: no block or heading for the live ones; one sentence sits above the first
 // tournament that is no longer live (the list is always live, then done, then archived).
+// Amendment A2.2: share one game's tiers. The game list: games the tiers table has (with how many
+// tiered rows), then the other games the upload picker knows (an import can start a game's tiers).
+function tiersSection(tiersFile) {
+  let mine = [];
+  try { mine = share.gamesInTable(tiersFile ? { tiersFile } : {}); } catch { mine = []; }
+  const seen = new Set(mine.map((g) => g.id));
+  const opts = [...mine.map((g) => ({ id: g.id, name: g.name, label: `${g.name} (${g.tiered} tiered)` })),
+    ...uploadGames().filter((g) => !seen.has(g.id)).map((g) => ({ id: g.id, name: g.name, label: `${g.name} (none yet)` }))];
+  const options = opts.map((g) => `<option value="${esc(g.id)}" data-name="${esc(g.name)}">${esc(g.label)}</option>`).join('');
+  return `<section class="tiers-section" aria-labelledby="tiersHead"><h2 id="tiersHead">Tiers</h2>
+<div class="import-row"><label for="tierGame">Game</label> <select id="tierGame">${options}</select>
+<button type="button" id="tierExport" title="Save this game's tiers as a CSV to send another organizer">Export tiers…</button>
+<button type="button" id="tierImport" title="Read another organizer's tiers file for this game; you review every change before it is applied">Import tiers…</button>
+<input type="file" id="tierFile" accept=".csv,text/csv" hidden><span id="tierMsg" class="status" role="status" aria-live="polite"></span></div>
+<p class="dim import-desc">Tiers are per game. The file carries each player's tier, tags and start.gg ids; your notes, reviews and dates stay here. An import shows new players and conflicts first and changes only this game's tiers.</p>
+<dialog id="tierModal" class="upload-modal tier-modal" aria-labelledby="tierTitle"><div class="modal-head"><h2 id="tierTitle">Import tiers</h2></div>
+<div id="tierReview" class="tier-review"></div>
+<div class="modal-actions"><button type="button" id="tierApply" class="primary">Apply</button><button type="button" id="tierCancel" class="plain">Cancel</button><span id="tierApplyMsg" class="status" role="status" aria-live="polite"></span></div></dialog>
+</section>`;
+}
 const DONE_NOTE = '<li class="done-note dim">Tournaments are marked done automatically once their last seeded event\'s date has passed. Delete one when you no longer need it: right-click it here, or use Delete on its page; both ask first.</li>';
-function indexPage(outRoot, jobs, nowMs) {
+function indexPage(outRoot, jobs, nowMs, tiersFile) {
   const list = pool.listTournaments(outRoot, nowMs);
   const firstDone = list.findIndex((x) => x.status !== 'live');
   const items = list.map((x, i) => {
@@ -163,8 +187,9 @@ function indexPage(outRoot, jobs, nowMs) {
 <button type="submit">Add</button><span id="addMsg" class="status" role="status" aria-live="polite"></span></form>
 ${uploadForm()}
 </section>
+${tiersSection(tiersFile)}
 <ul class="events">${items || '<li class="dim">No tournaments yet. Add one above.</li>'}</ul></main>
-<script src="/static/index.js"></script></body></html>`;
+<script src="/static/model.js"></script><script src="/static/render.js"></script><script src="/static/index.js"></script></body></html>`;
 }
 
 function notAddedPage(t) {
@@ -213,6 +238,7 @@ function createApp(opts = {}) {
       kind: r.ok ? null : r.kind, message: r.ok ? null : r.message, env_wins: source === 'environment' };
   }
   const tiersFile = opts.tiersFile; // undefined => data.js's own default (SEED_TIERS_FILE or registry/tiers.csv)
+  const tiersOpt = () => (tiersFile ? { tiersFile } : {});
   const nowMs = () => (opts.now ? opts.now() : Date.now());
   const nowDate = () => new Date(nowMs());
   const queue = opts.queue || createQueue({ fetchImpl: opts.fetchImpl, now: opts.now, sleep: opts.sleep,
@@ -461,7 +487,7 @@ function createApp(opts = {}) {
       const method = req.method;
       const slug = (x) => pool.SLUG_PART.test(x);
 
-      if (p === '/' && method === 'GET') return send(res, 200, indexPage(outRoot, jobs, nowMs()), 'text/html; charset=utf-8');
+      if (p === '/' && method === 'GET') return send(res, 200, indexPage(outRoot, jobs, nowMs(), tiersFile), 'text/html; charset=utf-8');
 
       let m = /^\/static\/((?:games\/)?[a-z0-9._-]+)$/i.exec(p);
       if (m && method === 'GET') {
@@ -517,6 +543,25 @@ function createApp(opts = {}) {
         saveToken({ envFile, token });
         tokenCheck.token = token; tokenCheck.at = nowMs(); tokenCheck.result = r;
         return json(res, 200, { ok: true, as: r.as, saved: path.basename(envFile), env_wins: false });
+      }
+      // Amendment A2.2: one game's tiers out (a download) and in (a review, then the rows Noah picked).
+      if (p === '/api/tiers/export.csv' && method === 'GET') {
+        const game = url.searchParams.get('game') || '';
+        if (!/^\d+$/.test(game)) throw bad(400, 'Pick a game (its start.gg videogame id).');
+        const known = uploadGames().find((g) => g.id === game);
+        const x = share.exportTiers(game, { ...tiersOpt(), now: nowDate(), gameName: known && known.name });
+        return send(res, 200, x.csv, 'text/csv; charset=utf-8', { 'Content-Disposition': `attachment; filename="${x.filename}"`, 'Content-Length': Buffer.byteLength(x.csv) });
+      }
+      if (p === '/api/tiers/import/preview' || p === '/api/tiers/import/apply') {
+        if (method !== 'POST') return send(res, 405, 'Method not allowed');
+        requireApp(req);
+        const fields = await readBody(req);
+        const game = String(fields.game_id ?? '').trim();
+        if (!/^\d+$/.test(game)) throw bad(400, 'Pick the game these tiers are for.');
+        const known = uploadGames().find((g) => g.id === game);
+        const args = { csv: fields.csv, gameId: game, fileName: typeof fields.file_name === 'string' ? fields.file_name.slice(0, 200) : null, gameName: known && known.name, ...tiersOpt() };
+        if (p.endsWith('/preview')) return json(res, 200, share.previewImport(args));
+        return json(res, 200, share.applyImport({ ...args, fingerprint: fields.fingerprint, take: fields.take, now: nowDate() }));
       }
       if (p === '/api/tournaments') {
         if (method !== 'POST') return send(res, 405, 'Method not allowed');

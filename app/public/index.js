@@ -87,6 +87,110 @@
     location.reload();
   });
 
+  // ---- Tiers: share one game's tiers (docs/design-tool.md, Amendment A2.2) ----
+  // Export saves the game's shareable file (the save dialog where the webview has one, else a download).
+  // Import reads a file, asks the server for the review (nothing written), shows new players and
+  // conflicts side by side with per-row and bulk choices (lib/view/render.js importReview, choices by
+  // lib/view/model.js importTake / importBulk), and applies only the rows picked.
+  (function tiers() {
+    const sel = document.getElementById('tierGame');
+    if (!sel || !window.SeedRender || !window.SeedModel) return;
+    const R = window.SeedRender, M = window.SeedModel;
+    const tmsg = document.getElementById('tierMsg');
+    const say = (t, err) => { tmsg.textContent = t || ''; tmsg.classList.toggle('err', !!err); };
+    const modal = document.getElementById('tierModal'), body = document.getElementById('tierReview');
+    const applyBtn = document.getElementById('tierApply'), applyMsg = document.getElementById('tierApplyMsg');
+    const fileInput = document.getElementById('tierFile');
+    const postJson = async (url, payload) => {
+      let res, out;
+      try {
+        res = await fetch(url, { method: 'POST', headers: { 'X-Seeding-App': '1', 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+        out = await res.json().catch(() => ({}));
+      } catch (err) { return { ok: false, status: 0, body: { error: err.message } }; }
+      return { ok: res.ok, status: res.status, body: out };
+    };
+
+    document.getElementById('tierExport').addEventListener('click', async () => {
+      say('Exporting…');
+      let res;
+      try { res = await fetch(`/api/tiers/export.csv?game=${encodeURIComponent(sel.value)}`, { cache: 'no-store' }); } catch (err) { say(err.message, true); return; }
+      if (!res.ok) { const b = await res.json().catch(() => ({})); say(b.error || `The server answered ${res.status}.`, true); return; }
+      const name = (/filename="([^"]+)"/.exec(res.headers.get('Content-Disposition') || '') || [])[1] || 'tiers.csv';
+      const blob = new Blob([await res.arrayBuffer()], { type: 'text/csv;charset=utf-8' });
+      try {
+        if (window.showSaveFilePicker) {
+          let handle;
+          try { handle = await window.showSaveFilePicker({ suggestedName: name, types: [{ description: 'CSV', accept: { 'text/csv': ['.csv'] } }] }); } catch (err) { if (err && err.name === 'AbortError') { say(''); return; } handle = null; }
+          if (handle) { const w = await handle.createWritable(); await w.write(blob); await w.close(); say(`Saved ${handle.name || name}.`); return; }
+        }
+        const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+        say(`Saved ${name} to your downloads.`);
+      } catch (err) { say(`Not saved: ${err.message}`, true); }
+    });
+
+    let review = null, choices = {}, upload = null;
+    const counts = () => {
+      const take = M.importTake(review, choices);
+      const add = review.new.filter((x) => take.includes(x.key)).length;
+      return { take, add, change: take.length - add };
+    };
+    function draw() {
+      body.innerHTML = R.importReview(review, choices);
+      const c = counts();
+      applyBtn.textContent = c.take.length ? `Apply: add ${c.add}, change ${c.change}` : 'Nothing to apply';
+      applyBtn.disabled = !c.take.length;
+    }
+    async function preview() {
+      const r = await postJson('/api/tiers/import/preview', { game_id: sel.value, ...upload });
+      if (!r.ok) { say(r.body.error || 'Could not read that file.', true); return false; }
+      review = r.body; choices = {};
+      document.getElementById('tierTitle').textContent = `Import ${review.game.name} tiers`;
+      applyMsg.textContent = ''; applyMsg.classList.remove('err');
+      draw();
+      return true;
+    }
+    document.getElementById('tierImport').addEventListener('click', () => { fileInput.value = ''; fileInput.click(); });
+    fileInput.addEventListener('change', async () => {
+      const file = fileInput.files[0];
+      if (!file) return;
+      // The server reads a request body of up to ~200 KB; a game's shared tiers are far smaller.
+      if (file.size > 190000) { say('That file is too large for a tiers file (190 KB).', true); return; }
+      say('Reading the file…');
+      const csv = await file.text().catch((err) => { say(err.message, true); return null; });
+      if (csv == null) return;
+      upload = { csv, file_name: file.name };
+      if (await preview()) { say(''); modal.showModal(); }
+    });
+    body.addEventListener('change', (ev) => {
+      const t = ev.target.closest('input.imp-pick');
+      if (!t) return;
+      choices = { ...choices, [t.dataset.key]: t.type === 'checkbox' ? (t.checked ? 'theirs' : 'mine') : t.value };
+      draw();
+    });
+    body.addEventListener('click', (ev) => {
+      const b = ev.target.closest('button[data-bulk]');
+      if (!b) return;
+      choices = M.importBulk(review, choices, b.dataset.bulk, b.dataset.side);
+      draw();
+    });
+    document.getElementById('tierCancel').addEventListener('click', () => modal.close());
+    applyBtn.addEventListener('click', async () => {
+      const { take } = counts();
+      applyBtn.disabled = true;
+      applyMsg.textContent = 'Applying…'; applyMsg.classList.remove('err');
+      const r = await postJson('/api/tiers/import/apply', { game_id: sel.value, ...upload, fingerprint: review.fingerprint, take });
+      if (!r.ok) {
+        // Stale: the tiers table changed since this review; show the fresh one and let Noah pick again.
+        if (r.status === 409 && await preview()) { applyMsg.textContent = 'Your tiers changed since this review; here it is again. Check your picks and apply.'; applyMsg.classList.add('err'); return; }
+        applyMsg.textContent = r.body.error || 'Not applied.'; applyMsg.classList.add('err'); applyBtn.disabled = false; return;
+      }
+      modal.close();
+      const s = r.body;
+      say(`Imported into ${review.game.name}: ${s.added} added, ${s.updated} changed, ${s.kept} kept as yours.${s.linked_by_tag.length ? ` ${s.linked_by_tag.length} matched by tag only now carry the file's ids (${s.linked_by_tag.map((x) => x.row_tag).join(', ')}): check them.` : ''} Recorded as "${s.source}".`);
+    });
+  }());
+
   // ---- Upload a player list (A1.3) ----
   const up = document.getElementById('upload');
   if (!up) return;

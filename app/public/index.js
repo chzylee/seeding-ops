@@ -9,6 +9,24 @@
   const form = document.getElementById('add');
   const input = document.getElementById('addUrl');
   const msg = document.getElementById('addMsg');
+  const pre = new URLSearchParams(location.search).get('add');
+  if (pre) input.value = `https://www.start.gg/tournament/${pre}`;
+  // Add a tournament: the link says what to pull, so the server ticks and starts the pull at once
+  // (Noah, 2026-10-30) and the page opens on the running job.
+  form.addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    msg.textContent = 'Asking start.gg for the tournament\'s events…';
+    msg.classList.remove('err');
+    form.querySelector('button').disabled = true;
+    let res, body;
+    try {
+      res = await fetch('/api/tournaments', { method: 'POST', headers: { 'X-Seeding-App': '1', 'Content-Type': 'application/json' }, body: JSON.stringify({ url: input.value }) });
+      body = await res.json().catch(() => ({}));
+    } catch (err) { res = { ok: false }; body = { error: err.message }; }
+    form.querySelector('button').disabled = false;
+    if (!res.ok) { msg.textContent = body.error || 'Could not add it.'; msg.classList.add('err'); return; }
+    location.href = body.page;
+  });
 
   // Signing in lives in one place: the account bar (account.js) and its dialog, which opens by
   // itself when nobody is signed in (Noah, 2026-11-05: exactly one entry point).

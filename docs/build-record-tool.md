@@ -3496,3 +3496,18 @@ per standing rule (a). OAuth is declined, not a candidate any more.
 - Checked in the browser pane on the Eclipse page: the bar is the body's first element, the picture
   loads at 22 px, Change… opens the dialog with the password field focused, Cancel closes it. Suite
   268/268/0/0 (the fake's CurrentUser carries a picture and prefix; the status assertions include them).
+
+---
+
+## Defect on the released build: adding a tournament did nothing (orchestrating session, 2026-11-05)
+
+Noah, on the installed release: *"adding the tournament is broken. nothing happens except link getting
+eaten."* Reproduced in the browser pane against his installed server: the Add form fell back to a plain
+GET submit (the link in the URL, the page reloaded), because the home script no longer bound its submit
+handler. Cause: the edit that removed the connect card from index.js cut from the card's comment to the
+next section's comment, and the "Add a tournament" submit handler sat between them. The script still ran
+(combobox, menu, modal all fine), so nothing threw; the suite passed because no test pinned the handler.
+Fix: the handler restored; `test/home-script.test.js` pins the Add and upload handlers, the row and
+right-click wiring, and that every id the script reads at load is rendered by the server. The fixed
+script was also dropped into the installed copy (`%LOCALAPPDATA%\Seeding Ops\app\public\index.js`, read per
+request) so Noah could continue; a new release follows. Suite 269/269/0/0.

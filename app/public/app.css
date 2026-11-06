@@ -582,3 +582,7 @@ dialog.account-dialog input { height: var(--ctl-h); padding: 0 var(--s-2); font:
 dialog.account-dialog .actions { display: flex; align-items: center; gap: var(--s-2); }
 dialog.account-dialog .actions button { height: var(--ctl-h); padding: 0 var(--s-3); border: 1px solid var(--accent); background: var(--accent); color: var(--on-accent); border-radius: var(--radius); font: inherit; }
 dialog.account-dialog .actions button.plain { background: var(--cell); color: var(--fg); border-color: var(--line-strong); }
+/* Not signed in: the bar turns red (account.js sets .off). */
+#accountBar.off { background: var(--err-bg); border-bottom-color: var(--err); color: var(--err); }
+#accountBar.off .name { color: var(--err); }
+#accountBar.off .change { border-color: var(--err); color: var(--err); background: var(--cell); }

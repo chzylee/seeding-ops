@@ -17,6 +17,7 @@
 	function render() {
 		if (!bar) return;
 		var who = bar.querySelector('.who');
+		bar.classList.toggle('off', !!state && !state.ok);   // red while nobody is signed in (Noah, 2026-11-05)
 		if (!state) { who.innerHTML = '<span class="avatar">…</span><span class="name dim">start.gg…</span>'; return; }
 		if (state.ok) {
 			var avatar = state.image ? '<img class="avatar" src="' + esc(state.image) + '" alt="">' : '<span class="avatar">' + esc(initials(state.as)) + '</span>';

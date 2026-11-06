@@ -10,64 +10,8 @@
   const input = document.getElementById('addUrl');
   const msg = document.getElementById('addMsg');
 
-  // ---- Connect to start.gg (Noah, 2026-11-05): the token screen, shown when there is no token or
-  // start.gg rejects the saved one; one line "connected as …" otherwise. The token never comes back
-  // from the server; the page only learns whether it works and whose it is.
-  const connect = document.getElementById('connect');
-  const connectLine = document.getElementById('connectLine');
-  const connectMsg = document.getElementById('connectMsg');
-  async function tokenState(check) {
-    let st = null;
-    try { st = await (await fetch(`/api/token${check ? '?check=1' : ''}`, { cache: 'no-store' })).json(); } catch { st = null; }
-    if (!st) { connectLine.textContent = 'start.gg: the app server did not answer.'; return; }
-    if (st.ok) {
-      connect.hidden = true;
-      connectLine.textContent = '';   // the account bar (account.js) shows who is signed in
-      return;
-    }
-    connect.hidden = false;
-    connectLine.textContent = '';
-    const why = document.getElementById('connectWhy');
-    if (st.kind === 'missing') why.innerHTML = 'Paste your start.gg API key. <a href="https://start.gg/admin/profile/developer" target="_blank" rel="noopener">Get one here.</a> The key never leaves your machine.';
-    else why.textContent = st.kind === 'network' ? 'start.gg could not be reached. Check the connection and try again.' : 'That key was rejected by start.gg. Paste a new one.';
-    document.getElementById('connectToken').focus();
-  }
-  document.getElementById('connectForm').addEventListener('submit', async (ev) => {
-    ev.preventDefault();
-    const box = document.getElementById('connectToken');
-    const btn = ev.target.querySelector('button');
-    btn.disabled = true; connectMsg.classList.remove('err'); connectMsg.textContent = 'Saving…';
-    let res, body;
-    try {
-      res = await fetch('/api/token', { method: 'POST', headers: { 'X-Seeding-App': '1', 'Content-Type': 'application/json' }, body: JSON.stringify({ token: box.value }) });
-      body = await res.json().catch(() => ({}));
-    } catch (err) { res = { ok: false }; body = { error: err.message }; }
-    btn.disabled = false;
-    if (!res.ok) { connectMsg.textContent = body.error || 'Could not save it.'; connectMsg.classList.add('err'); return; }
-    box.value = '';
-    connectMsg.textContent = `Saved. Connected as ${body.as}.${body.note ? ' ' + body.note : ''}`;
-    setTimeout(() => tokenState(false), body.env_wins ? 6000 : 1200);
-  });
-  tokenState(false);
-  // A token saved from the account bar's dialog (account.js) refreshes this card too.
-  if (window.Account) window.Account.onChange = () => tokenState(false);
-  else document.addEventListener('DOMContentLoaded', () => { if (window.Account) window.Account.onChange = () => tokenState(false); });
-  const pre = new URLSearchParams(location.search).get('add');
-  if (pre) input.value = `https://www.start.gg/tournament/${pre}`;
-  form.addEventListener('submit', async (ev) => {
-    ev.preventDefault();
-    msg.textContent = 'Asking start.gg for the tournament\'s events…';
-    msg.classList.remove('err');
-    form.querySelector('button').disabled = true;
-    let res, body;
-    try {
-      res = await fetch('/api/tournaments', { method: 'POST', headers: { 'X-Seeding-App': '1', 'Content-Type': 'application/json' }, body: JSON.stringify({ url: input.value }) });
-      body = await res.json().catch(() => ({}));
-    } catch (err) { res = { ok: false }; body = { error: err.message }; }
-    form.querySelector('button').disabled = false;
-    if (!res.ok) { msg.textContent = body.error || 'Could not add it.'; msg.classList.add('err'); return; }
-    location.href = body.page;
-  });
+  // Signing in lives in one place: the account bar (account.js) and its dialog, which opens by
+  // itself when nobody is signed in (Noah, 2026-11-05: exactly one entry point).
 
   // ---- The whole row opens the tournament (Noah, 2026-10-30), not only its name ----
   const list = document.querySelector('ul.events');

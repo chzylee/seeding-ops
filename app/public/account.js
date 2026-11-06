@@ -9,7 +9,7 @@
 (function () {
 	'use strict';
 	if (window.Account) return;
-	var bar, dlg, state = null;
+	var bar, dlg, state = null, opened = false;   // the dialog opens once by itself when nobody is signed in
 
 	var esc = function (s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); };
 	var initials = function (tag) { var t = String(tag || '?').replace(/[^a-z0-9]/gi, ''); return (t.slice(0, 2) || '?').toUpperCase(); };
@@ -33,7 +33,7 @@
 	function load(check) {
 		return fetch('/api/token' + (check ? '?check=1' : ''), { cache: 'no-store' })
 			.then(function (r) { return r.json(); })
-			.then(function (st) { state = st; render(); return st; })
+			.then(function (st) { state = st; render(); if (!st.ok && !opened) { opened = true; openDialog(); } return st; })
 			.catch(function () { state = { ok: false, kind: 'network' }; render(); });
 	}
 
@@ -53,12 +53,20 @@
 			+ '<div class="actions"><button type="button" class="save">Save</button><button type="button" class="plain cancel">Cancel</button><span class="status" role="status" aria-live="polite"></span></div>'
 			+ '</form>';
 		document.body.appendChild(dlg);
-		bar.querySelector('.change').addEventListener('click', function () { dlg.querySelector('.status').textContent = ''; dlg.showModal(); dlg.querySelector('#accountToken').focus(); });
+		bar.querySelector('.change').addEventListener('click', openDialog);
 		dlg.querySelector('.cancel').addEventListener('click', function () { dlg.close(); });
 		dlg.querySelector('.save').addEventListener('click', save);
 		dlg.querySelector('form').addEventListener('submit', function (ev) { ev.preventDefault(); save(); });
 		render();
 		load(false);
+	}
+
+	function openDialog() {
+		if (dlg.open) return;
+		dlg.querySelector('h2').textContent = state && state.ok ? 'start.gg account' : 'Connect to start.gg';
+		dlg.querySelector('.status').textContent = '';
+		dlg.showModal();
+		dlg.querySelector('#accountToken').focus();
 	}
 
 	function save() {

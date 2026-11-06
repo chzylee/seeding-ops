@@ -156,12 +156,7 @@ function indexPage(outRoot, jobs, nowMs) {
   }).join('');
   return `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Seeding tournaments</title><link rel="stylesheet" href="/static/app.css"><script src="/static/theme.js"></script><script src="/static/busy.js"></script><script src="/static/account.js" defer></script>
-<body class="index"><main><h1>Tournaments <span id="connectLine" class="dim connect-line"></span></h1>
-<section id="connect" class="connect" aria-labelledby="connectHead" hidden>
-<h2 id="connectHead">Connect to start.gg</h2>
-<p id="connectWhy" class="dim">Paste your start.gg API key. <a href="https://start.gg/admin/profile/developer" target="_blank" rel="noopener">Get one here.</a> The key never leaves your machine.</p>
-<form id="connectForm" class="connect-form"><input id="connectToken" type="password" autocomplete="off" spellcheck="false" placeholder="API key" required><button type="submit">Save</button><span id="connectMsg" class="status" role="status" aria-live="polite"></span></form>
-</section>
+<body class="index"><main><h1>Tournaments</h1>
 <section class="add-section" aria-labelledby="addHead"><h2 id="addHead">Add a tournament</h2>
 <form id="add" class="add-t"><label for="addUrl" class="sr-only">start.gg tournament or event link</label>
 <input id="addUrl" name="url" placeholder="start.gg tournament or event link" autocomplete="off" spellcheck="false" required title="Adding makes one request to start.gg for the tournament's events; you pick the singles events to seed on its page.">

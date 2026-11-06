@@ -27,10 +27,15 @@ test('connect: no token -> status says missing and the home page carries the con
     let st = (await inject(app.handler, { url: '/api/token' })).json();
     assert.deepStrictEqual(st, { configured: false, source: null, ok: false, as: null, prefix: null, image: null, slug: null, kind: 'missing', message: 'No start.gg token yet.', env_wins: false });
     assert.strictEqual(fake.calls.length, 0, 'nothing is asked of start.gg without a token');
+    // One entry point (Noah, 2026-11-05): the account bar's dialog (account.js, on every page), which
+    // opens by itself when nobody is signed in. No separate card on the home page.
     const home = (await inject(app.handler, { url: '/' })).text;
-    assert.match(home, /<section id="connect" class="connect"[^>]*hidden>/);
-    assert.match(home, /start\.gg\/admin\/profile\/developer/);
-    assert.match(home, /<input id="connectToken" type="password"/);
+    assert.match(home, /<script src="\/static\/account\.js" defer><\/script>/);
+    assert.doesNotMatch(home, /id="connect"/);
+    const acc = (await inject(app.handler, { url: '/static/account.js' })).text;
+    assert.match(acc, /if \(!st\.ok && !opened\) \{ opened = true; openDialog\(\); \}/, 'the dialog opens itself when not signed in');
+    assert.match(acc, /start\.gg\/admin\/profile\/developer/);
+    assert.match(acc, /<input id="accountToken" type="password"/);
     // Adding a tournament without a token is refused with a pointer to the connect screen.
     const add = await post(app, '/api/tournaments', { url: 'https://www.start.gg/tournament/x/event/y' });
     assert.strictEqual(add.status, 400);

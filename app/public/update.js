@@ -34,7 +34,7 @@
 			btn.disabled = false;
 			var st = res.body || {};
 			if (!res.ok || st.ok === false) {
-				say(st.kind === 'no-release' ? 'No release with update information yet.' : (st.error || 'Could not check for updates.'), st.kind !== 'no-release');
+				say(st.error || 'Could not check for updates.', st.kind !== 'no-release');
 				if (st.releases_page) showLink(st);
 				return;
 			}

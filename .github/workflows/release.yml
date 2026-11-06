@@ -21,8 +21,11 @@
 # Updates are signed. With the TAURI_SIGNING_PRIVATE_KEY secret (and
 # TAURI_SIGNING_PRIVATE_KEY_PASSWORD) set, the installer is signed and the
 # release carries Seeding-Ops-windows-setup.exe, its .sig and latest.json.
-# Without it the release still publishes the installer, but installed apps
-# cannot update to it from the app. README, Desktop app > Updates.
+# Publishing REFUSES (scripts/release-check.js) when config/updater.json has
+# no pubkey (checked before the build), when there is no signature, or when the
+# signature does not verify against that pubkey: each would ship a version that
+# can never install an update. A test build (publish unticked) still runs
+# unsigned. README, Desktop app > Updates.
 #
 # Order matters: the Bun sidecar must exist before tauri-action runs, because
 # Tauri resolves externalBin at bundle time and fails if the binary is missing.
@@ -78,6 +81,10 @@ jobs:
           if [ "${GITHUB_REF_TYPE}" = "tag" ] && [ "${GITHUB_REF_NAME}" != "v$V" ]; then
             echo "::error::Tag ${GITHUB_REF_NAME} does not match version $V in src-tauri/tauri.conf.json"
             exit 1
+          fi
+          # A release to be published needs the public key in the app it ships (audit #1).
+          if [ "${GITHUB_REF_TYPE}" = "tag" ] || [ "${{ inputs.publish }}" = "true" ]; then
+            node scripts/release-check.js --pubkey-only
           fi
 
       - uses: oven-sh/setup-bun@v2
@@ -183,7 +190,7 @@ jobs:
           INSTALLER=$(ls src-tauri/target/${{ matrix.target }}/release/bundle/nsis/*-setup.exe | head -1)
           cp "$INSTALLER" dist/Seeding-Ops-windows-setup.exe
           if [ -z "${TAURI_SIGNING_PRIVATE_KEY:-}" ]; then
-            echo "::warning::No TAURI_SIGNING_PRIVATE_KEY secret: this installer is not signed, so installed apps cannot update to it from the app (README, Desktop app > Updates)."
+            echo "::warning::No TAURI_SIGNING_PRIVATE_KEY secret: this installer is not signed. Fine for a test build; publishing refuses an unsigned installer (README, Desktop app > Updates)."
             exit 0
           fi
           npx tauri signer sign --private-key "$TAURI_SIGNING_PRIVATE_KEY" --password "${TAURI_SIGNING_PRIVATE_KEY_PASSWORD:-}" dist/Seeding-Ops-windows-setup.exe
@@ -210,13 +217,12 @@ jobs:
           set -eu
           TAG="v${VERSION}"
           echo "publishing $TAG"
-          ASSETS="dist/Seeding-Ops-windows-setup.exe"
-          if [ -s dist/Seeding-Ops-windows-setup.exe.sig ]; then
-            node scripts/updater-manifest.js --version "$VERSION" --repo "$GITHUB_REPOSITORY" --sig dist/Seeding-Ops-windows-setup.exe.sig --out dist/latest.json
-            ASSETS="$ASSETS dist/Seeding-Ops-windows-setup.exe.sig dist/latest.json"
-          else
-            echo "::warning::Publishing without latest.json: installed apps will not see $TAG as an update."
-          fi
+          # Nothing is published unless the installer's signature verifies against the pubkey committed in
+          # config/updater.json, with the app's own check (audit #1). Unsigned is refused too, so a release
+          # marked Latest always carries latest.json (audit #10).
+          node scripts/release-check.js --file dist/Seeding-Ops-windows-setup.exe --sig dist/Seeding-Ops-windows-setup.exe.sig
+          node scripts/updater-manifest.js --version "$VERSION" --repo "$GITHUB_REPOSITORY" --sig dist/Seeding-Ops-windows-setup.exe.sig --out dist/latest.json
+          ASSETS="dist/Seeding-Ops-windows-setup.exe dist/Seeding-Ops-windows-setup.exe.sig dist/latest.json"
           cat > dist/notes.md <<'NOTES'
           Download **Seeding-Ops-windows-setup.exe**, run it, and open **Seeding Ops** from the Start menu.
           On first launch, paste a start.gg API key and press Save.

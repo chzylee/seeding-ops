@@ -50,7 +50,8 @@ test('update: check reads latest.json and says whether it is newer; errors say w
   assert.strictEqual((await U.check({ fetchImpl: f(manifest('0.2.0')), config: config(), current: '0.2.0' })).available, false);
   assert.strictEqual((await U.check({ fetchImpl: f(manifest('v0.1.0')), config: config(), current: '0.2.0' })).available, false, 'never a downgrade');
   assert.strictEqual((await U.check({ fetchImpl: f(manifest('0.3.0', 's', 'windows-x86_64-nsis')), config: config(), current: '0.2.0' })).available, true);
-  await assert.rejects(U.check({ fetchImpl: f('Not Found', 404), config: config(), current: '0.2.0' }), (e) => e.kind === 'no-release');
+  // Audit #10: no latest.json on the newest release is not "nothing published": say the app can't install it.
+  await assert.rejects(U.check({ fetchImpl: f('Not Found', 404), config: config(), current: '0.2.0' }), (e) => e.kind === 'no-release' && /cannot install it from here[\s\S]*release page/.test(e.message));
   await assert.rejects(U.check({ fetchImpl: async () => { throw new Error('ENOTFOUND github.com'); }, config: config(), current: '0.2.0' }), (e) => e.kind === 'unreachable');
   await assert.rejects(U.check({ fetchImpl: f('<html>', 200), config: config(), current: '0.2.0' }), (e) => e.kind === 'bad-manifest');
   await assert.rejects(U.check({ fetchImpl: f({ version: '0.3.0', platforms: { 'darwin-aarch64': {} } }), config: config(), current: '0.2.0' }), (e) => e.kind === 'bad-manifest');

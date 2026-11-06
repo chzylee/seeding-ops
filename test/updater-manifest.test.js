@@ -37,6 +37,42 @@ test('updater manifest: refuses a non-version, a bad repo, or a missing signatur
   assert.strictEqual(buildManifest({ version: 'v0.3.0', repo: REPO, signature: 'x' }).version, '0.3.0');
 });
 
+// ---- Audit #1: never publish a version that can never install an update ----
+const RC = require('../scripts/release-check');
+
+test('release check: refuses an empty or unusable pubkey, an unsigned installer, and a signature from any other key; passes the matching pair', () => {
+  const s = makeSigner();
+  const file = Buffer.from('MZ 0.2.0');
+  assert.throws(() => RC.checkPubkey({ pubkey: '' }), /has no "pubkey"/);
+  assert.throws(() => RC.checkPubkey({ pubkey: 'not a key' }), /not a usable key/);
+  assert.throws(() => RC.checkRelease({ config: { pubkey: '' }, file, signature: s.sign(file) }), /has no "pubkey"/);
+  assert.throws(() => RC.checkRelease({ config: { pubkey: s.pubkey }, file, signature: '' }), /no signature/);
+  assert.throws(() => RC.checkRelease({ config: { pubkey: s.pubkey }, file, signature: makeSigner().sign(file) }), /does not verify against config\/updater\.json's pubkey/);
+  assert.throws(() => RC.checkRelease({ config: { pubkey: s.pubkey }, file: Buffer.from('MZ other'), signature: s.sign(file) }), /does not verify/);
+  RC.checkRelease({ config: { pubkey: s.pubkey }, file, signature: s.sign(file) });
+});
+
+test('release check: the command line reads config/updater.json from a root and exits 1 on refusal', () => {
+  const s = makeSigner();
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'seeding-relcheck-'));
+  fs.mkdirSync(path.join(root, 'config'));
+  const script = path.join(__dirname, '..', 'scripts', 'release-check.js');
+  const run = (...args) => { try { return { code: 0, out: execFileSync(process.execPath, [script, '--root', root, ...args], { encoding: 'utf8', stdio: 'pipe' }) }; } catch (e) { return { code: e.status, out: String(e.stderr) }; } };
+  fs.writeFileSync(path.join(root, 'config', 'updater.json'), JSON.stringify({ repo: REPO, pubkey: '' }));
+  const empty = run('--pubkey-only');
+  assert.strictEqual(empty.code, 1);
+  assert.match(empty.out, /::error::config\/updater\.json has no "pubkey"/);
+  fs.writeFileSync(path.join(root, 'config', 'updater.json'), JSON.stringify({ repo: REPO, pubkey: s.pubkey }));
+  assert.strictEqual(run('--pubkey-only').code, 0);
+  const file = path.join(root, 'setup.exe');
+  fs.writeFileSync(file, 'MZ');
+  assert.strictEqual(run('--file', file, '--sig', path.join(root, 'missing.sig')).code, 1, 'no .sig: refused');
+  fs.writeFileSync(file + '.sig', makeSigner().sign(Buffer.from('MZ')));
+  assert.strictEqual(run('--file', file, '--sig', file + '.sig').code, 1, 'other key: refused');
+  fs.writeFileSync(file + '.sig', s.sign(Buffer.from('MZ')));
+  assert.strictEqual(run('--file', file, '--sig', file + '.sig').code, 0);
+});
+
 test('release workflow: tags the release v<version> from tauri.conf.json, signs only with the secret, and publishes the installer, its .sig and latest.json', () => {
   const yml = fs.readFileSync(path.join(__dirname, '..', '.github', 'workflows', 'release.yml'), 'utf8');
   // A source check of the workflow (it only runs on GitHub): the parts the updater depends on.
@@ -49,4 +85,12 @@ test('release workflow: tags the release v<version> from tauri.conf.json, signs 
   assert.match(yml, /--latest/);
   assert.doesNotMatch(yml, /default: latest/, 'no more re-pointed "latest" tag: every release is a version');
   assert.doesNotMatch(yml, /ships the tiers table as committed/, 'the stale staging comment is gone');
+  // Audit #1 / #10: the pubkey is checked before a publishing build, and the signature against it
+  // before anything is uploaded; there is no unsigned publish path (so no Latest without latest.json).
+  assert.match(yml, /node scripts\/release-check\.js --pubkey-only/);
+  const publish = yml.slice(yml.indexOf('- name: Publish release'));
+  const gate = publish.indexOf('node scripts/release-check.js --file dist/Seeding-Ops-windows-setup.exe --sig dist/Seeding-Ops-windows-setup.exe.sig');
+  assert.ok(gate > 0, 'the publish step verifies the signature');
+  assert.ok(gate < publish.indexOf('gh release create') && gate < publish.indexOf('gh release upload'), '...before creating or uploading anything');
+  assert.doesNotMatch(publish, /Publishing without latest\.json/);
 });

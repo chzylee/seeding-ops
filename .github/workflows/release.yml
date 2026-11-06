@@ -9,8 +9,20 @@
 # Two triggers:
 #   workflow_dispatch  -- Actions tab -> release -> Run workflow. Builds and
 #                         keeps artifacts. Tick `publish` to also put a release
-#                         on the Releases page under `tag` (default `latest`).
-#   push tag v*        -- same build, published under that tag.
+#                         on the Releases page, tagged v<version>.
+#   push tag v*        -- same build, published under that tag, which must be
+#                         v<version>.
+#
+# <version> is src-tauri/tauri.conf.json's (package.json and Cargo.toml match it;
+# a test pins that). The installed app's "Check for updates" (lib/update.js)
+# reads the newest release's latest.json, so every release is a new version:
+# bump it before publishing, or installed copies will not see the release.
+#
+# Updates are signed. With the TAURI_SIGNING_PRIVATE_KEY secret (and
+# TAURI_SIGNING_PRIVATE_KEY_PASSWORD) set, the installer is signed and the
+# release carries Seeding-Ops-windows-setup.exe, its .sig and latest.json.
+# Without it the release still publishes the installer, but installed apps
+# cannot update to it from the app. README, Desktop app > Updates.
 #
 # Order matters: the Bun sidecar must exist before tauri-action runs, because
 # Tauri resolves externalBin at bundle time and fails if the binary is missing.
@@ -24,13 +36,9 @@ on:
   workflow_dispatch:
     inputs:
       publish:
-        description: 'Publish a release with the portable ZIP'
+        description: 'Publish a release (tagged v<version> from src-tauri/tauri.conf.json)'
         type: boolean
         default: false
-      tag:
-        description: 'Release tag to publish under'
-        type: string
-        default: latest
   push:
     tags:
       - 'v*'
@@ -57,6 +65,20 @@ jobs:
         with:
           node-version: 24
           cache: npm
+
+      # The version this build is. A v* tag must name it; fail before spending a build otherwise.
+      - name: Version
+        id: ver
+        shell: bash
+        run: |
+          set -eu
+          V=$(node -p "require('./src-tauri/tauri.conf.json').version")
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+          echo "building $V"
+          if [ "${GITHUB_REF_TYPE}" = "tag" ] && [ "${GITHUB_REF_NAME}" != "v$V" ]; then
+            echo "::error::Tag ${GITHUB_REF_NAME} does not match version $V in src-tauri/tauri.conf.json"
+            exit 1
+          fi
 
       - uses: oven-sh/setup-bun@v2
         with:
@@ -115,7 +137,9 @@ jobs:
       # app/server.js ships alongside its compiled twin on purpose: the loader
       # prefers it, so the ZIP a person receives is editable rather than opaque.
       # Build inputs (scripts/, src-tauri/, test/, docs/) stay out. registry/
-      # ships the tiers table as committed; out/ and .env are never in the ZIP.
+      # gets the EMPTY template as tiers.csv, never this checkout's table; out/
+      # and .env are never in the ZIP. A portable copy keeps its data beside the
+      # exe (it has no installed.json, so lib/data-dir.js leaves it there).
       - name: Stage the portable folder
         if: matrix.platform == 'windows-latest'
         shell: bash
@@ -144,42 +168,73 @@ jobs:
           name: seeding-ops-windows-portable-zip
           path: dist/Seeding-Ops-windows.zip
 
-      # One publish path for both triggers. A v* push publishes under that tag;
-      # a ticked dispatch publishes under `tag` (default `latest`, re-pointed
-      # each time so the link is stable).
+      # The installer under its stable name, signed for the updater when the key is there. The
+      # signature is minisign, from the Tauri CLI (a devDependency), which is the format lib/update.js
+      # verifies against config/updater.json's public key. No key: a warning, no .sig, no latest.json.
+      - name: Sign the installer for the updater
+        if: matrix.platform == 'windows-latest'
+        shell: bash
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          set -eu
+          mkdir -p dist
+          INSTALLER=$(ls src-tauri/target/${{ matrix.target }}/release/bundle/nsis/*-setup.exe | head -1)
+          cp "$INSTALLER" dist/Seeding-Ops-windows-setup.exe
+          if [ -z "${TAURI_SIGNING_PRIVATE_KEY:-}" ]; then
+            echo "::warning::No TAURI_SIGNING_PRIVATE_KEY secret: this installer is not signed, so installed apps cannot update to it from the app (README, Desktop app > Updates)."
+            exit 0
+          fi
+          npx tauri signer sign --private-key "$TAURI_SIGNING_PRIVATE_KEY" --password "${TAURI_SIGNING_PRIVATE_KEY_PASSWORD:-}" dist/Seeding-Ops-windows-setup.exe
+          test -s dist/Seeding-Ops-windows-setup.exe.sig
+
+      - uses: actions/upload-artifact@v4
+        if: matrix.platform == 'windows-latest'
+        with:
+          name: seeding-ops-windows-installer-signed
+          path: dist/Seeding-Ops-windows-setup.exe*
+          if-no-files-found: warn
+
+      # One publish path for both triggers, always tagged v<version>, and marked Latest: the app's
+      # update check reads releases/latest/download/latest.json. Noah, 2026-11-05: only what a user
+      # needs is in the release, the installer (plus, for the updater, its .sig and latest.json). The
+      # portable ZIP stays a run artifact. Other assets of the same tag are removed.
       - name: Publish release
         if: matrix.platform == 'windows-latest' && (startsWith(github.ref, 'refs/tags/v') || inputs.publish)
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.ver.outputs.version }}
         run: |
           set -eu
-          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then TAG="${GITHUB_REF_NAME}"; else TAG="${{ inputs.tag }}"; fi
-          echo "publishing to $TAG"
-          if ! gh release view "$TAG" >/dev/null 2>&1; then
-            gh release create "$TAG" --title "Seeding Ops ($TAG)" --notes "$(cat <<'NOTES'
-          Download the installer, run it, and open **Seeding Ops** from the Start menu.
-          On first launch, paste a start.gg API key and press Save.
-
-          Windows will say the publisher is unknown (the app is not code signed):
-          choose **More info**, then **Run anyway**.
-          NOTES
-          )"
+          TAG="v${VERSION}"
+          echo "publishing $TAG"
+          ASSETS="dist/Seeding-Ops-windows-setup.exe"
+          if [ -s dist/Seeding-Ops-windows-setup.exe.sig ]; then
+            node scripts/updater-manifest.js --version "$VERSION" --repo "$GITHUB_REPOSITORY" --sig dist/Seeding-Ops-windows-setup.exe.sig --out dist/latest.json
+            ASSETS="$ASSETS dist/Seeding-Ops-windows-setup.exe.sig dist/latest.json"
+          else
+            echo "::warning::Publishing without latest.json: installed apps will not see $TAG as an update."
           fi
-          # Noah, 2026-11-05: only what a new user needs is in the release: the installer, one file.
-          # The portable ZIP (the checkout layout, for dropping the exes into a working copy) stays a
-          # run artifact. Older assets of the same tag are removed so the page shows one download.
-          INSTALLER=$(ls src-tauri/target/${{ matrix.target }}/release/bundle/nsis/*-setup.exe | head -1)
-          cp "$INSTALLER" "dist/Seeding-Ops-windows-setup.exe"
-          for a in $(gh release view "$TAG" --json assets -q '.assets[].name'); do
-            [ "$a" = "Seeding-Ops-windows-setup.exe" ] || gh release delete-asset "$TAG" "$a" -y
-          done
-          gh release upload "$TAG" dist/Seeding-Ops-windows-setup.exe --clobber
-          gh release edit "$TAG" --draft=false --notes "$(cat <<'NOTES'
-          Download the installer, run it, and open **Seeding Ops** from the Start menu.
+          cat > dist/notes.md <<'NOTES'
+          Download **Seeding-Ops-windows-setup.exe**, run it, and open **Seeding Ops** from the Start menu.
           On first launch, paste a start.gg API key and press Save.
 
           Windows will say the publisher is unknown (the app is not code signed):
           choose **More info**, then **Run anyway**.
+
+          **Already have Seeding Ops?** From 0.2.0 on, use **Check for updates** at the bottom of the
+          home page. Updating from 0.1.0 (no such button) takes this installer once: close the app, run
+          it, and if it asks whether to uninstall the older version first, choose **Do not uninstall**.
+          Your tiers, tournaments and start.gg key are kept (README, Desktop app > Updates).
           NOTES
-          )"
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" --title "Seeding Ops $VERSION" --notes-file dist/notes.md --target "$GITHUB_SHA"
+          fi
+          KEEP=" $(for f in $ASSETS; do printf '%s ' "$(basename "$f")"; done)"
+          for a in $(gh release view "$TAG" --json assets -q '.assets[].name'); do
+            case "$KEEP" in *" $a "*) ;; *) gh release delete-asset "$TAG" "$a" -y ;; esac
+          done
+          gh release upload "$TAG" $ASSETS --clobber
+          gh release edit "$TAG" --draft=false --latest --notes-file dist/notes.md

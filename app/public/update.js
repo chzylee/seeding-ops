@@ -62,7 +62,7 @@
 				say(res.body.error || 'The update could not be installed.', true);
 				return;
 			}
-			say('Installing ' + res.body.installing + '. The app will close and open again in a moment.');
+			say('Installing ' + res.body.installing + '. The app will close and open again in a moment. If it has not reopened within a minute, open it yourself: it will say what happened.');
 		});
 	});
 })();

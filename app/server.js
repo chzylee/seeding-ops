@@ -156,7 +156,8 @@ const DONE_NOTE = '<li class="done-note dim">Tournaments are marked done automat
 // have Dismiss (notices.js).
 function noticesHtml(notices) {
   if (!notices.length) return '';
-  return `<section class="data-notices" aria-label="About your data">${notices.map((n) => `<div class="data-notice ${n.level === 'warn' ? 'warn' : 'info'}" role="${n.level === 'warn' ? 'alert' : 'status'}" data-id="${esc(n.id)}"><span>${esc(n.text)}</span>${n.lasting ? `<button type="button" class="plain" data-dismiss="${esc(n.id)}">Dismiss</button>` : ''}</div>`).join('')}</section>`;
+  const link = (n) => (n.link && typeof n.link.href === 'string' && /^https:\/\/github\.com\//.test(n.link.href) ? ` <a href="${esc(n.link.href)}" target="_blank" rel="noopener">${esc(n.link.text || n.link.href)}</a>` : '');
+  return `<section class="data-notices" aria-label="About your data">${notices.map((n) => `<div class="data-notice ${n.level === 'warn' ? 'warn' : 'info'}" role="${n.level === 'warn' ? 'alert' : 'status'}" data-id="${esc(n.id)}"><span>${esc(n.text)}${link(n)}</span>${n.lasting ?`<button type="button" class="plain" data-dismiss="${esc(n.id)}">Dismiss</button>` : ''}</div>`).join('')}</section>`;
 }
 function indexPage(outRoot, jobs, nowMs, notices = []) {
   const list = pool.listTournaments(outRoot, nowMs);
@@ -320,6 +321,9 @@ function createApp(opts = {}) {
       updating = null;
       throw bad(err.kind === 'unreachable' ? 502 : 409, err.message, { kind: err.kind });
     }
+    // If the installer never starts after the launcher's wait, nothing running can say so; the next
+    // launch reads this marker and does (update.settlePending, from main()).
+    try { update.writePending(dataRoot, { from: st.current, to: info.latest, releasesPage: config.releasesPage }); } catch { /* the notice is a courtesy */ }
     // Leave the way clear: the installer replaces both exes, so neither may still be running when it
     // starts (audit #7). In the desktop shell (SEEDING_EMBEDDED) the shell is this process's parent;
     // it is ended too. Half a second lets the response reach the page; the launcher waits longer.
@@ -795,6 +799,8 @@ function main(argv = process.argv.slice(2)) {
   const portArg = arg('--port');
   const port = resolvePort(portArg != null ? portArg : process.env.PORT);
   const outRoot = arg('--out') ? path.resolve(arg('--out')) : path.join(DATA_ROOT, 'out');
+  // An update that was started last time but did not happen becomes a home-page notice (lib/update.js).
+  try { update.settlePending({ dataRoot: DATA_ROOT, current: update.currentVersion(ROOT), addNotice: dataDir.addNotice }); } catch (err) { console.log(`  pending update: ${err.message}`); }
   const app = createApp({ outRoot });
   const server = http.createServer(app.handler);
   const url = `http://${HOST}:${port}/`;

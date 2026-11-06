@@ -45,12 +45,13 @@ function makeApp({ installed = true, signer = makeSigner(), gh, current = '0.2.0
     process.nextTick(() => (spawnOutcome === 'spawn' ? c.emit('spawn') : c.emit('error', Object.assign(new Error('x'), { code: spawnOutcome }))));
     return c;
   };
+  const dataRoot = tmp('seeding-upd-data-');
   const app = createApp({
-    outRoot: tmp('seeding-upd-'), getToken: () => 't', fetchImpl: async () => { throw new Error('offline'); },
+    outRoot: path.join(dataRoot, 'out'), dataRoot, getToken: () => 't', fetchImpl: async () => { throw new Error('offline'); },
     update: { installed, current, platform: 'win32', config: { repo: REPO, endpoint: `https://github.com/${REPO}/releases/latest/download/latest.json`, pubkey: signer ? signer.pubkey : '', releasesPage: `https://github.com/${REPO}/releases/latest` },
       fetchImpl: g.fetchImpl, tmpDir, spawnImpl, exit: () => exits.push(1) },
   });
-  return { app, spawned, exits, tmpDir, gh: g };
+  return { app, spawned, exits, tmpDir, gh: g, dataRoot };
 }
 const post = (app, url, body, headers = H) => inject(app.handler, { url, method: 'POST', headers, body: JSON.stringify(body || {}) });
 
@@ -81,6 +82,45 @@ test('update routes: install downloads, checks the signature, starts the install
   const again = await post(app, '/api/update/install', { version: '0.3.0' });
   assert.strictEqual(again.status, 409);
   assert.match(again.json().error, /already being installed/);
+});
+
+// Audit round 2, #2: an installer that never starts after the launcher's wait was never reported.
+test('update routes: the app writes a pending-update marker before closing; the next launch turns "still the old version" into a notice with the release link, and clears the marker either way', async () => {
+  const U = require('../lib/update');
+  const D = require('../lib/data-dir');
+  const { app, dataRoot } = makeApp();
+  assert.strictEqual((await post(app, '/api/update/install', { version: '0.3.0' })).status, 202);
+  const marker = JSON.parse(fs.readFileSync(path.join(dataRoot, U.PENDING_FILE), 'utf8'));
+  assert.deepStrictEqual([marker.from, marker.to, marker.releases_page], ['0.2.0', '0.3.0', `https://github.com/${REPO}/releases/latest`]);
+
+  // Next launch, still 0.2.0: the update did not start.
+  assert.strictEqual(U.settlePending({ dataRoot, current: '0.2.0', addNotice: D.addNotice }), 'not-started');
+  assert.ok(!fs.existsSync(path.join(dataRoot, U.PENDING_FILE)), 'cleared');
+  const n = D.readNotices(dataRoot);
+  assert.deepStrictEqual(n.map((x) => x.id), ['update-not-started']);
+  assert.match(n[0].text, /The update to 0\.3\.0 did not start: this is still 0\.2\.0/);
+  const again = createApp({ outRoot: path.join(dataRoot, 'out'), dataRoot, getToken: () => 't', fetchImpl: async () => { throw new Error('offline'); } });
+  const html = (await inject(again.handler, { url: '/' })).text;
+  assert.match(html, /did not start[^<]*<a href="https:\/\/github\.com\/someone\/seeding-ops\/releases\/latest" target="_blank" rel="noopener">Release page<\/a><\/span><button type="button" class="plain" data-dismiss="update-not-started">Dismiss/);
+  assert.strictEqual(U.settlePending({ dataRoot, current: '0.2.0', addNotice: D.addNotice }), 'none', 'said once');
+
+  // The update ran: the version changed, the marker goes, nothing is said.
+  const ok = tmp('seeding-upd-ok-');
+  U.writePending(ok, { from: '0.2.0', to: '0.3.0', releasesPage: 'https://github.com/x/y/releases/latest' });
+  assert.strictEqual(U.settlePending({ dataRoot: ok, current: '0.3.0', addNotice: D.addNotice }), 'done');
+  assert.ok(!fs.existsSync(path.join(ok, U.PENDING_FILE)));
+  assert.deepStrictEqual(D.readNotices(ok), []);
+  // A link that is not a GitHub page is never rendered.
+  U.writePending(ok, { from: '0.2.0', to: '0.3.0', releasesPage: 'https://evil.example/' });
+  U.settlePending({ dataRoot: ok, current: '0.2.0', addNotice: D.addNotice });
+  assert.strictEqual(D.readNotices(ok)[0].link, undefined);
+});
+
+test('update routes: a failed launch writes no pending marker', async () => {
+  const U = require('../lib/update');
+  const { app, dataRoot } = makeApp({ spawnOutcome: 'ENOENT' });
+  assert.strictEqual((await post(app, '/api/update/install', { version: '0.3.0' })).status, 409);
+  assert.ok(!fs.existsSync(path.join(dataRoot, U.PENDING_FILE)));
 });
 
 // Audit #3: a failed launch crashed the server (an unhandled 'error' event on the child). Now the

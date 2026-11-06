@@ -159,9 +159,8 @@ function indexPage(outRoot, jobs, nowMs) {
 <body class="index"><main><h1>Tournaments <span id="connectLine" class="dim connect-line"></span></h1>
 <section id="connect" class="connect" aria-labelledby="connectHead" hidden>
 <h2 id="connectHead">Connect to start.gg</h2>
-<p id="connectWhy" class="dim">This app reads results from start.gg with a personal API token of yours. The key never leaves your machine.</p>
-<ol class="dim connect-steps"><li>Open <a href="https://start.gg/admin/profile/developer" target="_blank" rel="noopener">start.gg/admin/profile/developer</a> (sign in if asked).</li><li>Under <b>Personal Access Tokens</b>, create a token (any name) and copy it.</li><li>Paste it here. It is checked with one request, then saved to <code>.env</code> next to the app. It never leaves this computer except to start.gg.</li></ol>
-<form id="connectForm" class="connect-form"><input id="connectToken" type="password" autocomplete="off" spellcheck="false" placeholder="paste the token" required><button type="submit">Test and save</button><span id="connectMsg" class="status" role="status" aria-live="polite"></span></form>
+<p id="connectWhy" class="dim">Paste your start.gg API key. <a href="https://start.gg/admin/profile/developer" target="_blank" rel="noopener">Get one here.</a> The key never leaves your machine.</p>
+<form id="connectForm" class="connect-form"><input id="connectToken" type="password" autocomplete="off" spellcheck="false" placeholder="API key" required><button type="submit">Save</button><span id="connectMsg" class="status" role="status" aria-live="polite"></span></form>
 </section>
 <section class="add-section" aria-labelledby="addHead"><h2 id="addHead">Add a tournament</h2>
 <form id="add" class="add-t"><label for="addUrl" class="sr-only">start.gg tournament or event link</label>

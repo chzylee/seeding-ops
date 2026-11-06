@@ -27,17 +27,16 @@
     }
     connect.hidden = false;
     connectLine.textContent = '';
-    document.getElementById('connectWhy').textContent = st.kind === 'missing'
-      ? 'This app reads results from start.gg with a personal API token of yours. The key never leaves your machine.'
-      : st.kind === 'network' ? `start.gg could not be reached (${st.message}). Check the connection, or paste a token to try again.`
-      : `The saved token was rejected by start.gg (${st.message}). Paste a new one.`;
+    const why = document.getElementById('connectWhy');
+    if (st.kind === 'missing') why.innerHTML = 'Paste your start.gg API key. <a href="https://start.gg/admin/profile/developer" target="_blank" rel="noopener">Get one here.</a> The key never leaves your machine.';
+    else why.textContent = st.kind === 'network' ? 'start.gg could not be reached. Check the connection and try again.' : 'That key was rejected by start.gg. Paste a new one.';
     document.getElementById('connectToken').focus();
   }
   document.getElementById('connectForm').addEventListener('submit', async (ev) => {
     ev.preventDefault();
     const box = document.getElementById('connectToken');
     const btn = ev.target.querySelector('button');
-    btn.disabled = true; connectMsg.classList.remove('err'); connectMsg.textContent = 'Checking with start.gg…';
+    btn.disabled = true; connectMsg.classList.remove('err'); connectMsg.textContent = 'Saving…';
     let res, body;
     try {
       res = await fetch('/api/token', { method: 'POST', headers: { 'X-Seeding-App': '1', 'Content-Type': 'application/json' }, body: JSON.stringify({ token: box.value }) });
@@ -46,7 +45,7 @@
     btn.disabled = false;
     if (!res.ok) { connectMsg.textContent = body.error || 'Could not save it.'; connectMsg.classList.add('err'); return; }
     box.value = '';
-    connectMsg.textContent = `Connected as ${body.as}. Saved to ${body.saved}.${body.note ? ' ' + body.note : ''}`;
+    connectMsg.textContent = `Saved. Connected as ${body.as}.${body.note ? ' ' + body.note : ''}`;
     setTimeout(() => tokenState(false), body.env_wins ? 6000 : 1200);
   });
   tokenState(false);

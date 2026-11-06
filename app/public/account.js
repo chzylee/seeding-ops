@@ -47,9 +47,9 @@
 		dlg.className = 'account-dialog';
 		dlg.innerHTML = '<form method="dialog" class="account-form">'
 			+ '<h2>start.gg account</h2>'
-			+ '<p class="dim">Paste a personal API token from <a href="https://start.gg/admin/profile/developer" target="_blank" rel="noopener">start.gg/admin/profile/developer</a>. It is checked with one request and saved next to the app. The key never leaves your machine.</p>'
-			+ '<input id="accountToken" type="password" autocomplete="off" spellcheck="false" placeholder="paste the token" required>'
-			+ '<div class="actions"><button type="button" class="save">Test and save</button><button type="button" class="plain cancel">Cancel</button><span class="status" role="status" aria-live="polite"></span></div>'
+			+ '<p class="dim">Paste your start.gg API key. <a href="https://start.gg/admin/profile/developer" target="_blank" rel="noopener">Get one here.</a> The key never leaves your machine.</p>'
+			+ '<input id="accountToken" type="password" autocomplete="off" spellcheck="false" placeholder="API key" required>'
+			+ '<div class="actions"><button type="button" class="save">Save</button><button type="button" class="plain cancel">Cancel</button><span class="status" role="status" aria-live="polite"></span></div>'
 			+ '</form>';
 		document.body.appendChild(dlg);
 		bar.querySelector('.change').addEventListener('click', function () { dlg.querySelector('.status').textContent = ''; dlg.showModal(); dlg.querySelector('#accountToken').focus(); });
@@ -62,7 +62,7 @@
 
 	function save() {
 		var box = dlg.querySelector('#accountToken'), msg = dlg.querySelector('.status'), btn = dlg.querySelector('.save');
-		btn.disabled = true; msg.classList.remove('err'); msg.textContent = 'Checking with start.gg…';
+		btn.disabled = true; msg.classList.remove('err'); msg.textContent = 'Saving…';
 		fetch('/api/token', { method: 'POST', headers: { 'X-Seeding-App': '1', 'Content-Type': 'application/json' }, body: JSON.stringify({ token: box.value }) })
 			.then(function (r) { return r.json().catch(function () { return {}; }).then(function (b) { return { ok: r.ok, body: b }; }); })
 			.catch(function (e) { return { ok: false, body: { error: e.message } }; })
@@ -70,7 +70,7 @@
 				btn.disabled = false;
 				if (!res.ok) { msg.textContent = res.body.error || 'Could not save it.'; msg.classList.add('err'); return; }
 				box.value = '';
-				msg.textContent = 'Connected as ' + res.body.as + '.' + (res.body.note ? ' ' + res.body.note : '');
+				msg.textContent = 'Saved. Connected as ' + res.body.as + '.' + (res.body.note ? ' ' + res.body.note : '');
 				load(true).then(function () { setTimeout(function () { dlg.close(); if (window.Account.onChange) window.Account.onChange(state); }, res.body.env_wins ? 4000 : 700); });
 			});
 	}

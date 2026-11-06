@@ -47,7 +47,7 @@
 		dlg.className = 'account-dialog';
 		dlg.innerHTML = '<form method="dialog" class="account-form">'
 			+ '<h2>start.gg account</h2>'
-			+ '<p class="dim">Paste a personal API token from <a href="https://start.gg/admin/profile/developer" target="_blank" rel="noopener">start.gg/admin/profile/developer</a>. It is checked with one request and saved next to the app; it stays on this computer.</p>'
+			+ '<p class="dim">Paste a personal API token from <a href="https://start.gg/admin/profile/developer" target="_blank" rel="noopener">start.gg/admin/profile/developer</a>. It is checked with one request and saved next to the app. The key never leaves your machine.</p>'
 			+ '<input id="accountToken" type="password" autocomplete="off" spellcheck="false" placeholder="paste the token" required>'
 			+ '<div class="actions"><button type="button" class="save">Test and save</button><button type="button" class="plain cancel">Cancel</button><span class="status" role="status" aria-live="polite"></span></div>'
 			+ '</form>';

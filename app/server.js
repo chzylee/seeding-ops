@@ -159,7 +159,7 @@ function indexPage(outRoot, jobs, nowMs) {
 <body class="index"><main><h1>Tournaments <span id="connectLine" class="dim connect-line"></span></h1>
 <section id="connect" class="connect" aria-labelledby="connectHead" hidden>
 <h2 id="connectHead">Connect to start.gg</h2>
-<p id="connectWhy" class="dim">This app reads results from start.gg with a personal API token of yours. Nothing is posted unless you ask it to.</p>
+<p id="connectWhy" class="dim">This app reads results from start.gg with a personal API token of yours. The key never leaves your machine.</p>
 <ol class="dim connect-steps"><li>Open <a href="https://start.gg/admin/profile/developer" target="_blank" rel="noopener">start.gg/admin/profile/developer</a> (sign in if asked).</li><li>Under <b>Personal Access Tokens</b>, create a token (any name) and copy it.</li><li>Paste it here. It is checked with one request, then saved to <code>.env</code> next to the app. It never leaves this computer except to start.gg.</li></ol>
 <form id="connectForm" class="connect-form"><input id="connectToken" type="password" autocomplete="off" spellcheck="false" placeholder="paste the token" required><button type="submit">Test and save</button><span id="connectMsg" class="status" role="status" aria-live="polite"></span></form>
 </section>

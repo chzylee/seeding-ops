@@ -28,7 +28,7 @@
     connect.hidden = false;
     connectLine.textContent = '';
     document.getElementById('connectWhy').textContent = st.kind === 'missing'
-      ? 'This app reads results from start.gg with a personal API token of yours. Nothing is posted unless you ask it to.'
+      ? 'This app reads results from start.gg with a personal API token of yours. The key never leaves your machine.'
       : st.kind === 'network' ? `start.gg could not be reached (${st.message}). Check the connection, or paste a token to try again.`
       : `The saved token was rejected by start.gg (${st.message}). Paste a new one.`;
     document.getElementById('connectToken').focus();

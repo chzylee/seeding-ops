@@ -44,12 +44,3 @@ test('export: POST { order } gives the same CSV as ?order=, takes thousands of i
   assert.strictEqual((await inject(app.handler, { url: `/api/t/${T_SLUG}/g/${GAME.id}/seeds.csv`, method: 'POST', headers: H, body: JSON.stringify({ order: rev }) })).status, 200);
   assert.strictEqual((await inject(app.handler, { url: `/api/t/${T_SLUG}/g/${GAME.id}/data`, method: 'POST', headers: H, body: '{}' })).status, 405);
 });
-
-test('export: the page sends the order in the body, not the URL', () => {
-  const src = fs.readFileSync(path.join(__dirname, '..', 'app', 'public', 'app.js'), 'utf8');
-  // A source check, labelled as one: app.js needs the full table page to run, which testlib/fake-dom.js
-  // does not model. What it pins is that no export URL is built from the order.
-  assert.doesNotMatch(src, /export\.csv\?order=/);
-  assert.match(src, /api\('export\.csv'\)/);
-  assert.match(src, /method: 'POST'[^\n]*body: JSON\.stringify\(\{ order \}\)/);
-});

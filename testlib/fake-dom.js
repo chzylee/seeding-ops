@@ -47,6 +47,27 @@ function makeEl(tag = 'div', { id = null, attrs = {}, dataset = {} } = {}) {
   return el;
 }
 
+// A stand-in for everything a test does not care about: any property is another stand-in, calling it
+// returns one, it iterates as empty and reads as 0 / ''. Lets a big page script (app.js) boot far
+// enough that one control can be exercised for real, without modelling the whole page.
+function anything(name = 'anything') {
+  const fn = function () {};
+  return new Proxy(fn, {
+    get(_t, k) {
+      if (k === Symbol.iterator) return function* () {};
+      if (k === Symbol.toPrimitive) return (hint) => (hint === 'number' ? 0 : '');
+      if (k === 'then') return undefined;   // not a promise
+      if (k === 'length') return 0;
+      if (k === 'toString' || k === 'valueOf') return () => '';
+      return anything(`${name}.${String(k)}`);
+    },
+    set() { return true; },
+    apply() { return anything(`${name}()`); },
+    construct() { return anything(`new ${name}`); },
+    has() { return true; },
+  });
+}
+
 // The ids (and their data-* attributes) in a page the server rendered, and the game picker's options.
 function elementsFromHtml(html) {
   const byId = new Map();
@@ -66,8 +87,17 @@ function elementsFromHtml(html) {
 
 // Runs a page script against a fake document. html: the page the server rendered (for ids).
 // fetch(url, init) -> { status, body } (a plain object, sent as JSON) or a Response-like object.
-function loadPage(src, { html = '', fetch, search = '', confirm = () => true, globals = {} } = {}) {
+// elements: { id: element } given outright; with stubMissing, any other id is a stand-in (anything()).
+function loadPage(src, { html = '', fetch, search = '', confirm = () => true, globals = {}, elements = {}, stubMissing = false } = {}) {
   const { byId, options } = elementsFromHtml(html);
+  for (const [id, el] of Object.entries(elements)) byId.set(id, el);
+  if (stubMissing) {
+    const real = byId;
+    const stubs = new Map();
+    const get = real.get.bind(real);
+    real.get = (id) => get(id) || stubs.get(id) || (stubs.set(id, anything(`#${id}`)), stubs.get(id));
+    real.has = () => true;
+  }
   if (byId.has('upGameList')) byId.get('upGameList').setAll('[role="option"]', options);
   const events = /<ul class="events">/.test(html) ? makeEl('ul') : null;
   const misses = [];
@@ -84,10 +114,14 @@ function loadPage(src, { html = '', fetch, search = '', confirm = () => true, gl
     createElement: (tag) => { const e = makeEl(tag); created.push(e); return e; },
     addEventListener: (t, fn) => { (docListeners[t] = docListeners[t] || []).push(fn); },
   };
+  // r: { status, body } — body sent as JSON, or as raw text when r.raw (then also readable as a stream).
   const respond = (r) => {
     const status = r.status || 200;
     const payload = r.body === undefined ? {} : r.body;
-    return { ok: status >= 200 && status < 300, status, headers: { get: () => null }, json: async () => payload, text: async () => JSON.stringify(payload) };
+    const text = r.raw ? String(payload) : JSON.stringify(payload);
+    let sent = false;
+    return { ok: status >= 200 && status < 300, status, headers: { get: () => null }, json: async () => (r.raw ? JSON.parse(text) : payload), text: async () => text,
+      body: { getReader: () => ({ read: async () => (sent ? { done: true } : (sent = true, { done: false, value: Buffer.from(text) })) }) } };
   };
   const ctx = {
     document, location, console, Promise, URLSearchParams, JSON, Math, Date, Number, String, Object, Array, Set, Map, Error, encodeURIComponent,
@@ -95,7 +129,7 @@ function loadPage(src, { html = '', fetch, search = '', confirm = () => true, gl
     setTimeout: (fn, ms) => { timers.push({ fn, ms }); return timers.length; }, clearTimeout: () => {},
     confirm,
     fetch: async (url, init = {}) => { requests.push({ url, ...init }); return respond(await fetch(url, init)); },
-    addEventListener: () => {},
+    addEventListener: () => {}, removeEventListener: () => {}, dispatchEvent: () => true,
     ...globals,
   };
   ctx.window = ctx;
@@ -108,4 +142,4 @@ function loadPage(src, { html = '', fetch, search = '', confirm = () => true, gl
   };
 }
 
-module.exports = { makeEl, loadPage, elementsFromHtml };
+module.exports = { makeEl, loadPage, elementsFromHtml, anything };

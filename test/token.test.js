@@ -62,5 +62,35 @@ test('validateToken: one CurrentUser request; a good token says whose it is, a b
   const bad = await validateToken({ token: 'bad-token', fetchImpl: fake, sleep: async () => {} });
   assert.strictEqual(bad.ok, false);
   assert.strictEqual(bad.kind, 'bad-token');
+  assert.strictEqual(bad.state, 'rejected');
   assert.strictEqual(fake.calls.length, calls + 1, 'rejected on the first try, not retried');
+});
+
+// Found 2026-11-06 (reproduced on 4e35890): saveToken replaced the FIRST STARTGG_TOKEN line, but
+// loadToken (node:util parseEnv) reads the LAST, so with a duplicate in .env the token just saved was
+// silently ignored. Saving now leaves exactly one line, where the first was.
+test('saveToken: duplicate STARTGG_TOKEN lines collapse to one, and the saved token is the one read back', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'seeding-token-dup-'));
+  const envFile = path.join(dir, '.env');
+  fs.writeFileSync(envFile, '# top\nSTARTGG_TOKEN=old-one\nOTHER=1\nSTARTGG_TOKEN=old-two\n  STARTGG_TOKEN = old-three\n');
+  saveToken({ envFile, token: 'new-token' });
+  assert.deepStrictEqual(loadToken({ env: {}, envFile }), { token: 'new-token', source: '.env' });
+  assert.strictEqual(fs.readFileSync(envFile, 'utf8'), '# top\nSTARTGG_TOKEN=new-token\nOTHER=1\n');
+});
+
+// The client's try ceiling: maxTries: 1 is one send whatever the kind. Without it a rate limit on a
+// retry:false request still ran the time-budget schedule (8 tries, 90 s apart).
+test('startgg client: maxTries caps the tries for every kind; retry:false alone still retries a rate limit', async () => {
+  const sgg = require('../lib/startgg');
+  const budget = async () => new Response(JSON.stringify({ errors: [{ message: 'You have gone over the threshold for recent request time. Please wait before sending another request.' }] }), { status: 200 });
+  let n = 0;
+  const fetchImpl = async (...a) => { n++; return budget(...a); };
+  const slept = [];
+  const client = sgg.createClient({ token: 't', fetchImpl, sleep: async (ms) => { slept.push(ms); } });
+  await assert.rejects(client.request('Q', 'query Q { a }', {}, {}, { retry: false, maxTries: 1 }), (e) => e.kind === 'time-budget');
+  assert.strictEqual(n, 1);
+  assert.strictEqual(slept.filter((ms) => ms >= 90000).length, 0);
+  n = 0;
+  await assert.rejects(client.request('Q', 'query Q { a }', {}, {}, { retry: false }), (e) => e.kind === 'time-budget' && e.exhausted);
+  assert.strictEqual(n, 8, 'the seeding post keeps its rate-limit retries');
 });

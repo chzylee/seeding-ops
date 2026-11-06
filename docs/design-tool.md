@@ -394,6 +394,22 @@ instead of applied:
 Local, as today: `npm start` or `app.cmd`. No pipeline. Share phase (later): a Tauri shell, a
 setup path that doesn't assume Windows, and per-game major lists as config.
 
+**Amendment, 2026-11-06 (Noah: "A friend is using this now... They should be able to easily install
+updates. On the main page we need a button to check for updates").** The share phase has started: the
+Tauri shell ships as a Windows installer from GitHub Releases. Two rules follow, and the README's
+*Desktop app* section has the details and the human steps:
+
+- **User data never lives where the installer writes.** An installed copy keeps `registry/tiers.csv`,
+  `out/` and `.env` in `%LOCALAPPDATA%\net.enpicie.seeding-ops` (lib/data-dir.js); the installer ships
+  only `registry/tiers.template.csv`, from which an empty table is seeded when there is none. The first
+  launch moves an older install's data out of the install folder. Checkouts and the portable ZIP are
+  unchanged.
+- **Updates are versioned and signed.** Every release is `v<version>` and carries `latest.json` and the
+  installer's minisign signature (Tauri's updater format). The home page's *Check for updates* verifies
+  the signature against `config/updater.json`'s public key before running the installer. The client is
+  the Node server (lib/update.js), not Tauri's Rust plugin, so the shell stays as thin as this spec has
+  it.
+
 ## Next steps (build order; each step is usable alone)
 
 1. **Snapshot first.** Commit `registry/tiers.csv` as it stands, `conflicts/` and the server

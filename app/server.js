@@ -29,8 +29,12 @@
 //   GET  /api/t/<t>/schedule                  out/<t>/schedule.json + status
 //   POST /api/t/<t>/schedule/refresh          [?only=seeds] the schedule pull, through the queue
 //   GET  /api/t/<t>/g/<game>/data             one tab's view model
-//   GET  /api/t/<t>/g/<game>/export.csv       the tab's summary for Google Sheets
-//   GET  /api/t/<t>/g/<game>/seeds.csv        [?order=<player ids>] seeds in seed order (no start.gg request)
+//   GET  /api/t/<t>/g/<game>/export.csv       the tab's summary for Google Sheets (also POST { order })
+//   GET  /api/t/<t>/g/<game>/seeds.csv        [?order=<player ids>] seeds in seed order (no start.gg request; also POST { order })
+//   GET  /api/token[?check=1]                 who is signed in to start.gg; POST { token } saves one
+//   GET  /api/update                          this copy's version and whether it can install updates
+//   POST /api/update/check                    asks GitHub for the newest release (lib/update.js)
+//   POST /api/update/install                  { version } downloads, verifies, runs the installer, exits
 //   POST /api/t/<t>/g/<game>/player/<id>      edit tier / notes in registry/tiers.csv
 //   POST /api/t/<t>/g/<game>/player/<id>/review   the ✓ review mark (T1)
 //   POST /api/t/<t>/push/<e>/dry-run          the push dry run (read-only: the phase's seeds)

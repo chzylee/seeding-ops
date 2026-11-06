@@ -17,8 +17,10 @@ Leave the window open while you use it; close it (or Ctrl+C) to stop. It only li
 machine. Page files (`app/public/`) are read fresh on every load, so a browser reload picks up their
 changes in any mode. **First launch:** the home page asks you to connect to start.gg: paste a personal
 API token (from <https://start.gg/admin/profile/developer>), it is checked with one request and saved
-to `.env` next to the app, and it works at once. The same screen comes back if start.gg ever rejects
-the saved token. (See *Setup* below for the file itself.)
+to `.env` next to the app (the installed app keeps it in its data folder; see *Desktop app*), and it
+works at once. The same screen comes back if start.gg ever rejects the saved token. If start.gg simply
+can't be reached (offline, rate limited), the bar at the top turns amber and says so, with a Retry;
+it doesn't ask for a new key. (See *Setup* below for the file itself.)
 
 **Add a tournament.** The home page lists your tournaments: live ones first, then done, then
 archived (a short line above the first done one says done is automatic once the last seeded event's date has passed). Paste a start.gg tournament link, or any of its event links, into *Add a tournament*. The
@@ -370,17 +372,98 @@ whose first line is the folder to serve, or `SEEDING_PROJECT` in the environment
 One server at a time: everything wants port 8765. If `npm start` is already running, the window
 simply adopts it.
 
+**Where an installed copy keeps your data.** The installer owns its folder
+(`%LOCALAPPDATA%\Seeding Ops`): an update overwrites what it ships there and an uninstall deletes it.
+So the installed app keeps your data in its own data folder, which installs, updates and uninstalls
+leave alone:
+
+```
+%LOCALAPPDATA%\net.enpicie.seeding-ops\
+  registry\tiers.csv     your tiers table (starts as an empty copy of registry/tiers.template.csv)
+  out\                   your tournaments: pulls, W-L, schedules
+  .env                   your start.gg key
+```
+
+The only thing that removes it is ticking **Delete the application data** when uninstalling. The
+first launch of 0.2.0 or later moves these three out of the install folder if an older install left
+them there (all or nothing; if any move fails, that launch runs on the old folder as before, and
+the next launch tries again). A checkout and the portable ZIP keep their data beside the exe, as
+always. How the app tells them apart: the installer ships `installed.json` beside the exe
+(`src-tauri/installed.json`); nothing else has it. Code: `lib/data-dir.js`.
+
+Why this matters: through 0.1.0 the installer shipped `registry/tiers.csv` itself. The 0.1.0
+uninstaller (decoded from the installed copy's `uninstall.exe`) deletes `registry\tiers.csv` by name
+along with every other file it shipped, but not `.env` or `out\`. So an upgrade that uninstalled first
+lost the tiers table, and any reinstall put the empty table back over yours.
+
+### Updates
+
+**Check for updates** sits at the bottom of the home page, beside the version. It reads the newest
+release's `latest.json` on GitHub. If there is a newer version, the installed app shows **Install X**:
+it asks once, downloads the installer, checks its signature, closes, updates, and opens again. Your
+data is untouched (it lives in the data folder above). A checkout or a portable copy is told the new
+version exists and gets a link to the release page; update a checkout with `git pull`. Installing is
+refused while a pull, schedule pull or archive is running or queued.
+
+How it works: `lib/update.js`, called from the app's server (`/api/update/check`,
+`/api/update/install`). The release format is Tauri's updater format: `latest.json` plus a minisign
+`.sig` from `tauri signer`. The client is ours, not Tauri's Rust updater plugin, because the shell only
+builds in CI. The installer runs with `/P /UPDATE /R` (passive, update mode, restart).
+
+**Coming from 0.1.0 (one manual install).** 0.1.0 has no button, so a copy installed from 0.1.0
+takes the 0.2.0 installer once, by hand:
+
+1. Close Seeding Ops.
+2. *Belt and braces, optional:* copy `%LOCALAPPDATA%\Seeding Ops\registry\tiers.csv` somewhere safe.
+3. Run `Seeding-Ops-windows-setup.exe`. If it asks whether to uninstall the older version first,
+   choose **Do not uninstall**. (Uninstalling 0.1.0 first deletes its `registry\tiers.csv`; your
+   tournaments and key survive either way.)
+4. Open the app. It moves your tiers, tournaments and key to the data folder by itself.
+
+If the tiers came back empty (the old version was uninstalled first), close the app and copy the
+saved `tiers.csv` to `%LOCALAPPDATA%\net.enpicie.seeding-ops\registry\tiers.csv`. From then on, use
+**Check for updates**.
+
+**Setting up signing (once, by Noah, before publishing 0.2.0).** The app installs only updates signed
+with the key it trusts. Until these steps are done, releases publish the installer without a
+signature, and the button says "download it from the release page" instead of installing.
+
+1. Generate the key pair on your own machine (it asks for a password; remember it):
+
+   ```
+   npx @tauri-apps/cli signer generate -w "%USERPROFILE%\.tauri\seeding-ops.key"
+   ```
+
+   This writes the private key to `seeding-ops.key` and the public key to `seeding-ops.key.pub`.
+   Back up the private key and its password somewhere safe. **If it is lost, installed copies cannot
+   take signed updates any more;** everyone would need one manual install of a build with a new key.
+   Never commit it.
+2. Add two repository secrets on GitHub (Settings → Secrets and variables → Actions):
+   - `TAURI_SIGNING_PRIVATE_KEY`: the whole contents of `seeding-ops.key`.
+   - `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`: the password (leave the secret out if you set none).
+3. Put the public key (the one line in `seeding-ops.key.pub`) in `config/updater.json` as `"pubkey"`,
+   and commit it. Check `"repo"` names the GitHub repository the releases live in (it is set from
+   this checkout's `origin`, `chzylee/seeding-ops`). The repository must be public for the app to
+   read its releases without signing in.
+4. Then publish (below). The key must be in `config/updater.json` **before** the build: a build
+   without it can check for updates but not install one.
+
 **Releasing.** Builds happen in GitHub Actions (`.github/workflows/release.yml`); no Rust
 toolchain is needed locally.
 
-- *Test a build*: Actions → `release` → Run workflow, `publish` unticked. The installer and the
-  portable ZIP are kept as run artifacts; nothing reaches the Releases page.
-- *Share it*: the same with `publish` ticked. Publishes **one file**, the installer
-  (`Seeding-Ops-windows-setup.exe`), under the `tag` input, default `latest`, re-pointed on every
-  publish. A new user installs it, opens the app, pastes a start.gg API key, presses Save. The release
-  ships an **empty tiers table** (`registry/tiers.template.csv`), never this checkout's.
+- *Test a build*: Actions → `release` → Run workflow, `publish` unticked. The installer (signed, if
+  the key secret is set) and the portable ZIP are kept as run artifacts; nothing reaches the Releases
+  page.
 - *Cut a version*: bump `version` in `package.json`, `src-tauri/tauri.conf.json` and
-  `src-tauri/Cargo.toml`, then push a `v*` tag.
+  `src-tauri/Cargo.toml` (a test keeps the three equal). **Every release must be a new version**, or
+  installed copies won't see it as an update.
+- *Share it*: Actions → `release` → Run workflow with `publish` ticked, or push the tag `v<version>`.
+  It publishes a release tagged `v<version>`, marked Latest, carrying the installer
+  (`Seeding-Ops-windows-setup.exe`) and, when signed, its `.sig` and `latest.json`. A new user installs
+  it, opens the app, pastes a start.gg API key, presses Save. The installer ships an **empty tiers
+  table** (`registry/tiers.template.csv`), never this checkout's. The link
+  `https://github.com/<repo>/releases/latest/download/Seeding-Ops-windows-setup.exe` always fetches
+  the newest installer.
 - *This checkout*: the portable ZIP (run artifact) holds the two exes to drop in; see above.
 
 `npm run sidecar` compiles the server with Bun into `src-tauri/binaries/` (needed before
@@ -446,6 +529,11 @@ increment 3, [`docs/design-tool.md`](docs/design-tool.md)):
   and archive jobs; `app/queue.js` the one request queue; `app/limit-fetch.js` its ceiling;
   `app/public/` the pages (plain HTML/CSS/JS, no build): `tournament.html` with `tournament.js`
   (header, tabs, picker, lifecycle), `app.js` (a game's tab), `schedule.js` (the Schedule tab).
+- `lib/data-dir.js`: where the data lives (beside the code, or an installed copy's per-user data
+  folder) and the one-time move out of an older install folder. `app/app-main.js` runs it before
+  the server loads; the server reads `SEEDING_DATA`.
+- `lib/update.js` + `app/public/update.js`: Check for updates (latest.json, the signature check, the
+  installer run). `scripts/updater-manifest.js` writes `latest.json` in the release workflow.
 - `views/major-table.js out/<tournament> [--game <id>]`: one game tab as a single HTML file in
   `out/<tournament>/`, for keeping. It carries your tiers, notes and review marks.
 - `scripts/synth-run.js <folder>`: a synthetic 200 × 100 run-shaped folder for load-testing the view

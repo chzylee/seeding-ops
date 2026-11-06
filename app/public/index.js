@@ -22,7 +22,7 @@
     if (!st) { connectLine.textContent = 'start.gg: the app server did not answer.'; return; }
     if (st.ok) {
       connect.hidden = true;
-      connectLine.textContent = `start.gg: connected as ${st.as}`;
+      connectLine.textContent = '';   // the account bar (account.js) shows who is signed in
       return;
     }
     connect.hidden = false;
@@ -50,6 +50,9 @@
     setTimeout(() => tokenState(false), body.env_wins ? 6000 : 1200);
   });
   tokenState(false);
+  // A token saved from the account bar's dialog (account.js) refreshes this card too.
+  if (window.Account) window.Account.onChange = () => tokenState(false);
+  else document.addEventListener('DOMContentLoaded', () => { if (window.Account) window.Account.onChange = () => tokenState(false); });
   const pre = new URLSearchParams(location.search).get('add');
   if (pre) input.value = `https://www.start.gg/tournament/${pre}`;
   form.addEventListener('submit', async (ev) => {

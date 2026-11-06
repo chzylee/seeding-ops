@@ -76,6 +76,7 @@ const STATIC = {
   'app.css': [path.join(APP_DIR, 'public', 'app.css'), 'text/css; charset=utf-8'],
   'theme.js': [path.join(APP_DIR, 'public', 'theme.js'), JS],
   'busy.js': [path.join(APP_DIR, 'public', 'busy.js'), JS],
+  'account.js': [path.join(APP_DIR, 'public', 'account.js'), JS],
 };
 // The upload picker's game logos (config/games.json, copied from find-my-fgc), served as
 // /static/games/<file>: only files the config names, only image types, only under app/public/games.
@@ -154,7 +155,7 @@ function indexPage(outRoot, jobs, nowMs) {
     return `${i === firstDone ? DONE_NOTE : ''}<li class="st-${x.status} src-${esc(x.state.source)}" data-t="${esc(x.t)}" data-name="${esc(name)}" title="Right-click for options"><a href="/t/${esc(x.t)}">${esc(name)}</a> ${badge} <span class="pill st-${x.status}">${STATUS_LABEL[x.status]}</span>${busy}<div class="dim">${sub}</div></li>`;
   }).join('');
   return `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Seeding tournaments</title><link rel="stylesheet" href="/static/app.css"><script src="/static/theme.js"></script><script src="/static/busy.js"></script>
+<title>Seeding tournaments</title><link rel="stylesheet" href="/static/app.css"><script src="/static/theme.js"></script><script src="/static/busy.js"></script><script src="/static/account.js" defer></script>
 <body class="index"><main><h1>Tournaments <span id="connectLine" class="dim connect-line"></span></h1>
 <section id="connect" class="connect" aria-labelledby="connectHead" hidden>
 <h2 id="connectHead">Connect to start.gg</h2>
@@ -173,7 +174,7 @@ ${uploadForm()}
 }
 
 function notAddedPage(t) {
-  return `<!doctype html><html lang="en"><meta charset="utf-8"><title>Not added</title><link rel="stylesheet" href="/static/app.css"><script src="/static/theme.js"></script><script src="/static/busy.js"></script>
+  return `<!doctype html><html lang="en"><meta charset="utf-8"><title>Not added</title><link rel="stylesheet" href="/static/app.css"><script src="/static/theme.js"></script><script src="/static/busy.js"></script><script src="/static/account.js" defer></script>
 <body class="index"><main><h1>Not added yet</h1><p>There is no data for <code>${esc(t)}</code>. Pull data happens per tournament now.
 <a href="/?add=${encodeURIComponent(t)}">Add the tournament</a> to seed it.</p></main></body></html>`;
 }
@@ -207,14 +208,15 @@ function createApp(opts = {}) {
   const tokenCheck = { token: null, at: 0, result: null };
   async function tokenStatus({ force = false } = {}) {
     const { token, source } = tokenInfo();
-    if (!token) return { configured: false, source: null, ok: false, as: null, kind: 'missing', message: 'No start.gg token yet.', env_wins: false };
+    if (!token) return { configured: false, source: null, ok: false, as: null, prefix: null, image: null, slug: null, kind: 'missing', message: 'No start.gg token yet.', env_wins: false };
     const stale = tokenCheck.token !== token || force || nowMs() - tokenCheck.at > 10 * 60 * 1000;
     if (stale) {
       tokenCheck.result = await validateToken({ token, fetchImpl: queue.fetch, now: opts.now, sleep: opts.sleep });
       tokenCheck.token = token; tokenCheck.at = nowMs();
     }
     const r = tokenCheck.result;
-    return { configured: true, source, ok: !!r.ok, as: r.as || null, kind: r.ok ? null : r.kind, message: r.ok ? null : r.message, env_wins: source === 'environment' };
+    return { configured: true, source, ok: !!r.ok, as: r.as || null, prefix: r.prefix || null, image: r.image || null, slug: r.slug || null,
+      kind: r.ok ? null : r.kind, message: r.ok ? null : r.message, env_wins: source === 'environment' };
   }
   const tiersFile = opts.tiersFile; // undefined => data.js's own default (SEED_TIERS_FILE or registry/tiers.csv)
   const nowMs = () => (opts.now ? opts.now() : Date.now());

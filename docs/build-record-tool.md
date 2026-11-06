@@ -3475,3 +3475,24 @@ applications with scopes such as user.identity and tournament.manager; it needs 
 with start.gg (client id and secret, redirect URI) and, for a desktop app, a way to keep the secret out of
 the binary (a loopback redirect with PKCE if start.gg supports it, else a small hosted relay). That is a
 separate design; the token screen covers "provide an api key" today.
+
+---
+
+## Out-of-band: the account bar (orchestrating session, 2026-11-05)
+
+Noah: *"in the upper left, should show the user's username and profile icon to show who's signed in and
+give an option to change user"*; and the auth ruling: *"api key that is locally stored is fine … oauth
+tokens expire, and that becomes annoying esp for a tool that will only be used occasionally."* Recorded
+per standing rule (a). OAuth is declined, not a candidate any more.
+
+- `app/public/account.js` on every page: a slim bar at the top of the body with the start.gg profile
+  picture (or initials), the prefix and gamer tag, and **Change…**, which opens a small dialog to paste
+  another personal API token (same `POST /api/token` as the connect card; the card on the home page
+  stays for the no-token first launch and refreshes when the dialog saves). Not connected, or rejected,
+  reads so in the bar with **Connect…**. The theme switch sits inside the bar's height.
+- `lib/token.js validateToken` now asks `currentUser { id slug player { id gamerTag prefix } images(type:
+  "profile") { url } }` (only an https picture URL is kept); `GET /api/token` carries `prefix`, `image`,
+  `slug`. Verified against the real API: connected as enpicie with a profile picture, `user/aa9fcdcf`.
+- Checked in the browser pane on the Eclipse page: the bar is the body's first element, the picture
+  loads at 22 px, Change… opens the dialog with the password field focused, Cancel closes it. Suite
+  268/268/0/0 (the fake's CurrentUser carries a picture and prefix; the status assertions include them).

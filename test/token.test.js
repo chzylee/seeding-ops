@@ -57,7 +57,7 @@ test('validateToken: one CurrentUser request; a good token says whose it is, a b
   const world = buildWorld(Math.floor(Date.UTC(2026, 9, 12) / 1000));
   const fake = createFakeFetch(world);
   const ok = await validateToken({ token: 'good', fetchImpl: fake });
-  assert.deepStrictEqual(ok, { ok: true, as: 'TestTO', user_id: '424242', player_id: '777' });
+  assert.deepStrictEqual(ok, { ok: true, as: 'TestTO', prefix: 'FAKE', image: 'https://images.start.gg/fake/testto-profile.png', slug: 'user/testto00', user_id: '424242', player_id: '777' });
   const calls = fake.calls.length;
   const bad = await validateToken({ token: 'bad-token', fetchImpl: fake, sleep: async () => {} });
   assert.strictEqual(bad.ok, false);

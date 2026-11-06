@@ -282,7 +282,7 @@ function createFakeFetch(world, opts = {}) {
     // way start.gg rejects one; anything else belongs to the fake's test TO.
     if (op === 'CurrentUser') {
       if (init.headers.Authorization === 'Bearer bad-token') return jsonResponse(badTokenFixture.httpStatus, badTokenFixture.body);
-      return jsonResponse(200, { data: { currentUser: { id: 424242, player: { id: 777, gamerTag: 'TestTO' } } }, extensions: ext(2) });
+      return jsonResponse(200, { data: { currentUser: { id: 424242, slug: 'user/testto00', player: { id: 777, gamerTag: 'TestTO', prefix: 'FAKE' }, images: [{ url: 'https://images.start.gg/fake/testto-profile.png' }] } }, extensions: ext(2) });
     }
     if (op === 'UserBySlug') {
       if (opts.onUserBySlug) opts.onUserBySlug(v.slug);

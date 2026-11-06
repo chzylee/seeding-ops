@@ -25,7 +25,7 @@ test('connect: no token -> status says missing and the home page carries the con
   try {
     const app = createApp({ outRoot, envFile, fetchImpl: fake, sleep: async () => {} });
     let st = (await inject(app.handler, { url: '/api/token' })).json();
-    assert.deepStrictEqual(st, { configured: false, source: null, ok: false, as: null, kind: 'missing', message: 'No start.gg token yet.', env_wins: false });
+    assert.deepStrictEqual(st, { configured: false, source: null, ok: false, as: null, prefix: null, image: null, slug: null, kind: 'missing', message: 'No start.gg token yet.', env_wins: false });
     assert.strictEqual(fake.calls.length, 0, 'nothing is asked of start.gg without a token');
     const home = (await inject(app.handler, { url: '/' })).text;
     assert.match(home, /<section id="connect" class="connect"[^>]*hidden>/);
@@ -49,7 +49,7 @@ test('connect: no token -> status says missing and the home page carries the con
     assert.deepStrictEqual(good.json(), { ok: true, as: 'TestTO', saved: '.env', env_wins: false });
     assert.strictEqual(fs.readFileSync(envFile, 'utf8'), 'STARTGG_TOKEN=good-token-abc\n');
     st = (await inject(app.handler, { url: '/api/token' })).json();
-    assert.deepStrictEqual(st, { configured: true, source: '.env', ok: true, as: 'TestTO', kind: null, message: null, env_wins: false });
+    assert.deepStrictEqual(st, { configured: true, source: '.env', ok: true, as: 'TestTO', prefix: 'FAKE', image: 'https://images.start.gg/fake/testto-profile.png', slug: 'user/testto00', kind: null, message: null, env_wins: false }, 'the account bar gets the tag, prefix and profile picture');
     const calls = fake.calls.length;
     assert.strictEqual((await inject(app.handler, { url: '/api/token' })).status, 200);
     assert.strictEqual(fake.calls.length, calls, 'the check is cached; no request per page load');

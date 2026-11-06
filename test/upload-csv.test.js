@@ -182,3 +182,15 @@ test('upload: a first row with a blank second column is a malformed player row a
   }
   assert.deepStrictEqual(U.parseUploadCsv('Gamertag\nBeta,abcd1234\n').header_row, { line: 1, values: ['Gamertag', ''] });
 });
+
+// Audit #9: the fix above made "Gamertag," (a header row whose second cell is empty, as a spreadsheet
+// exports it) a malformed row. A column name in the first cell keeps it the header.
+test('upload: a header word with an empty second cell is still the header, never a malformed row', () => {
+  for (const first of ['Gamertag,', 'Name,', 'player name,', ' TAG ,', '"Gamer Tag",""', 'Players,,', 'gamer_tag,']) {
+    const r = U.parseUploadCsv(`${first}\nBeta,abcd1234\n`);
+    assert.strictEqual(r.header_row && r.header_row.line, 1, first);
+    assert.deepStrictEqual([r.malformed.length, r.rows.length], [0, 1], first);
+  }
+  // A player whose name only resembles a word is still a player missing a code.
+  assert.deepStrictEqual(U.parseUploadCsv('Tagger,\nBeta,abcd1234\n').malformed.map((m) => m.line), [1]);
+});

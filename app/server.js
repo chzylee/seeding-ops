@@ -210,18 +210,29 @@ function createApp(opts = {}) {
   const tokenInfo = opts.getToken ? () => ({ token: opts.getToken(), source: 'app' }) : () => loadToken({ envFile });
   const getToken = () => tokenInfo().token;
   // What the last check of the current token found; re-checked when the token changes, on demand, or
-  // after ten minutes. The value itself is never sent to the page.
-  const tokenCheck = { token: null, at: 0, result: null };
+  // when it is old: ten minutes for an answer (signed in, or rejected), thirty seconds when start.gg
+  // could not be reached or was rate limiting, so a blip is not remembered for ten minutes. Checks
+  // asked for while one is in flight share it (every page load asks). The value itself is never sent
+  // to the page.
+  const tokenCheck = { token: null, at: 0, result: null, pending: null, pendingToken: null };
+  const ANSWER_MS = 10 * 60 * 1000, TRANSIENT_MS = 30 * 1000;
   async function tokenStatus({ force = false } = {}) {
     const { token, source } = tokenInfo();
-    if (!token) return { configured: false, source: null, ok: false, as: null, prefix: null, image: null, slug: null, kind: 'missing', message: 'No start.gg token yet.', env_wins: false };
-    const stale = tokenCheck.token !== token || force || nowMs() - tokenCheck.at > 10 * 60 * 1000;
+    if (!token) return { configured: false, source: null, ok: false, state: 'missing', as: null, prefix: null, image: null, slug: null, kind: 'missing', message: 'No start.gg token yet.', env_wins: false };
+    const r0 = tokenCheck.result;
+    const maxAge = r0 && !r0.ok && r0.state === 'unreachable' ? TRANSIENT_MS : ANSWER_MS;
+    const stale = tokenCheck.token !== token || force || nowMs() - tokenCheck.at > maxAge;
     if (stale) {
-      tokenCheck.result = await validateToken({ token, fetchImpl: queue.fetch, now: opts.now, sleep: opts.sleep });
-      tokenCheck.token = token; tokenCheck.at = nowMs();
+      if (!tokenCheck.pending || tokenCheck.pendingToken !== token) {
+        tokenCheck.pendingToken = token;
+        tokenCheck.pending = validateToken({ token, fetchImpl: queue.fetch, now: opts.now, sleep: opts.sleep })
+          .then((res) => { tokenCheck.result = res; tokenCheck.token = token; tokenCheck.at = nowMs(); return res; })
+          .finally(() => { tokenCheck.pending = null; tokenCheck.pendingToken = null; });
+      }
+      await tokenCheck.pending;
     }
     const r = tokenCheck.result;
-    return { configured: true, source, ok: !!r.ok, as: r.as || null, prefix: r.prefix || null, image: r.image || null, slug: r.slug || null,
+    return { configured: true, source, ok: !!r.ok, state: r.ok ? 'ok' : (r.state || 'unreachable'), as: r.as || null, prefix: r.prefix || null, image: r.image || null, slug: r.slug || null,
       kind: r.ok ? null : r.kind, message: r.ok ? null : r.message, env_wins: source === 'environment' };
   }
   const tiersFile = opts.tiersFile; // undefined => data.js's own default (SEED_TIERS_FILE or registry/tiers.csv)
@@ -232,7 +243,7 @@ function createApp(opts = {}) {
   const jobs = new Jobs({ outRoot, getToken, queue, now: opts.now, sleep: opts.sleep, pull: opts.pull, pullSchedule: opts.pullSchedule, tiersFile });
   const client = () => {
     const token = getToken();
-    if (!token) throw bad(400, 'No start.gg token yet. Connect to start.gg at the top of the tournaments page.');
+    if (!token) throw bad(400, 'No start.gg token yet. Connect to start.gg with Connect… in the bar at the top of the page.');
     return sgg.createClient({ token, fetchImpl: queue.fetch, now: opts.now, sleep: opts.sleep });
   };
   const requireApp = (req) => { if (req.headers['x-seeding-app'] !== '1') throw bad(403, 'Missing X-Seeding-App header'); };
@@ -510,7 +521,13 @@ function createApp(opts = {}) {
       }
 
       if (p === '/api/token') {
-        if (method === 'GET') return json(res, 200, await tokenStatus({ force: url.searchParams.get('check') === '1' }));
+        if (method === 'GET') {
+          // ?check=1 forces a start.gg request, so it takes the app header like every other action:
+          // another site's page can't make the app spend the token's rate limit.
+          const force = url.searchParams.get('check') === '1';
+          if (force) requireApp(req);
+          return json(res, 200, await tokenStatus({ force }));
+        }
         if (method !== 'POST') return send(res, 405, 'Method not allowed');
         requireApp(req);
         const fields = await readBody(req);
@@ -527,7 +544,7 @@ function createApp(opts = {}) {
           return json(res, 200, { ok: true, as: r.as, saved: path.basename(envFile), env_wins: true, note: 'Saved to .env, but the STARTGG_TOKEN environment variable is set and wins. Unset it, or set it to this token.' });
         }
         saveToken({ envFile, token });
-        tokenCheck.token = token; tokenCheck.at = nowMs(); tokenCheck.result = r;
+        tokenCheck.token = token; tokenCheck.at = nowMs(); tokenCheck.result = { ...r, state: 'ok' };
         return json(res, 200, { ok: true, as: r.as, saved: path.basename(envFile), env_wins: false });
       }
       if (p === '/api/tournaments') {

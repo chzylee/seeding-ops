@@ -45,7 +45,7 @@ const http = require('node:http');
 const fs = require('node:fs');
 const path = require('node:path');
 const { spawn } = require('node:child_process');
-const { loadToken } = require('../lib/token');
+const { loadToken, saveToken, validateToken } = require('../lib/token');
 const pacing = require('../lib/pacing');
 const sgg = require('../lib/startgg');
 const pool = require('../lib/pool');
@@ -155,7 +155,13 @@ function indexPage(outRoot, jobs, nowMs) {
   }).join('');
   return `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Seeding tournaments</title><link rel="stylesheet" href="/static/app.css"><script src="/static/theme.js"></script><script src="/static/busy.js"></script>
-<body class="index"><main><h1>Tournaments</h1>
+<body class="index"><main><h1>Tournaments <span id="connectLine" class="dim connect-line"></span></h1>
+<section id="connect" class="connect" aria-labelledby="connectHead" hidden>
+<h2 id="connectHead">Connect to start.gg</h2>
+<p id="connectWhy" class="dim">This app reads results from start.gg with a personal API token of yours. Nothing is posted unless you ask it to.</p>
+<ol class="dim connect-steps"><li>Open <a href="https://start.gg/admin/profile/developer" target="_blank" rel="noopener">start.gg/admin/profile/developer</a> (sign in if asked).</li><li>Under <b>Personal Access Tokens</b>, create a token (any name) and copy it.</li><li>Paste it here. It is checked with one request, then saved to <code>.env</code> next to the app. It never leaves this computer except to start.gg.</li></ol>
+<form id="connectForm" class="connect-form"><input id="connectToken" type="password" autocomplete="off" spellcheck="false" placeholder="paste the token" required><button type="submit">Test and save</button><span id="connectMsg" class="status" role="status" aria-live="polite"></span></form>
+</section>
 <section class="add-section" aria-labelledby="addHead"><h2 id="addHead">Add a tournament</h2>
 <form id="add" class="add-t"><label for="addUrl" class="sr-only">start.gg tournament or event link</label>
 <input id="addUrl" name="url" placeholder="start.gg tournament or event link" autocomplete="off" spellcheck="false" required title="Adding makes one request to start.gg for the tournament's events; you pick the singles events to seed on its page.">
@@ -191,7 +197,25 @@ async function readBody(req) {
 
 function createApp(opts = {}) {
   const outRoot = opts.outRoot || path.join(ROOT, 'out');
-  const getToken = opts.getToken || (() => loadToken({ envFile: path.join(ROOT, '.env') }).token);
+  // The token: STARTGG_TOKEN in the environment, else <root>/.env, read on every use so a token saved
+  // from the app's connect screen takes effect at once (Noah, 2026-11-05: no restart).
+  const envFile = opts.envFile || path.join(ROOT, '.env');
+  const tokenInfo = opts.getToken ? () => ({ token: opts.getToken(), source: 'app' }) : () => loadToken({ envFile });
+  const getToken = () => tokenInfo().token;
+  // What the last check of the current token found; re-checked when the token changes, on demand, or
+  // after ten minutes. The value itself is never sent to the page.
+  const tokenCheck = { token: null, at: 0, result: null };
+  async function tokenStatus({ force = false } = {}) {
+    const { token, source } = tokenInfo();
+    if (!token) return { configured: false, source: null, ok: false, as: null, kind: 'missing', message: 'No start.gg token yet.', env_wins: false };
+    const stale = tokenCheck.token !== token || force || nowMs() - tokenCheck.at > 10 * 60 * 1000;
+    if (stale) {
+      tokenCheck.result = await validateToken({ token, fetchImpl: queue.fetch, now: opts.now, sleep: opts.sleep });
+      tokenCheck.token = token; tokenCheck.at = nowMs();
+    }
+    const r = tokenCheck.result;
+    return { configured: true, source, ok: !!r.ok, as: r.as || null, kind: r.ok ? null : r.kind, message: r.ok ? null : r.message, env_wins: source === 'environment' };
+  }
   const tiersFile = opts.tiersFile; // undefined => data.js's own default (SEED_TIERS_FILE or registry/tiers.csv)
   const nowMs = () => (opts.now ? opts.now() : Date.now());
   const nowDate = () => new Date(nowMs());
@@ -200,7 +224,7 @@ function createApp(opts = {}) {
   const jobs = new Jobs({ outRoot, getToken, queue, now: opts.now, sleep: opts.sleep, pull: opts.pull, pullSchedule: opts.pullSchedule, tiersFile });
   const client = () => {
     const token = getToken();
-    if (!token) throw bad(400, 'No STARTGG_TOKEN. Paste it into .env first, then restart the app.');
+    if (!token) throw bad(400, 'No start.gg token yet. Connect to start.gg at the top of the tournaments page.');
     return sgg.createClient({ token, fetchImpl: queue.fetch, now: opts.now, sleep: opts.sleep });
   };
   const requireApp = (req) => { if (req.headers['x-seeding-app'] !== '1') throw bad(403, 'Missing X-Seeding-App header'); };
@@ -477,6 +501,27 @@ function createApp(opts = {}) {
         return json(res, 202, createUpload(await readBody(req)));
       }
 
+      if (p === '/api/token') {
+        if (method === 'GET') return json(res, 200, await tokenStatus({ force: url.searchParams.get('check') === '1' }));
+        if (method !== 'POST') return send(res, 405, 'Method not allowed');
+        requireApp(req);
+        const fields = await readBody(req);
+        const token = String(fields.token || '').trim();
+        if (!token) throw bad(400, 'Paste the token first.');
+        if (/\s/.test(token)) throw bad(400, 'A token has no spaces; check it was copied whole.');
+        const r = await validateToken({ token, fetchImpl: queue.fetch, now: opts.now, sleep: opts.sleep });
+        if (!r.ok) throw bad(400, r.message, { kind: r.kind });
+        if (opts.getToken) throw bad(409, 'This app was started with a fixed token; it cannot be changed here.');
+        const cur = tokenInfo();
+        if (cur.source === 'environment' && cur.token !== token) {
+          // Saved to .env all the same, but the environment variable is what the app reads.
+          saveToken({ envFile, token });
+          return json(res, 200, { ok: true, as: r.as, saved: path.basename(envFile), env_wins: true, note: 'Saved to .env, but the STARTGG_TOKEN environment variable is set and wins. Unset it, or set it to this token.' });
+        }
+        saveToken({ envFile, token });
+        tokenCheck.token = token; tokenCheck.at = nowMs(); tokenCheck.result = r;
+        return json(res, 200, { ok: true, as: r.as, saved: path.basename(envFile), env_wins: false });
+      }
       if (p === '/api/tournaments') {
         if (method !== 'POST') return send(res, 405, 'Method not allowed');
         requireApp(req);

@@ -550,3 +550,14 @@ ul.events li[data-t]:focus-visible { outline: 2px solid var(--accent); outline-o
 .mini-modal.err .mini-fill { background: var(--err); }
 .mini-modal.err .spinner { border-color: var(--err); border-top-color: var(--err); animation: none; }
 .mini-modal.err .mini-head { color: var(--err); }
+
+/* ---- Connect to start.gg (the token screen on the home page, index.js) ---- */
+.connect-line { font-size: 13px; font-weight: 400; margin-left: var(--s-3); }
+section.connect { margin: var(--s-3) 0 var(--s-4); padding: var(--s-3) var(--s-4); border: 1px solid var(--accent); border-radius: var(--radius); background: var(--accent-weak); }
+section.connect h2 { margin: 0 0 var(--s-1); font-size: 15px; }
+section.connect p { margin: 0 0 var(--s-2); }
+section.connect ol.connect-steps { margin: 0 0 var(--s-2); padding-left: 20px; font-size: 13px; }
+section.connect ol.connect-steps li { margin: 2px 0; }
+section.connect .connect-form { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); }
+section.connect .connect-form input { flex: 1 1 320px; height: var(--ctl-h); padding: 0 var(--s-2); font: inherit; border: 1px solid var(--line-strong); border-radius: var(--radius); background: var(--cell); color: var(--fg); }
+section.connect .connect-form button { height: var(--ctl-h); padding: 0 var(--s-3); border: 1px solid var(--accent); background: var(--accent); color: var(--on-accent); border-radius: var(--radius); font: inherit; }

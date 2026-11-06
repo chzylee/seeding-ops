@@ -305,7 +305,7 @@ test('home page layout (Noah, mid-pass 2026-10-30): "Add a tournament" header, t
   makePool(w.outRoot, { t: 'c-done', events: [{ slug: 'e', game: { id: '1', name: 'G' }, start_at: '2026-09-01T00:00:00.000Z' }], players: [], startAt: '2026-09-01T00:00:00.000Z' });
   const html = (await inject(w.app.handler, { url: '/' })).text;
   const at = (s) => { const i = html.indexOf(s); assert.ok(i >= 0, `has ${s}`); return i; };
-  const order = [at('<h2 id="addHead">Add a tournament</h2>'), at('<form id="add"'), at('<input id="addUrl"'), at('<button type="submit">Add</button>'), at('</form>'),
+  const order = [at('<h2 id="addHead">Add a tournament</h2>'), at('<form id="add"'), at('<input id="addUrl"'), at('<button type="submit">Add</button>'), html.indexOf('</form>', at('<button type="submit">Add</button>')),
     at('<button type="button" id="uploadOpen">Import from CSV…</button>'), at('It builds its own page for one game.'), at('<ul class="events">')]; // Noah's shortened text and the modal button, 2026-10-30
   assert.deepStrictEqual([...order].sort((a, b) => a - b), order, 'top to bottom in that order');
   // The link field and Add share the one form (one row); the CSV import's description shows while folded.

@@ -9,6 +9,47 @@
   const form = document.getElementById('add');
   const input = document.getElementById('addUrl');
   const msg = document.getElementById('addMsg');
+
+  // ---- Connect to start.gg (Noah, 2026-11-05): the token screen, shown when there is no token or
+  // start.gg rejects the saved one; one line "connected as …" otherwise. The token never comes back
+  // from the server; the page only learns whether it works and whose it is.
+  const connect = document.getElementById('connect');
+  const connectLine = document.getElementById('connectLine');
+  const connectMsg = document.getElementById('connectMsg');
+  async function tokenState(check) {
+    let st = null;
+    try { st = await (await fetch(`/api/token${check ? '?check=1' : ''}`, { cache: 'no-store' })).json(); } catch { st = null; }
+    if (!st) { connectLine.textContent = 'start.gg: the app server did not answer.'; return; }
+    if (st.ok) {
+      connect.hidden = true;
+      connectLine.textContent = `start.gg: connected as ${st.as}`;
+      return;
+    }
+    connect.hidden = false;
+    connectLine.textContent = '';
+    document.getElementById('connectWhy').textContent = st.kind === 'missing'
+      ? 'This app reads results from start.gg with a personal API token of yours. Nothing is posted unless you ask it to.'
+      : st.kind === 'network' ? `start.gg could not be reached (${st.message}). Check the connection, or paste a token to try again.`
+      : `The saved token was rejected by start.gg (${st.message}). Paste a new one.`;
+    document.getElementById('connectToken').focus();
+  }
+  document.getElementById('connectForm').addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    const box = document.getElementById('connectToken');
+    const btn = ev.target.querySelector('button');
+    btn.disabled = true; connectMsg.classList.remove('err'); connectMsg.textContent = 'Checking with start.gg…';
+    let res, body;
+    try {
+      res = await fetch('/api/token', { method: 'POST', headers: { 'X-Seeding-App': '1', 'Content-Type': 'application/json' }, body: JSON.stringify({ token: box.value }) });
+      body = await res.json().catch(() => ({}));
+    } catch (err) { res = { ok: false }; body = { error: err.message }; }
+    btn.disabled = false;
+    if (!res.ok) { connectMsg.textContent = body.error || 'Could not save it.'; connectMsg.classList.add('err'); return; }
+    box.value = '';
+    connectMsg.textContent = `Connected as ${body.as}. Saved to ${body.saved}.${body.note ? ' ' + body.note : ''}`;
+    setTimeout(() => tokenState(false), body.env_wins ? 6000 : 1200);
+  });
+  tokenState(false);
   const pre = new URLSearchParams(location.search).get('add');
   if (pre) input.value = `https://www.start.gg/tournament/${pre}`;
   form.addEventListener('submit', async (ev) => {

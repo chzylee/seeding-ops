@@ -278,6 +278,12 @@ function createFakeFetch(world, opts = {}) {
     // ---- Build C (Amendment A1.3): a user by discriminator, for a CSV upload ----
     // Any world player with a linked user answers to user/<code>; world.extraUsers adds users with
     // no player profile ({ slug, id }). opts.userBySlugFail: a code whose lookup returns 503.
+    // Who the token belongs to (lib/token.js validateToken). A token of "bad-token" is rejected the
+    // way start.gg rejects one; anything else belongs to the fake's test TO.
+    if (op === 'CurrentUser') {
+      if (init.headers.Authorization === 'Bearer bad-token') return jsonResponse(badTokenFixture.httpStatus, badTokenFixture.body);
+      return jsonResponse(200, { data: { currentUser: { id: 424242, player: { id: 777, gamerTag: 'TestTO' } } }, extensions: ext(2) });
+    }
     if (op === 'UserBySlug') {
       if (opts.onUserBySlug) opts.onUserBySlug(v.slug);
       if (opts.userBySlugFail && v.slug === `user/${opts.userBySlugFail}`) return jsonResponse(503, { message: 'Service Unavailable' });

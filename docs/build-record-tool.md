@@ -3444,3 +3444,34 @@ that goes away after a few seconds."* Recorded per standing rule (a).
   Exporting 0 % → 100 % → Saving → Exported, hidden after 3 s. Tests: Seed column first and 1..N, `?order=`
   kept within a tier, Content-Length equals the body; the page source no longer references seeds.csv.
   README updated. Suite 264/264/0/0.
+
+---
+
+## Out-of-band: Connect to start.gg on first launch (orchestrating session, 2026-11-05)
+
+Noah: *"on launch if startgg api key is not set or is invalid, i need someone to either be able to oauth in
+or provide an api key."* Recorded per standing rule (a). Built the API-key half; OAuth is recorded as a
+candidate (below).
+
+- `GET /api/token` → `{ configured, source, ok, as, kind, message, env_wins }`: whether a token exists
+  (environment or `.env`), whether start.gg accepts it (one `currentUser` request, cached ten minutes per
+  token; `?check=1` re-asks), and whose it is. The value itself is never in any response.
+- `POST /api/token { token }` (app header required): checks it with one request, no retry; a rejected or
+  malformed token is refused and nothing is written; a good one is saved to `.env` beside the app
+  (`lib/token.js saveToken`: the STARTGG_TOKEN line replaced in place or appended, other lines kept,
+  temp file + rename) and is in use at once, since the app reads the token on every use. If the
+  STARTGG_TOKEN environment variable is set it still wins; the response says so.
+- Home page: a **Connect to start.gg** card above everything, shown when there is no token or start.gg
+  rejects the saved one (with the reason), with the three steps and a password field; otherwise one line,
+  "start.gg: connected as <tag>". Adding a tournament without a token points at the card.
+- The fake start.gg gained a `CurrentUser` op (`bad-token` is rejected like start.gg does). Tests:
+  lib/token.js save/merge/append and validation; the app's status, refusal, save, cache, re-check,
+  rejected-later; the token never in a response body. README updated. Suite 268/268/0/0.
+- Verified on the real app: status reads connected as enpicie, source environment (the STARTGG_TOKEN
+  variable is set on this machine, so `.env` edits would not take effect here until it is unset).
+
+**OAuth (candidate, not built):** model knowledge, unverified: start.gg offers OAuth 2 to registered
+applications with scopes such as user.identity and tournament.manager; it needs an application registered
+with start.gg (client id and secret, redirect URI) and, for a desktop app, a way to keep the secret out of
+the binary (a loopback redirect with PKCE if start.gg supports it, else a small hosted relay). That is a
+separate design; the token screen covers "provide an api key" today.

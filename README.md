@@ -15,7 +15,10 @@
 
 Leave the window open while you use it; close it (or Ctrl+C) to stop. It only listens on your own
 machine. Page files (`app/public/`) are read fresh on every load, so a browser reload picks up their
-changes in any mode. The token comes from `.env` (see *Setup* below).
+changes in any mode. **First launch:** the home page asks you to connect to start.gg: paste a personal
+API token (from <https://start.gg/admin/profile/developer>), it is checked with one request and saved
+to `.env` next to the app, and it works at once. The same screen comes back if start.gg ever rejects
+the saved token. (See *Setup* below for the file itself.)
 
 **Add a tournament.** The home page lists your tournaments: live ones first, then done, then
 archived (a short line above the first done one says done is automatic once the last seeded event's date has passed). Paste a start.gg tournament link, or any of its event links, into *Add a tournament*. The
@@ -187,9 +190,10 @@ shows two more buttons:
 **One-time setup**
 
 1. Install **Node 24+** from <https://nodejs.org>.
-2. Open `.env` in this folder and paste your start.gg token after `STARTGG_TOKEN=`, then save.
-   Get a token at <https://start.gg/admin/profile/developer>. If you skip this, the launcher
-   opens `.env` in Notepad for you.
+2. A start.gg token: either connect from the app's home page (it saves the token to `.env` for you),
+   or open `.env` in this folder and paste it after `STARTGG_TOKEN=`. Get a token at
+   <https://start.gg/admin/profile/developer>. If you skip this, the launcher opens `.env` in Notepad
+   for you.
 
 **Every time**
 
@@ -230,8 +234,9 @@ The binding specs are [`docs/design-tool.md`](docs/design-tool.md) (increment 3,
 ## Setup
 
 1. **Node 24 or newer.** Check with `node --version`. There are no packages to install.
-2. **Paste your start.gg token into `.env`.** The `.env` file in this folder already has an empty
-   `STARTGG_TOKEN=` line. Paste your token right after the `=` and save. If the file isn't
+2. **A start.gg token.** The easy way: start the app and use **Connect to start.gg** on its home
+   page; it checks the token and writes `.env` for you. By hand: the `.env` file in this folder has
+   an empty `STARTGG_TOKEN=` line; paste your token right after the `=` and save. If the file isn't
    there, copy `.env.example` to `.env` first.
    - Get a token at <https://start.gg/admin/profile/developer> (Personal Access Tokens).
    - `.env` is gitignored. The tool only reads it. It never prints the token, logs it or

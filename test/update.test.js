@@ -72,6 +72,23 @@ test('update: download takes only this repo\'s release links, needs a key and a 
   assert.ok(fs.readFileSync(out).equals(file));
 });
 
+// Audit #5: the link check compared the raw string's prefix, so ".." walked out of the repository.
+test('update: only this repository\'s release downloads pass the link check, however the path is spelled', () => {
+  const base = `https://github.com/${REPO}/releases/download`;
+  assert.strictEqual(U.allowedUrl(`${base}/v0.3.0/Seeding-Ops-windows-setup.exe`, REPO), true);
+  for (const bad of [
+    `${base}/../../../other/repo/releases/download/v1/x.exe`,
+    `${base}/%2e%2e/%2e%2e/%2e%2e/other/repo/releases/download/v1/x.exe`,
+    `${base}\\..\\..\\..\\other\\x.exe`,
+    `http://github.com/${REPO}/releases/download/v1/x.exe`,
+    `https://github.com.evil.example/${REPO}/releases/download/v1/x.exe`,
+    `https://user@github.com/${REPO}/releases/download/v1/x.exe`,
+    `https://github.com:8443/${REPO}/releases/download/v1/x.exe`,
+    `https://github.com/${REPO}/releases/latest`,
+    'not a url',
+  ]) assert.strictEqual(U.allowedUrl(bad, REPO), false, bad);
+});
+
 test('update: the installer runs detached with the NSIS update flags (passive, update mode, restart)', () => {
   const calls = [];
   const r = U.runInstaller('C:\\tmp\\setup.exe', { spawnImpl: (file, args, opts) => { calls.push({ file, args, opts }); return { unref() { calls.push('unref'); } }; } });

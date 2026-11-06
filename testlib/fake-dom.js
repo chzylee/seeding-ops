@@ -50,7 +50,7 @@ function makeEl(tag = 'div', { id = null, attrs = {}, dataset = {} } = {}) {
 // The ids (and their data-* attributes) in a page the server rendered, and the game picker's options.
 function elementsFromHtml(html) {
   const byId = new Map();
-  const attrsOf = (s) => Object.fromEntries([...s.matchAll(/([a-z-]+)="([^"]*)"/gi)].map((m) => [m[1], m[2]]).concat([...s.matchAll(/\s(hidden|required)(?=[\s>])/g)].map((m) => [m[1], ''])));
+  const attrsOf = (s) => Object.fromEntries([...s.matchAll(/([a-z-]+)="([^"]*)"/gi)].map((m) => [m[1], m[2]]).concat([...s.matchAll(/\s(hidden|required)(?=[\s>]|$)/g)].map((m) => [m[1], ''])));
   for (const m of String(html).matchAll(/<([a-z0-9]+)\b([^>]*\bid="([^"]+)"[^>]*)>/gi)) {
     const attrs = attrsOf(m[2]);
     const dataset = Object.fromEntries(Object.entries(attrs).filter(([k]) => k.startsWith('data-')).map(([k, v]) => [k.slice(5).replace(/-([a-z])/g, (_, c) => c.toUpperCase()), v]));

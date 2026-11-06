@@ -144,6 +144,11 @@ class Jobs {
     return { started: true, job };
   }
 
+  // Anything running or queued, any tournament (an update restarts the app, which would cut it off).
+  busyAnywhere() {
+    return !!this.current || this.waiting.length > 0 || [...this.schedules.values()].some((s) => s.running);
+  }
+
   busyWith(t) {
     const s = this.schedules.get(t);
     return (this.current && this.current.t === t) || (s && s.running);

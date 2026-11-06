@@ -54,6 +54,7 @@ const push = require('../lib/push');
 const { readSchedule } = require('../lib/schedule-pull');
 const U = require('../lib/upload');
 const majorsConfig = require('../lib/view/majors');
+const update = require('../lib/update');
 const { Jobs } = require('./jobs');
 const { createQueue } = require('./queue');
 
@@ -80,6 +81,7 @@ const STATIC = {
   'theme.js': [path.join(APP_DIR, 'public', 'theme.js'), JS],
   'busy.js': [path.join(APP_DIR, 'public', 'busy.js'), JS],
   'account.js': [path.join(APP_DIR, 'public', 'account.js'), JS],
+  'update.js': [path.join(APP_DIR, 'public', 'update.js'), JS],
 };
 // The upload picker's game logos (config/games.json, copied from find-my-fgc), served as
 // /static/games/<file>: only files the config names, only image types, only under app/public/games.
@@ -166,8 +168,9 @@ function indexPage(outRoot, jobs, nowMs) {
 <button type="submit">Add</button><span id="addMsg" class="status" role="status" aria-live="polite"></span></form>
 ${uploadForm()}
 </section>
-<ul class="events">${items || '<li class="dim">No tournaments yet. Add one above.</li>'}</ul></main>
-<script src="/static/index.js"></script></body></html>`;
+<ul class="events">${items || '<li class="dim">No tournaments yet. Add one above.</li>'}</ul>
+<footer class="app-version" aria-label="Version and updates"><span id="appVersion" class="dim">Seeding Ops ${esc(update.currentVersion(ROOT))}</span><button type="button" id="updateCheck">Check for updates</button><button type="button" id="updateInstall" class="primary" hidden>Install</button><a id="updateLink" href="#" target="_blank" rel="noopener" hidden>Release page</a><span id="updateMsg" class="status" role="status" aria-live="polite"></span></footer></main>
+<script src="/static/index.js"></script><script src="/static/update.js"></script></body></html>`;
 }
 
 function notAddedPage(t) {
@@ -247,6 +250,61 @@ function createApp(opts = {}) {
     return sgg.createClient({ token, fetchImpl: queue.fetch, now: opts.now, sleep: opts.sleep });
   };
   const requireApp = (req) => { if (req.headers['x-seeding-app'] !== '1') throw bad(403, 'Missing X-Seeding-App header'); };
+
+  // ---- Check for updates (lib/update.js; Noah, 2026-11-06) ----
+  // opts.update injects the network, the installer launch and the exit for tests.
+  const up = opts.update || {};
+  const updateConfig = () => ({ ...update.readConfig(ROOT), ...(up.config || {}) });
+  const installedCopy = () => (up.installed != null ? up.installed : process.env.SEEDING_INSTALLED === '1');
+  let updating = null;   // the version being installed, once an install has started
+  function updateStatus() {
+    const config = updateConfig();
+    const current = up.current || update.currentVersion(ROOT);
+    const platform = up.platform || process.platform;
+    let reason = null;
+    if (!installedCopy()) reason = 'This copy is not the installed app (it runs from a folder: a checkout or the portable ZIP). Update a checkout with git pull; replace a portable copy with a new download.';
+    else if (platform !== 'win32') reason = 'Installing updates from the app is Windows only; download the new version from the release page.';
+    else if (!config.pubkey) reason = 'This build has no update signing key, so it cannot check that an update is genuine. Download the installer from the release page instead.';
+    return { current, installed: installedCopy(), can_install: !reason, reason, releases_page: config.releasesPage, updating };
+  }
+  async function checkForUpdate() {
+    const st = updateStatus();
+    try {
+      const r = await update.check({ fetchImpl: up.fetchImpl || globalThis.fetch, config: updateConfig(), current: st.current });
+      return { ...st, ok: true, latest: r.latest, available: r.available, notes: r.notes, pub_date: r.pub_date };
+    } catch (err) {
+      return { ...st, ok: false, kind: err.kind || 'error', error: err.message };
+    }
+  }
+  async function installUpdate(fields) {
+    const st = updateStatus();
+    if (updating) throw bad(409, `Version ${updating} is already being installed.`);
+    if (!st.can_install) throw bad(409, st.reason);
+    if (jobs.busyAnywhere()) throw bad(409, 'A pull, schedule pull or archive is running or queued. Wait for it to finish (or stop it), then update; the update restarts the app.');
+    const config = updateConfig();
+    // The client's version is a confirmation, not an instruction: what is installed is what latest.json says now.
+    let info;
+    try { info = await update.check({ fetchImpl: up.fetchImpl || globalThis.fetch, config, current: st.current }); } catch (err) { throw bad(502, err.message, { kind: err.kind }); }
+    if (!info.available) throw bad(409, `Already up to date (${st.current}).`);
+    if (fields.version && String(fields.version) !== info.latest) throw bad(409, `The latest version is now ${info.latest}, not ${fields.version}. Check again.`);
+    updating = info.latest;
+    let file;
+    try {
+      file = await update.download({ fetchImpl: up.fetchImpl || globalThis.fetch, info, config, tmpDir: up.tmpDir });
+      update.runInstaller(file, { spawnImpl: up.spawnImpl });
+    } catch (err) {
+      updating = null;
+      throw bad(err.kind === 'unreachable' ? 502 : 409, err.message, { kind: err.kind });
+    }
+    // Leave the way clear: the installer replaces both exes, so neither may still be running. In the
+    // desktop shell (SEEDING_EMBEDDED) the shell is this process's parent; it is ended too. A second
+    // gives the response time to reach the page first.
+    (up.exit || (() => setTimeout(() => {
+      if (process.env.SEEDING_EMBEDDED === '1') { try { process.kill(process.ppid); } catch { /* already gone */ } }
+      process.exit(0);
+    }, 1000)))();
+    return { ok: true, installing: info.latest, file: path.basename(file) };
+  }
 
   function tournamentInfo(t) {
     const tDir = pool.tournamentDir(outRoot, t);
@@ -546,6 +604,21 @@ function createApp(opts = {}) {
         saveToken({ envFile, token });
         tokenCheck.token = token; tokenCheck.at = nowMs(); tokenCheck.result = { ...r, state: 'ok' };
         return json(res, 200, { ok: true, as: r.as, saved: path.basename(envFile), env_wins: false });
+      }
+      if (p === '/api/update') {
+        if (method !== 'GET') return send(res, 405, 'Method not allowed');
+        return json(res, 200, updateStatus());
+      }
+      if (p === '/api/update/check') {
+        if (method !== 'POST') return send(res, 405, 'Method not allowed');
+        requireApp(req);   // it reaches GitHub
+        await readBody(req);
+        return json(res, 200, await checkForUpdate());
+      }
+      if (p === '/api/update/install') {
+        if (method !== 'POST') return send(res, 405, 'Method not allowed');
+        requireApp(req);
+        return json(res, 202, await installUpdate(await readBody(req)));
       }
       if (p === '/api/tournaments') {
         if (method !== 'POST') return send(res, 405, 'Method not allowed');

@@ -295,18 +295,20 @@ function createApp(opts = {}) {
     let file;
     try {
       file = await update.download({ fetchImpl: up.fetchImpl || globalThis.fetch, info, config, tmpDir: up.tmpDir });
-      update.runInstaller(file, { spawnImpl: up.spawnImpl });
+      // A launcher that starts the installer after update.LAUNCH_DELAY_S; a failure to start it is
+      // answered here, with the server still up (audit #3).
+      await update.runInstaller(file, { spawnImpl: up.spawnImpl, exists: up.exists });
     } catch (err) {
       updating = null;
       throw bad(err.kind === 'unreachable' ? 502 : 409, err.message, { kind: err.kind });
     }
-    // Leave the way clear: the installer replaces both exes, so neither may still be running. In the
-    // desktop shell (SEEDING_EMBEDDED) the shell is this process's parent; it is ended too. A second
-    // gives the response time to reach the page first.
+    // Leave the way clear: the installer replaces both exes, so neither may still be running when it
+    // starts (audit #7). In the desktop shell (SEEDING_EMBEDDED) the shell is this process's parent;
+    // it is ended too. Half a second lets the response reach the page; the launcher waits longer.
     (up.exit || (() => setTimeout(() => {
       if (process.env.SEEDING_EMBEDDED === '1') { try { process.kill(process.ppid); } catch { /* already gone */ } }
       process.exit(0);
-    }, 1000)))();
+    }, 500)))();
     return { ok: true, installing: info.latest, file: path.basename(file) };
   }
 
@@ -741,7 +743,7 @@ function createApp(opts = {}) {
     } catch (err) {
       // start.gg's errors first: a StartggError's .status is start.gg's HTTP status, not ours.
       if (err instanceof sgg.StartggError) return json(res, err.kind === 'event-not-found' ? 404 : 502, { error: err.kind === 'bad-token' ? 'start.gg rejected the token.' : err.message });
-      if (err && err.status) return json(res, err.status, { error: err.message, ...(err.failure ? { failure: err.failure } : {}) });
+      if (err && err.status) return json(res, err.status, { error: err.message, ...(err.failure ? { failure: err.failure } : {}), ...(err.kind ? { kind: err.kind } : {}) });
       return send(res, 500, `Server error: ${err && err.message}`);
     }
   }

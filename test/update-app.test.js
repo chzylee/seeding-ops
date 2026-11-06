@@ -32,14 +32,23 @@ function github({ version = '0.3.0', signer, signature, installer = INSTALLER } 
   return { fetchImpl, calls };
 }
 
-function makeApp({ installed = true, signer = makeSigner(), gh, current = '0.2.0' } = {}) {
+const { EventEmitter } = require('node:events');
+function makeApp({ installed = true, signer = makeSigner(), gh, current = '0.2.0', spawnOutcome = 'spawn' } = {}) {
   const spawned = [], exits = [];
   const tmpDir = tmp('seeding-upd-dl-');
   const g = gh || github({ signer });
+  // The launcher: a fake child that emits 'spawn', or 'error' with the given code.
+  const spawnImpl = (cmd, args, opts) => {
+    const script = args[args.length - 1];
+    spawned.push({ cmd, args, opts, file: (/-FilePath '((?:[^']|'')+)'/.exec(script) || [])[1] });
+    const c = new EventEmitter(); c.unref = () => {};
+    process.nextTick(() => (spawnOutcome === 'spawn' ? c.emit('spawn') : c.emit('error', Object.assign(new Error('x'), { code: spawnOutcome }))));
+    return c;
+  };
   const app = createApp({
     outRoot: tmp('seeding-upd-'), getToken: () => 't', fetchImpl: async () => { throw new Error('offline'); },
     update: { installed, current, platform: 'win32', config: { repo: REPO, endpoint: `https://github.com/${REPO}/releases/latest/download/latest.json`, pubkey: signer ? signer.pubkey : '', releasesPage: `https://github.com/${REPO}/releases/latest` },
-      fetchImpl: g.fetchImpl, tmpDir, spawnImpl: (file, args, opts) => { spawned.push({ file, args, opts }); return { unref() {} }; }, exit: () => exits.push(1) },
+      fetchImpl: g.fetchImpl, tmpDir, spawnImpl, exit: () => exits.push(1) },
   });
   return { app, spawned, exits, tmpDir, gh: g };
 }
@@ -64,13 +73,29 @@ test('update routes: install downloads, checks the signature, starts the install
   assert.strictEqual(r.status, 202, r.text);
   assert.deepStrictEqual(r.json(), { ok: true, installing: '0.3.0', file: 'Seeding-Ops-0.3.0-setup.exe' });
   assert.strictEqual(spawned.length, 1);
+  assert.strictEqual(spawned[0].cmd, 'powershell.exe', 'started through the delayed launcher');
   assert.strictEqual(spawned[0].file, path.join(tmpDir, 'Seeding-Ops-0.3.0-setup.exe'));
-  assert.deepStrictEqual(spawned[0].args, ['/P', '/UPDATE', '/R']);
+  assert.match(spawned[0].args[spawned[0].args.length - 1], /^Start-Sleep -Seconds \d+; Start-Process .* -ArgumentList '\/P','\/UPDATE','\/R'$/);
   assert.ok(fs.readFileSync(spawned[0].file).equals(INSTALLER));
   assert.strictEqual(exits.length, 1, 'the app closes so the installer can replace it');
   const again = await post(app, '/api/update/install', { version: '0.3.0' });
   assert.strictEqual(again.status, 409);
   assert.match(again.json().error, /already being installed/);
+});
+
+// Audit #3: a failed launch crashed the server (an unhandled 'error' event on the child). Now the
+// page is told why, the server stays up, nothing closes, and Install can be pressed again.
+test('update routes: when the installer cannot be started the server stays up, says why, closes nothing, and allows a retry', async () => {
+  const { app, spawned, exits } = makeApp({ spawnOutcome: 'ENOENT' });
+  const r = await post(app, '/api/update/install', { version: '0.3.0' });
+  assert.strictEqual(r.status, 409, r.text);
+  assert.strictEqual(r.json().kind, 'launch-failed');
+  assert.match(r.json().error, /could not be started: ENOENT/);
+  assert.strictEqual(exits.length, 0, 'the app does not close');
+  assert.strictEqual((await inject(app.handler, { url: '/api/update' })).status, 200, 'the server still answers');
+  const again = await post(app, '/api/update/install', { version: '0.3.0' });
+  assert.strictEqual(again.json().kind, 'launch-failed', 'not "already being installed": a retry is allowed');
+  assert.strictEqual(spawned.length, 2);
 });
 
 test('update routes: a bad signature, a missing key, a checkout, a running job or a stale version installs nothing and closes nothing', async () => {

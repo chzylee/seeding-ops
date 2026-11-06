@@ -89,13 +89,42 @@ test('update: only this repository\'s release downloads pass the link check, how
   ]) assert.strictEqual(U.allowedUrl(bad, REPO), false, bad);
 });
 
-test('update: the installer runs detached with the NSIS update flags (passive, update mode, restart)', () => {
+const { EventEmitter } = require('node:events');
+// A fake child process that emits what Node and Bun emit (both checked: 'spawn' for a real exe,
+// 'error' ENOENT for a missing one, and the process lives on).
+const fakeSpawn = (calls, outcome = 'spawn') => (cmd, args, opts) => {
+  calls.push({ cmd, args, opts });
+  const c = new EventEmitter();
+  c.unref = () => calls.push('unref');
+  process.nextTick(() => (outcome === 'spawn' ? c.emit('spawn') : c.emit('error', Object.assign(new Error('spawn failed'), { code: outcome }))));
+  return c;
+};
+
+// Audit #7: the installer must start after this server (seeding-server.exe) has exited, or NSIS cannot
+// overwrite it. A hidden, detached PowerShell waits, then starts it with the update flags.
+test('update: the installer is started by a detached launcher after a delay, with the NSIS update flags', async () => {
   const calls = [];
-  const r = U.runInstaller('C:\\tmp\\setup.exe', { spawnImpl: (file, args, opts) => { calls.push({ file, args, opts }); return { unref() { calls.push('unref'); } }; } });
+  const file = "C:\\Users\\O'Brien\\AppData\\Local\\Temp\\Seeding-Ops-0.3.0-setup.exe";
+  const r = await U.runInstaller(file, { spawnImpl: fakeSpawn(calls), exists: () => true });
   assert.deepStrictEqual(r.args, ['/P', '/UPDATE', '/R']);
-  assert.strictEqual(calls[0].file, 'C:\\tmp\\setup.exe');
+  assert.strictEqual(calls[0].cmd, 'powershell.exe');
   assert.strictEqual(calls[0].opts.detached, true);
+  assert.strictEqual(calls[0].opts.windowsHide, true);
+  const script = calls[0].args[calls[0].args.length - 1];
+  assert.strictEqual(script, `Start-Sleep -Seconds ${U.LAUNCH_DELAY_S}; Start-Process -FilePath 'C:\\Users\\O''Brien\\AppData\\Local\\Temp\\Seeding-Ops-0.3.0-setup.exe' -ArgumentList '/P','/UPDATE','/R'`, 'the path is quoted for PowerShell, apostrophe doubled');
+  assert.ok(U.LAUNCH_DELAY_S >= 2, 'long enough for the server to answer and exit first');
   assert.strictEqual(calls[1], 'unref');
+});
+
+// Audit #3: a launch that fails (no launcher, or the downloaded exe removed by antivirus) used to be an
+// unhandled 'error' event: the server crashed with no message. Now it is a rejection the server answers.
+test('update: a launcher that cannot start, or an installer that is gone, rejects (kind launch-failed) instead of crashing', async () => {
+  const calls = [];
+  await assert.rejects(U.runInstaller('C:\\tmp\\setup.exe', { spawnImpl: fakeSpawn(calls, 'ENOENT'), exists: () => true }),
+    (e) => e.kind === 'launch-failed' && /could not be started: ENOENT/.test(e.message));
+  await assert.rejects(U.runInstaller('C:\\tmp\\gone.exe', { spawnImpl: fakeSpawn(calls), exists: () => false }),
+    (e) => e.kind === 'launch-failed' && /antivirus/.test(e.message));
+  await assert.rejects(U.runInstaller('C:\\tmp\\setup.exe', { spawnImpl: () => { throw Object.assign(new Error('x'), { code: 'EACCES' }); }, exists: () => true }), (e) => e.kind === 'launch-failed');
 });
 
 test('update: config/updater.json names a repo; the app\'s version is package.json\'s, and package.json, tauri.conf.json and Cargo.toml agree', () => {

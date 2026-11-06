@@ -800,7 +800,7 @@ function main(argv = process.argv.slice(2)) {
   const port = resolvePort(portArg != null ? portArg : process.env.PORT);
   const outRoot = arg('--out') ? path.resolve(arg('--out')) : path.join(DATA_ROOT, 'out');
   // An update that was started last time but did not happen becomes a home-page notice (lib/update.js).
-  try { update.settlePending({ dataRoot: DATA_ROOT, current: update.currentVersion(ROOT), addNotice: dataDir.addNotice }); } catch (err) { console.log(`  pending update: ${err.message}`); }
+  try { update.settlePending({ dataRoot: DATA_ROOT, current: update.currentVersion(ROOT), addNotice: dataDir.addNotice, readNotices: dataDir.readNotices, dismissNotice: dataDir.dismissNotice }); } catch (err) { console.log(`  pending update: ${err.message}`); }
   const app = createApp({ outRoot });
   const server = http.createServer(app.handler);
   const url = `http://${HOST}:${port}/`;

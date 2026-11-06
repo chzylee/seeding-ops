@@ -452,8 +452,9 @@ step (the same mode the button uses):
    tournaments and key to the data folder by itself. Keep the Desktop backup until you have checked
    your tiers are there.
 
-If the line stops because there is no tiers table to copy, the table was already lost, so there is
-nothing more to lose: run the installer by double-clicking it.
+If the line stops because there is no tiers table to copy, do **not** double-click the installer: its
+default uninstalls first, which deletes a tiers table kept anywhere else. In the same PowerShell window,
+type `& $exe /P /UPDATE /R` instead; update mode never uninstalls.
 
 If the tiers come back empty anyway (the home page warns when it looks that way), close the app and
 paste this line. It copies the **largest** `seeding-ops-tiers-backup-*.csv` on your Desktop (the one

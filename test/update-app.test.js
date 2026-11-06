@@ -116,6 +116,23 @@ test('update routes: the app writes a pending-update marker before closing; the 
   assert.strictEqual(D.readNotices(ok)[0].link, undefined);
 });
 
+// Final audit, #2: the "did not start" notice outlived a later successful update.
+test('update routes: a "did not start" notice is dropped on the first launch that has reached its version, and kept before then', () => {
+  const U = require('../lib/update');
+  const D = require('../lib/data-dir');
+  const root = tmp('seeding-upd-stale-');
+  const N = { addNotice: D.addNotice, readNotices: D.readNotices, dismissNotice: D.dismissNotice };
+  U.writePending(root, { from: '0.2.0', to: '0.3.0', releasesPage: 'https://github.com/x/y/releases/latest' });
+  assert.strictEqual(U.settlePending({ dataRoot: root, current: '0.2.0', ...N }), 'not-started');
+  assert.deepStrictEqual(D.readNotices(root).map((n) => [n.id, n.to]), [['update-not-started', '0.3.0']]);
+  // Still behind: the notice stays.
+  assert.strictEqual(U.settlePending({ dataRoot: root, current: '0.2.0', ...N }), 'none');
+  assert.strictEqual(D.readNotices(root).length, 1);
+  // Installed by hand from the release page: the next launch is 0.3.0 and the notice goes.
+  assert.strictEqual(U.settlePending({ dataRoot: root, current: '0.3.0', ...N }), 'none');
+  assert.deepStrictEqual(D.readNotices(root), []);
+});
+
 test('update routes: a failed launch writes no pending marker', async () => {
   const U = require('../lib/update');
   const { app, dataRoot } = makeApp({ spawnOutcome: 'ENOENT' });

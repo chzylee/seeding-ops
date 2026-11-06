@@ -255,8 +255,10 @@ jobs:
           3. The app opens by itself and moves your tiers, tournaments and start.gg key to its data
              folder. Keep the Desktop backup until you've checked your tiers are there.
 
-          If the line stops because there is no tiers table to copy, it was already lost and there is
-          nothing more to lose: run the installer by double-clicking it.
+          If the line stops because there is no tiers table to copy, do NOT double-click the installer
+          (its default uninstalls first and deletes a tiers table kept anywhere else). In the same
+          PowerShell window, type this instead; update mode never uninstalls:
+          & $exe /P /UPDATE /R
           If your tiers are missing afterwards (the home page warns you), close the app and paste this
           line; it restores the largest seeding-ops-tiers-backup-*.csv on your Desktop:
 

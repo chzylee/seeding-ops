@@ -20,7 +20,7 @@
 #
 # Updates are signed. With the TAURI_SIGNING_PRIVATE_KEY secret (and
 # TAURI_SIGNING_PRIVATE_KEY_PASSWORD) set, the installer is signed and the
-# release carries Seeding-Ops-windows-setup.exe, its .sig and latest.json.
+# release carries Seeding-Ops-<version>-windows-setup.exe, its .sig and latest.json.
 # Publishing REFUSES (scripts/release-check.js) when config/updater.json has
 # no pubkey (checked before the build), when there is no signature, or when the
 # signature does not verify against that pubkey: each would ship a version that
@@ -175,32 +175,36 @@ jobs:
           name: seeding-ops-windows-portable-zip
           path: dist/Seeding-Ops-windows.zip
 
-      # The installer under its stable name, signed for the updater when the key is there. The
-      # signature is minisign, from the Tauri CLI (a devDependency), which is the format lib/update.js
-      # verifies against config/updater.json's public key. No key: a warning, no .sig, no latest.json.
+      # The installer under its versioned name, Seeding-Ops-<version>-windows-setup.exe (audit round 2
+      # #1: 0.1.0 was published as Seeding-Ops-windows-setup.exe, so a fixed name let a stale 0.1.0
+      # download stand in for the new one), signed for the updater when the key is there. The signature
+      # is minisign, from the Tauri CLI (a devDependency), which is the format lib/update.js verifies
+      # against config/updater.json's public key. No key: a warning, no .sig (publishing then refuses).
       - name: Sign the installer for the updater
         if: matrix.platform == 'windows-latest'
         shell: bash
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          VERSION: ${{ steps.ver.outputs.version }}
         run: |
           set -eu
           mkdir -p dist
+          ASSET="Seeding-Ops-${VERSION}-windows-setup.exe"
           INSTALLER=$(ls src-tauri/target/${{ matrix.target }}/release/bundle/nsis/*-setup.exe | head -1)
-          cp "$INSTALLER" dist/Seeding-Ops-windows-setup.exe
+          cp "$INSTALLER" "dist/$ASSET"
           if [ -z "${TAURI_SIGNING_PRIVATE_KEY:-}" ]; then
             echo "::warning::No TAURI_SIGNING_PRIVATE_KEY secret: this installer is not signed. Fine for a test build; publishing refuses an unsigned installer (README, Desktop app > Updates)."
             exit 0
           fi
-          npx tauri signer sign --private-key "$TAURI_SIGNING_PRIVATE_KEY" --password "${TAURI_SIGNING_PRIVATE_KEY_PASSWORD:-}" dist/Seeding-Ops-windows-setup.exe
-          test -s dist/Seeding-Ops-windows-setup.exe.sig
+          npx tauri signer sign --private-key "$TAURI_SIGNING_PRIVATE_KEY" --password "${TAURI_SIGNING_PRIVATE_KEY_PASSWORD:-}" "dist/$ASSET"
+          test -s "dist/$ASSET.sig"
 
       - uses: actions/upload-artifact@v4
         if: matrix.platform == 'windows-latest'
         with:
           name: seeding-ops-windows-installer-signed
-          path: dist/Seeding-Ops-windows-setup.exe*
+          path: dist/Seeding-Ops-*-windows-setup.exe*
           if-no-files-found: warn
 
       # One publish path for both triggers, always tagged v<version>, and marked Latest: the app's
@@ -216,15 +220,18 @@ jobs:
         run: |
           set -eu
           TAG="v${VERSION}"
-          echo "publishing $TAG"
+          ASSET="Seeding-Ops-${VERSION}-windows-setup.exe"
+          echo "publishing $TAG ($ASSET)"
           # Nothing is published unless the installer's signature verifies against the pubkey committed in
           # config/updater.json, with the app's own check (audit #1). Unsigned is refused too, so a release
           # marked Latest always carries latest.json (audit #10).
-          node scripts/release-check.js --file dist/Seeding-Ops-windows-setup.exe --sig dist/Seeding-Ops-windows-setup.exe.sig
-          node scripts/updater-manifest.js --version "$VERSION" --repo "$GITHUB_REPOSITORY" --sig dist/Seeding-Ops-windows-setup.exe.sig --out dist/latest.json
-          ASSETS="dist/Seeding-Ops-windows-setup.exe dist/Seeding-Ops-windows-setup.exe.sig dist/latest.json"
+          node scripts/release-check.js --file "dist/$ASSET" --sig "dist/$ASSET.sig"
+          node scripts/updater-manifest.js --version "$VERSION" --repo "$GITHUB_REPOSITORY" --sig "dist/$ASSET.sig" --asset "$ASSET" --out dist/latest.json
+          ASSETS="dist/$ASSET dist/$ASSET.sig dist/latest.json"
+          # The notes name this release's installer exactly: @VERSION@ is filled in below. The PowerShell
+          # line is the README's (Desktop app > Updates), word for word but for the version.
           cat > dist/notes.md <<'NOTES'
-          Download **Seeding-Ops-windows-setup.exe**, run it, and open **Seeding Ops** from the Start menu.
+          Download **Seeding-Ops-@VERSION@-windows-setup.exe**, run it, and open **Seeding Ops** from the Start menu.
           On first launch, paste a start.gg API key and press Save.
 
           Windows will say the publisher is unknown (the app is not code signed):
@@ -235,23 +242,29 @@ jobs:
 
           **Updating from 0.1.0** (it has no such button): don't double-click the installer. That way
           it uninstalls 0.1.0 first, which deletes your tiers table. Instead:
-          1. Download **Seeding-Ops-windows-setup.exe** into your Downloads folder, and close Seeding Ops.
+          1. Download **Seeding-Ops-@VERSION@-windows-setup.exe** (into your Downloads folder), and close Seeding Ops.
           2. Open **PowerShell** (Start menu, type PowerShell, Enter), paste this line and press Enter.
-             It copies your tiers table to your Desktop first (required: if that fails, nothing is
-             installed), then runs the installer in update mode, which keeps everything:
+             It checks the file is a Seeding Ops 0.2.0 or later installer, copies your tiers table to a
+             new, dated file on your Desktop (required: if either fails, nothing is installed), then runs
+             the installer in update mode, which keeps everything:
 
           ```
-          Copy-Item "$env:LOCALAPPDATA\Seeding Ops\registry\tiers.csv" (Join-Path ([Environment]::GetFolderPath('Desktop')) 'seeding-ops-tiers-backup.csv') -ErrorAction Stop; & "$env:USERPROFILE\Downloads\Seeding-Ops-windows-setup.exe" /P /UPDATE /R
+          $dl=(New-Object -ComObject Shell.Application).NameSpace('shell:Downloads').Self.Path; $exe=Join-Path $dl 'Seeding-Ops-@VERSION@-windows-setup.exe'; $vi=(Get-Item -LiteralPath $exe -ErrorAction Stop).VersionInfo; if (-not ($vi -and $vi.ProductName -eq 'Seeding Ops' -and $vi.ProductVersion -match '^(\d+)\.(\d+)' -and ([int]$Matches[1] -ge 1 -or [int]$Matches[2] -ge 2))) { throw "Not a Seeding Ops 0.2.0 or later installer: $exe" }; $bak=Join-Path ([Environment]::GetFolderPath('Desktop')) ('seeding-ops-tiers-backup-' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '.csv'); Copy-Item -LiteralPath "$env:LOCALAPPDATA\Seeding Ops\registry\tiers.csv" -Destination $bak -ErrorAction Stop; if (-not ($bak -and (Test-Path -LiteralPath $bak))) { throw 'The tiers backup was not made; nothing was installed.' }; "Tiers backed up to $bak"; & $exe /P /UPDATE /R
           ```
 
           3. The app opens by itself and moves your tiers, tournaments and start.gg key to its data
              folder. Keep the Desktop backup until you've checked your tiers are there.
 
-          If the copy fails because the tiers table is already gone, run only
-          `& "$env:USERPROFILE\Downloads\Seeding-Ops-windows-setup.exe" /P /UPDATE /R`.
-          If your tiers are missing afterwards (the home page warns you), close the app and run
-          `Copy-Item (Join-Path ([Environment]::GetFolderPath('Desktop')) 'seeding-ops-tiers-backup.csv') "$env:LOCALAPPDATA\net.enpicie.seeding-ops\registry\tiers.csv"`.
+          If the line stops because there is no tiers table to copy, it was already lost and there is
+          nothing more to lose: run the installer by double-clicking it.
+          If your tiers are missing afterwards (the home page warns you), close the app and paste this
+          line; it restores the largest seeding-ops-tiers-backup-*.csv on your Desktop:
+
+          ```
+          $b=Get-ChildItem -LiteralPath ([Environment]::GetFolderPath('Desktop')) -Filter 'seeding-ops-tiers-backup-*.csv' -ErrorAction Stop | Sort-Object Length | Select-Object -Last 1; if (-not $b) { throw 'No seeding-ops-tiers-backup-*.csv on the Desktop.' }; Copy-Item -LiteralPath $b.FullName -Destination "$env:LOCALAPPDATA\net.enpicie.seeding-ops\registry\tiers.csv" -ErrorAction Stop; "Restored $($b.Name)"
+          ```
           NOTES
+          sed -i "s/@VERSION@/${VERSION}/g" dist/notes.md
           if ! gh release view "$TAG" >/dev/null 2>&1; then
             gh release create "$TAG" --title "Seeding Ops $VERSION" --notes-file dist/notes.md --target "$GITHUB_SHA"
           fi

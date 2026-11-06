@@ -9,7 +9,7 @@
 //      (lib/update.js verifySignature).
 //
 //   node scripts/release-check.js --pubkey-only
-//   node scripts/release-check.js --file dist/Seeding-Ops-windows-setup.exe --sig dist/Seeding-Ops-windows-setup.exe.sig
+//   node scripts/release-check.js --file dist/Seeding-Ops-0.2.0-windows-setup.exe --sig dist/Seeding-Ops-0.2.0-windows-setup.exe.sig
 const fs = require('node:fs');
 const path = require('node:path');
 const U = require('../lib/update');

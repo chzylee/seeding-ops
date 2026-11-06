@@ -20,7 +20,7 @@ const INSTALLER = Buffer.from('MZ the 0.3.0 installer');
 
 function github({ version = '0.3.0', signer, signature, installer = INSTALLER } = {}) {
   const calls = [];
-  const url = `https://github.com/${REPO}/releases/download/v${version}/Seeding-Ops-windows-setup.exe`;
+  const url = `https://github.com/${REPO}/releases/download/v${version}/Seeding-Ops-${version}-windows-setup.exe`;
   const fetchImpl = async (u) => {
     calls.push(u);
     if (u === `https://github.com/${REPO}/releases/latest/download/latest.json`) {

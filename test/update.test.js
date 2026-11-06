@@ -10,7 +10,7 @@ const { makeSigner } = require('../testlib/minisign');
 
 const REPO = 'someone/seeding-ops';
 const config = (pubkey = '') => ({ repo: REPO, endpoint: `https://github.com/${REPO}/releases/latest/download/latest.json`, pubkey, releasesPage: `https://github.com/${REPO}/releases/latest` });
-const installerUrl = (v) => `https://github.com/${REPO}/releases/download/v${v}/Seeding-Ops-windows-setup.exe`;
+const installerUrl = (v) => `https://github.com/${REPO}/releases/download/v${v}/Seeding-Ops-${v}-windows-setup.exe`;
 const manifest = (v, signature = 'sig', key = 'windows-x86_64') => ({ version: v, notes: 'Notes', pub_date: '2026-11-06T00:00:00Z', platforms: { [key]: { url: installerUrl(v), signature } } });
 const reply = (status, body, headers = {}) => new Response(typeof body === 'string' || Buffer.isBuffer(body) ? body : JSON.stringify(body), { status, headers });
 
@@ -26,7 +26,7 @@ test('update: versions compare as semver (v prefix, pre-releases before their re
 test('update: a minisign signature from the matching key verifies (prehashed ED and legacy Ed); anything else is refused', () => {
   const s = makeSigner();
   const file = Buffer.from('installer bytes '.repeat(1000));
-  assert.match(U.verifySignature(file, s.sign(file), s.pubkey).trustedComment, /file:Seeding-Ops-windows-setup\.exe/);
+  assert.match(U.verifySignature(file, s.sign(file), s.pubkey).trustedComment, /file:Seeding-Ops-0\.3\.0-windows-setup\.exe/);
   U.verifySignature(file, s.sign(file, { prehashed: false }), s.pubkey);
   const tampered = Buffer.from(file); tampered[10] ^= 1;
   assert.throws(() => U.verifySignature(tampered, s.sign(file), s.pubkey), /does not match the file/);
@@ -76,7 +76,7 @@ test('update: download takes only this repo\'s release links, needs a key and a 
 // Audit #5: the link check compared the raw string's prefix, so ".." walked out of the repository.
 test('update: only this repository\'s release downloads pass the link check, however the path is spelled', () => {
   const base = `https://github.com/${REPO}/releases/download`;
-  assert.strictEqual(U.allowedUrl(`${base}/v0.3.0/Seeding-Ops-windows-setup.exe`, REPO), true);
+  assert.strictEqual(U.allowedUrl(`${base}/v0.3.0/Seeding-Ops-0.3.0-windows-setup.exe`, REPO), true);
   for (const bad of [
     `${base}/../../../other/repo/releases/download/v1/x.exe`,
     `${base}/%2e%2e/%2e%2e/%2e%2e/other/repo/releases/download/v1/x.exe`,

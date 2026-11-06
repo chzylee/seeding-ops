@@ -428,30 +428,44 @@ installer's "older version installed" page has *Uninstall before installing* tic
 0.1.0's uninstaller deletes `registry\tiers.csv`. Run it in update mode instead, which skips that
 step (the same mode the button uses):
 
-1. Download `Seeding-Ops-windows-setup.exe` from the release page into your **Downloads** folder.
+1. Download `Seeding-Ops-0.2.0-windows-setup.exe` from the release page into your **Downloads**
+   folder. Every release's installer carries its version in its name; 0.1.0's was plain
+   `Seeding-Ops-windows-setup.exe`, so an old download sitting in Downloads can't be mistaken for the
+   new one.
 2. Close Seeding Ops.
-3. Open **PowerShell** (Start menu, type `PowerShell`, Enter) and paste this line, then Enter. It
-   first copies your tiers table to your Desktop (**required**: if the copy fails, the installer does
-   not run), then runs the installer in update mode:
+3. Open **PowerShell** (Start menu, type `PowerShell`, Enter), paste this line, then Enter. Each
+   step must succeed before the next runs; if one fails, nothing is installed:
+   - It finds your Downloads folder (wherever Windows keeps it) and that exact file.
+   - It checks the file really is a Seeding Ops installer, version 0.2.0 or later (its file version).
+   - It copies your tiers table to a **new, dated** file on your Desktop:
+     `seeding-ops-tiers-backup-<date>-<time>.csv`. An earlier backup is never overwritten.
+   - Then it runs the installer in update mode.
 
    ```
-   Copy-Item "$env:LOCALAPPDATA\Seeding Ops\registry\tiers.csv" (Join-Path ([Environment]::GetFolderPath('Desktop')) 'seeding-ops-tiers-backup.csv') -ErrorAction Stop; & "$env:USERPROFILE\Downloads\Seeding-Ops-windows-setup.exe" /P /UPDATE /R
+   $dl=(New-Object -ComObject Shell.Application).NameSpace('shell:Downloads').Self.Path; $exe=Join-Path $dl 'Seeding-Ops-0.2.0-windows-setup.exe'; $vi=(Get-Item -LiteralPath $exe -ErrorAction Stop).VersionInfo; if (-not ($vi -and $vi.ProductName -eq 'Seeding Ops' -and $vi.ProductVersion -match '^(\d+)\.(\d+)' -and ([int]$Matches[1] -ge 1 -or [int]$Matches[2] -ge 2))) { throw "Not a Seeding Ops 0.2.0 or later installer: $exe" }; $bak=Join-Path ([Environment]::GetFolderPath('Desktop')) ('seeding-ops-tiers-backup-' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '.csv'); Copy-Item -LiteralPath "$env:LOCALAPPDATA\Seeding Ops\registry\tiers.csv" -Destination $bak -ErrorAction Stop; if (-not ($bak -and (Test-Path -LiteralPath $bak))) { throw 'The tiers backup was not made; nothing was installed.' }; "Tiers backed up to $bak"; & $exe /P /UPDATE /R
    ```
 
-   If Windows says the publisher is unknown, choose **More info**, then **Run anyway**.
+   If a later version is what the release page offers, use the line in **that release's notes**: it is
+   this line with that version's file name. If Windows says the publisher is unknown, choose
+   **More info**, then **Run anyway**.
 4. The installer shows a progress bar and opens the app when done. The app moves your tiers,
    tournaments and key to the data folder by itself. Keep the Desktop backup until you have checked
    your tiers are there.
 
-If the copy fails because there is no `tiers.csv` (it was already lost), run only the second half:
-`& "$env:USERPROFILE\Downloads\Seeding-Ops-windows-setup.exe" /P /UPDATE /R`.
+If the line stops because there is no tiers table to copy, the table was already lost, so there is
+nothing more to lose: run the installer by double-clicking it.
 
 If the tiers come back empty anyway (the home page warns when it looks that way), close the app and
-copy the backup to `%LOCALAPPDATA%\net.enpicie.seeding-ops\registry\tiers.csv`:
+paste this line. It copies the **largest** `seeding-ops-tiers-backup-*.csv` on your Desktop (the one
+with the most rows) to `%LOCALAPPDATA%\net.enpicie.seeding-ops\registry\tiers.csv`:
 
 ```
-Copy-Item (Join-Path ([Environment]::GetFolderPath('Desktop')) 'seeding-ops-tiers-backup.csv') "$env:LOCALAPPDATA\net.enpicie.seeding-ops\registry\tiers.csv"
+$b=Get-ChildItem -LiteralPath ([Environment]::GetFolderPath('Desktop')) -Filter 'seeding-ops-tiers-backup-*.csv' -ErrorAction Stop | Sort-Object Length | Select-Object -Last 1; if (-not $b) { throw 'No seeding-ops-tiers-backup-*.csv on the Desktop.' }; Copy-Item -LiteralPath $b.FullName -Destination "$env:LOCALAPPDATA\net.enpicie.seeding-ops\registry\tiers.csv" -ErrorAction Stop; "Restored $($b.Name)"
 ```
+
+Why every guard ends in `throw` or `-ErrorAction Stop`: in a pasted PowerShell line, an ordinary error
+stops only its own statement, and the rest of the line still runs. Only a `throw` or a
+`-ErrorAction Stop` error stops the whole line, so each check fails that way.
 
 From then on, use **Check for updates**. (A Tauri installer hook can't do the backup itself: it runs
 after the old uninstaller.)
@@ -493,11 +507,12 @@ toolchain is needed locally.
   installed copies won't see it as an update.
 - *Share it*: Actions → `release` → Run workflow with `publish` ticked, or push the tag `v<version>`.
   It publishes a release tagged `v<version>`, marked Latest, carrying the installer
-  (`Seeding-Ops-windows-setup.exe`), its `.sig` and `latest.json` (it refuses to publish unsigned). A new user installs
-  it, opens the app, pastes a start.gg API key, presses Save. The installer ships an **empty tiers
-  table** (`registry/tiers.template.csv`), never this checkout's. The link
-  `https://github.com/<repo>/releases/latest/download/Seeding-Ops-windows-setup.exe` always fetches
-  the newest installer.
+  (`Seeding-Ops-<version>-windows-setup.exe`, named for its version), its `.sig` and `latest.json`
+  (it refuses to publish unsigned). A new user installs it, opens the app, pastes a start.gg API
+  key, presses Save. The installer ships an **empty tiers table** (`registry/tiers.template.csv`),
+  never this checkout's. The link `https://github.com/<repo>/releases/latest` always shows the newest
+  release. A fixed download link would need a fixed file name, and a fixed name is what let a stale
+  0.1.0 installer pass for a new one.
 - *This checkout*: the portable ZIP (run artifact) holds the two exes to drop in; see above.
 
 `npm run sidecar` compiles the server with Bun into `src-tauri/binaries/` (needed before

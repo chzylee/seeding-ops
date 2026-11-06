@@ -15,7 +15,7 @@ function makeSigner({ keyId = crypto.randomBytes(8) } = {}) {
   return {
     keyId,
     pubkey: Buffer.from(pubText).toString('base64'),
-    sign(file, { prehashed = true, trusted = 'timestamp:1762400000\tfile:Seeding-Ops-windows-setup.exe' } = {}) {
+    sign(file, { prehashed = true, trusted = 'timestamp:1762400000\tfile:Seeding-Ops-0.3.0-windows-setup.exe' } = {}) {
       const message = prehashed ? crypto.createHash('blake2b512').update(file).digest() : file;
       const sig = crypto.sign(null, message, privateKey);
       const global = crypto.sign(null, Buffer.concat([sig, Buffer.from(trusted)]), privateKey);

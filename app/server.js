@@ -184,9 +184,18 @@ function trustedHost(req) {
   return /^(127\.0\.0\.1|localhost)(:\d+)?$/.test(h);
 }
 
-async function readBody(req) {
-  let body = '';
-  for await (const chunk of req) { body += chunk; if (body.length > 200000) throw bad(413, 'Too large'); }
+// The body is collected as bytes and decoded once: decoding chunk by chunk turns a character whose
+// UTF-8 bytes straddle two chunks into U+FFFD ("Zoë" -> "Zo��").
+async function readBody(req, limit = 200000) {
+  const chunks = [];
+  let size = 0;
+  for await (const chunk of req) {
+    const b = typeof chunk === 'string' ? Buffer.from(chunk) : chunk;
+    size += b.length;
+    if (size > limit) throw bad(413, 'Too large');
+    chunks.push(b);
+  }
+  const body = Buffer.concat(chunks).toString('utf8');
   let fields;
   try { fields = JSON.parse(body || '{}'); } catch { throw bad(400, 'Body must be JSON.'); }
   if (!fields || typeof fields !== 'object' || Array.isArray(fields)) throw bad(400, 'Body must be a JSON object.');

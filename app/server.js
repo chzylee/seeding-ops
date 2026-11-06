@@ -60,6 +60,9 @@ const { createQueue } = require('./queue');
 // SEEDING_ROOT points the server at a project folder on disk when this file runs from inside
 // the compiled desktop sidecar (app/app-main.js sets it). From source it is simply the repo.
 const ROOT = process.env.SEEDING_ROOT ? path.resolve(process.env.SEEDING_ROOT) : path.join(__dirname, '..');
+// SEEDING_DATA: where out/ and .env live. The project folder, except in an installed copy, where
+// app/app-main.js points it at the per-user data folder (lib/data-dir.js).
+const DATA_ROOT = process.env.SEEDING_DATA ? path.resolve(process.env.SEEDING_DATA) : ROOT;
 const APP_DIR = path.join(ROOT, 'app');
 const DEFAULT_PORT = 8765;
 const HOST = '127.0.0.1';
@@ -191,10 +194,10 @@ async function readBody(req) {
 }
 
 function createApp(opts = {}) {
-  const outRoot = opts.outRoot || path.join(ROOT, 'out');
+  const outRoot = opts.outRoot || path.join(DATA_ROOT, 'out');
   // The token: STARTGG_TOKEN in the environment, else <root>/.env, read on every use so a token saved
   // from the app's connect screen takes effect at once (Noah, 2026-11-05: no restart).
-  const envFile = opts.envFile || path.join(ROOT, '.env');
+  const envFile = opts.envFile || path.join(DATA_ROOT, '.env');
   const tokenInfo = opts.getToken ? () => ({ token: opts.getToken(), source: 'app' }) : () => loadToken({ envFile });
   const getToken = () => tokenInfo().token;
   // What the last check of the current token found; re-checked when the token changes, on demand, or
@@ -653,7 +656,7 @@ function main(argv = process.argv.slice(2)) {
   const arg = (k) => { const i = argv.indexOf(k); return i >= 0 ? argv[i + 1] : null; };
   const portArg = arg('--port');
   const port = resolvePort(portArg != null ? portArg : process.env.PORT);
-  const outRoot = arg('--out') ? path.resolve(arg('--out')) : path.join(ROOT, 'out');
+  const outRoot = arg('--out') ? path.resolve(arg('--out')) : path.join(DATA_ROOT, 'out');
   const app = createApp({ outRoot });
   const server = http.createServer(app.handler);
   const url = `http://${HOST}:${port}/`;

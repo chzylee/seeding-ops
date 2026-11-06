@@ -1,0 +1,4 @@
+{
+  "layout": "installed",
+  "note": "Shipped by the installer. Its presence tells the app this folder belongs to the installer, so your data (the tiers table, your tournaments, your start.gg key) is kept in your per-user data folder instead: %LOCALAPPDATA%\\net.enpicie.seeding-ops on Windows. See lib/data-dir.js."
+}

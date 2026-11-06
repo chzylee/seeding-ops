@@ -33,7 +33,7 @@
       "../lib": "lib",
       "../config": "config",
       "../views": "views",
-      "../registry/tiers.csv": "registry/",
+      "../registry/tiers.template.csv": "registry/tiers.csv",
       "../pull.js": "",
       "../seed.js": "",
       "../package.json": "",

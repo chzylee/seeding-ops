@@ -373,12 +373,15 @@ simply adopts it.
 **Releasing.** Builds happen in GitHub Actions (`.github/workflows/release.yml`); no Rust
 toolchain is needed locally.
 
-- *Test a build*: Actions → `release` → Run workflow, `publish` unticked. The ZIP is kept as an
-  artifact; nothing reaches the Releases page.
-- *Share it*: the same with `publish` ticked. Publishes under the `tag` input, default `latest`,
-  re-pointed on every publish.
+- *Test a build*: Actions → `release` → Run workflow, `publish` unticked. The installer and the
+  portable ZIP are kept as run artifacts; nothing reaches the Releases page.
+- *Share it*: the same with `publish` ticked. Publishes **one file**, the installer
+  (`Seeding-Ops-windows-setup.exe`), under the `tag` input, default `latest`, re-pointed on every
+  publish. A new user installs it, opens the app, pastes a start.gg API key, presses Save. The release
+  ships an **empty tiers table** (`registry/tiers.template.csv`), never this checkout's.
 - *Cut a version*: bump `version` in `package.json`, `src-tauri/tauri.conf.json` and
   `src-tauri/Cargo.toml`, then push a `v*` tag.
+- *This checkout*: the portable ZIP (run artifact) holds the two exes to drop in; see above.
 
 `npm run sidecar` compiles the server with Bun into `src-tauri/binaries/` (needed before
 `npm run tauri build`; CI does it for you). The app is not code signed: Windows shows

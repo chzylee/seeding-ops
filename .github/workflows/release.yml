@@ -127,7 +127,7 @@ jobs:
           cp "src-tauri/binaries/seeding-server-${{ matrix.target }}.exe" "$P/app/seeding-server.exe"
           cp -r app/. "$P/app/"
           cp -r lib config views "$P/"
-          cp registry/tiers.csv "$P/registry/"
+          cp registry/tiers.template.csv "$P/registry/tiers.csv"   # a new user starts with an empty tiers table, never Noah's
           cp pull.js seed.js seed.cmd app.cmd package.json README.md .env.example "$P/"
           echo "--- contents ---" && find "$P" -maxdepth 2 | sort
 
@@ -158,20 +158,28 @@ jobs:
           echo "publishing to $TAG"
           if ! gh release view "$TAG" >/dev/null 2>&1; then
             gh release create "$TAG" --title "Seeding Ops ($TAG)" --notes "$(cat <<'NOTES'
-          Download **Seeding-Ops-windows.zip**, unzip it anywhere you like, copy
-          `.env.example` to `.env` and paste your start.gg token after `STARTGG_TOKEN=`,
-          then run **Seeding Ops.exe**. Nothing is installed; the folder you unzip is
-          the whole application, and your pulls land in its `out/` folder.
+          Download the installer, run it, and open **Seeding Ops** from the Start menu.
+          On first launch, paste a start.gg API key and press Save.
 
-          Windows will say the publisher is unknown -- the app is not code signed.
-          Choose **More info**, then **Run anyway**.
+          Windows will say the publisher is unknown (the app is not code signed):
+          choose **More info**, then **Run anyway**.
           NOTES
           )"
           fi
-          gh release upload "$TAG" dist/Seeding-Ops-windows.zip --clobber
-          gh release edit "$TAG" --draft=false
+          # Noah, 2026-11-05: only what a new user needs is in the release: the installer, one file.
+          # The portable ZIP (the checkout layout, for dropping the exes into a working copy) stays a
+          # run artifact. Older assets of the same tag are removed so the page shows one download.
+          INSTALLER=$(ls src-tauri/target/${{ matrix.target }}/release/bundle/nsis/*-setup.exe | head -1)
+          cp "$INSTALLER" "dist/Seeding-Ops-windows-setup.exe"
+          for a in $(gh release view "$TAG" --json assets -q '.assets[].name'); do
+            [ "$a" = "Seeding-Ops-windows-setup.exe" ] || gh release delete-asset "$TAG" "$a" -y
+          done
+          gh release upload "$TAG" dist/Seeding-Ops-windows-setup.exe --clobber
+          gh release edit "$TAG" --draft=false --notes "$(cat <<'NOTES'
+          Download the installer, run it, and open **Seeding Ops** from the Start menu.
+          On first launch, paste a start.gg API key and press Save.
 
-          # The NSIS installer is deliberately NOT attached: it lays the same
-          # files down under %LOCALAPPDATA%\Programs, a path you did not choose,
-          # and your tiers table and pulls belong in a folder you can open. It is
-          # still built and kept as a run artifact if it is ever wanted.
+          Windows will say the publisher is unknown (the app is not code signed):
+          choose **More info**, then **Run anyway**.
+          NOTES
+          )"

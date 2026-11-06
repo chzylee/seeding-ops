@@ -68,10 +68,27 @@ your own list), open *Import from CSV* under the link field in *Add a tournament
   by an upload. The summary also lists codes not found, repeated codes and unreadable rows.
 
 **Tiers and start.gg ids.** `registry/tiers.csv` has a `discriminator` column next to `player_id`
-(added by `scripts/migrate-tiers.js`; blank until known). A player is matched to a tiers row by id
+(added by `scripts/migrate-tiers.js`; blank until known). **A tier is for one player in one game**
+(the row's `game_id`, start.gg's videogame id): a player can be a 9 in one game and a 4 in another,
+and every read, edit, ✓, link and push uses only the tab's game's rows. A player is matched to a tiers row by id
 first (the row's `player_id`, then its `discriminator`), and only then by tag, among rows that have
 neither id. Ids get written in by a ✓ or an edit on the row, by an upload (above), and by any pull:
-a row already linked by `player_id` gets that player's discriminator.
+a row already linked by `player_id` gets that player's discriminator (in every game: it is the same
+start.gg player).
+
+**Share tiers with another organizer.** The home page's **Tiers** section has a game picker.
+**Export tiers…** saves that game's tiers as a CSV: each tiered player's tier, tags, start.gg player
+id and discriminator. Your notes, review dates and tournaments, `decided_on`, `source` and the sheet
+import's region / placements / notes are **not** in it. **Import tiers…** reads such a file (or anyone's
+`tiers.csv`) for the picked game and shows a review before anything changes: **new players** (no tier
+of yours; each with an Add box, plus *Add all* / *Add none*) and **conflicts** (your tier and theirs
+side by side; *Mine* / *Theirs* per row, plus *Keep all mine* / *Take all theirs*). Players are matched
+by start.gg id, then discriminator, then tag. **Apply** writes only the rows you picked, only in that
+game; their notes and reviews stay yours, and each changed row's `source` says
+`import <date> from <file>`, which the grey "never reviewed" hover shows. Rows for other games in the file are
+counted and ignored; a file with none for the picked game is refused, naming the games it has. A row
+matched by tag only that you take is listed afterwards for you to check. If your tiers change between
+the review and Apply, the review is shown again.
 
 **Tick the events to seed, then Pull.** On a new tournament's page, *Seeded events* lists its
 singles events (teams events are shown greyed out: they can't be seeded). Tick the ones you're
@@ -154,20 +171,34 @@ never changes, and a **browser reload** shows the newest data. Old event links
   whose field is at least as large as a known major's. A reload picks up the change.
 - Pins, frozen columns and the compare picks are remembered per tab in this browser.
 
-**Getting your tiers into start.gg (optional).** The tool ends at tiers; these two buttons on a
-game's tab hand them over. Both number seeds the same way: **higher tier gets the lower seed
-number**, one sequence 1..N, untiered players after tiered ones. The tool never orders players
-beyond their tiers.
+**Seeds: tier order, or your own order.** Each game's table has a **Seed** column. Until you arrange
+anything the seeds are the tier order (top tier = seed 1, then by tag within a tier, untiered last)
+and follow every tier edit; the bar says *Seeds: tier order*. **Drag a row by its ⠿ handle**, or
+focus the handle and press ↑ / ↓ (Page Up / Page Down: ten rows, Home / End: first / last), to put
+players in an exact order; the bar then says *Seeds: arranged by hand*, and that order is saved for
+the event at once (every move, in `out/<tournament>/state.json`), so a reload or another browser
+shows it. Players who register later slot in by tier; players who leave close the gap. **Reset to
+tier order** forgets the arrangement (it asks first). **Sort by seed** (or the Seed header) puts the
+table back in seed order after sorting by another column; dragging does that by itself. When a tab
+covers two events of one game, *Seeds for* picks which event the column numbers.
+
+**Getting your tiers into start.gg (optional).** These two buttons on a game's tab hand the seeds
+over. Both number seeds the same way: one sequence 1..N, **your arranged order** when you have one,
+otherwise **higher tier gets the lower seed number**, untiered players after tiered ones.
 
 - **Push to start.gg… → Dry run** reads the event's seeding from start.gg (its first phase by phase
-  order, named in the dry run; nothing is sent) and shows current seed → proposed seed: tiered
-  players by tier with **start.gg's current order within a tier**, then players without a tier,
-  then seeds with no single player (placeholders, teams). A move that crosses a tier boundary
+  order, named in the dry run; nothing is sent) and shows current seed → proposed seed. The line above
+  the table says which order it uses. **Tier order:** tiered players by tier with **start.gg's current
+  order within a tier**, then players without a tier. **Your arranged order:** exactly the Seed column
+  (a seed whose player isn't in it is slotted in by tier). Then seeds with no single player
+  (placeholders, teams). A move that crosses a tier boundary
   relative to start.gg's current order is flagged, so a conflict fix you made by hand in start.gg
   is visible before a re-push would revert it. Seeds whose player isn't in this tournament's pool
-  are marked (Refresh to pull them). **Posting needs a click on the dry run and a confirm**; if
-  start.gg's seeding or your tiers changed since the dry run, the app refuses and asks for a new dry
-  run. Each push is recorded on the page. Failures show as one status line, with no retry: the
+  are marked (Refresh to pull them). **Rows stay draggable while the dry run is open**: it redraws
+  after every drag or tier edit, and **Post sends the order as it is when you click**. **Posting needs
+  a click on the dry run and a confirm**; if start.gg's own seeding changed since the dry run (seeds
+  moved there), nothing is posted and a fresh dry run is shown. After a post the panel stays open:
+  drag again and post again to update start.gg. Each push is recorded on the page. Failures show as one status line, with no retry: the
   bracket has started or the phase is locked, the token isn't an admin of the tournament, or
   start.gg's rate limit. Your token must be an admin of the tournament to post. *The post has been
   tested against a fake start.gg only; your first real post is the first time it runs.*
@@ -432,7 +463,10 @@ increment 3, [`docs/design-tool.md`](docs/design-tool.md)):
 - `lib/view/majors.js`: reads `config/majors.json`, the per-game majors lists.
 - `lib/wl.js`: W-L (sets) for result rows through `lib/startgg`'s client, cached in
   `out/<tournament>/set-records.json`.
-- `lib/push.js`: the push's dry run and post. `lib/schedule.js` and `lib/schedule-pull.js`: the
+- `lib/push.js`: the push's dry run and post; the order is `lib/view/model.js` `pushPlan` (shared
+  with the page, which redraws an open dry run after a drag). `lib/seeding.js`: the arranged seed
+  order per event (`state.json` `seeding`). `lib/tiers-share.js`: one game's tiers out (export) and in
+  (the import's review and apply). `lib/schedule.js` and `lib/schedule-pull.js`: the
   Schedule tab's data (moved from `conflicts/`; `conflicts/linked.json` is read once, when a
   tournament is added, for side tournaments linked before increment 3; `conflicts/out/` isn't read).
 - `scripts/migrate-tiers.js`: brings `registry/tiers.csv` to the current shape: the T1 migration

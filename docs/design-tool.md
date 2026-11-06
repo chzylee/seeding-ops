@@ -467,3 +467,151 @@ Rulings from the 2026-10-30 session, binding over the sections above where they 
 5. **Prior pages.** The old per-event pulls were imported into the pool layout on 2026-10-30
    (`scripts/import-legacy.js`); past events stay listed under done/archived and are deleted by hand
    when wanted. No sandbox mode.
+
+## Amendment A2 — Tiers per game, shared between organizers; seeds you arrange (Noah, 2026-11-06; increment 5)
+
+Noah's requests and rulings (asked and answered through the orchestrating session), then the build's
+decisions. Binding over the sections above where they differ. Build record: `docs/build-record-tool.md`,
+*Build D — Pass 1*.
+
+### A2.1 A tier is for one (player, game)
+
+Noah: *"Tiers are not general but inherently related to a game — every tier for a player is associated
+with a specific game."* Ruling: the key is player + game, game = the event's start.gg videogame id (an
+uploaded list's: the game Noah picks at upload). A player can hold different tiers in different games.
+
+Audit of every path that reads, matches or writes T1, as found on `main` @ 4e35890 (pinned by
+`test/tier-game-keying.test.js`; the four "no" rows fail on 4e35890 and pass after A2.1):
+
+| path | keyed on game before A2.1? | after |
+|---|---|---|
+| `readNotes` / `viewModel` (the page's tiers, recency, tag-only color) | yes, when the run has a game; **every game's rows when it has none** (`readTiers` with no game) | a missing game reads no rows |
+| `summaryExport` / `seedsExport` | yes (same reader) | same |
+| `editTierRow` → `updatePlayer`, `reviewPlayer` (edit, ✓) | yes; **with no game it wrote a row with `game_id` "undefined"** | no game → 409, nothing written |
+| `linkPlayers` (an upload's registry linking) | yes; **with no game it silently matched nothing** | no game → error (the job records it in the upload summary) |
+| `fillDiscriminators` / `fillIds` (after every pull and upload) | no, by design | unchanged, deliberately: the discriminator is a fact about the start.gg player, the same in every game; tier, notes and reviews are never touched |
+| `push.dryRun` / `buildDryRun` | yes, when the event has a game; **every game's tiers when start.gg gave the event no videogame** | an event with no game → 409 before any request |
+| `lib/tiers-migrate.js` (T1 backfill) | no | unchanged: a one-time historical migration of a file that was all MBAACC |
+| the page (`app.js`, `render.js`), `orderPlayers` | consume the server's per-game notes | unchanged |
+
+Matching inside a game is unchanged (A1.2: `player_id`, then `discriminator`, then tag among rows with
+neither id); a tag-only row of game Y never answers in game X.
+
+### A2.2 Sharing one game's tiers
+
+Noah: *"I should be able to share my tiers with respect to a game with another organizer."* Rulings:
+export picks a game and gives a shareable file; import is a **review step** (new players, plus
+conflicts side by side, picked per row or with "keep all mine" / "take all theirs", then applied);
+an import for game X never touches game Y's rows; provenance goes in `source`; files for a different
+game, malformed files, BOM and quoting are handled as the CSV upload handles them.
+
+Decisions:
+
+- **What is shareable.** The file carries `game_id`, `game_name`, `player_id`, `discriminator`,
+  `startgg_tag`, `sheet_tag`, `tier`: what a receiver needs to match a player (id, discriminator, two
+  tag forms) and read the tier. **Private, never exported:** `notes`, `decided_on`,
+  `last_reviewed_on`, `last_reviewed_tournament`, `source`, `sheet_region`, `sheet_placements`,
+  `sheet_notes` (Noah's own judgment trail and his sheet's annotations). Only rows with a tier are
+  exported, tier descending then tag.
+- **File shape.** T1's own writer (UTF-8 with a BOM, every field quoted, CRLF), so the file is a
+  `tiers.csv` subset and opens in Sheets the same way. No formula guard (as T1; A2-6 stays open).
+  Name: `tiers-<game>-<date>.csv`.
+- **Where.** The home page, a **Tiers** section with a game picker (games in the tiers file with their
+  tiered count, then the other known games), **Export tiers…** and **Import tiers…**. Tiers outlive
+  tournaments (T1), so sharing is not a tournament-page control.
+- **Reading a file.** `lib/upload.js` `csvRecords` (RFC 4180, CRLF / LF / CR, BOM dropped, an
+  unterminated quote reported at its line). A header row is required; columns are found by name in any
+  order and case, so the full `registry/tiers.csv` (anyone's) imports too, its private columns ignored.
+  It must name `game_id`, `tier` and one of the four identity columns, else "not a tiers file". Rows
+  for other games are counted and listed, never judged or touched; a file with no row for the picked
+  game is refused, naming the games it has. A row is **unreadable** (listed with its line) when its
+  tier is not a whole number 0..20, its `player_id` is not digits, its discriminator is not a start.gg
+  code (bare, `user/<code>` or a profile link are accepted), or it has nothing to match by. A row with
+  no tier is skipped and counted.
+- **The review.** Each file row is matched to this game's rows with T1's precedence. Categories:
+  **new** (no tier here: no row, or a row with no tier); **conflict** (a different tier here, shown
+  side by side with the match method and Noah's own note on hover); **same** (counted); **repeated**
+  (two file rows on one row here by an id: the same start.gg player, the first is used); **ambiguous**
+  (two file rows on one row here by tag only, A6-1's one-tag-two-people: neither is applied).
+  Defaults: a new row is added, a conflict keeps Noah's. Per-row picks; the bulk buttons are **per
+  section**: *Keep all mine* / *Take all theirs* for conflicts, *Add all* / *Add none* for new players
+  (a "keep mine" has no meaning for a player Noah has no tier for, so one global pair would be
+  ambiguous for new rows).
+- **Apply.** The review is recomputed from the same file and the current table and must match the one
+  reviewed (a fingerprint of the file and this game's rows); otherwise 409 and the page shows the
+  fresh review. Then, in one atomic write and only in the picked game: an added row gets the file's ids,
+  tags and tier; a taken conflict or a filled row changes `tier`, sets `decided_on` to today (the day
+  the tier changed here), and fills an id the row lacks (never replaces one). Every applied row's
+  `source` becomes `import <YYYY-MM-DD> from <file name>`: the provenance, shown in the grey
+  "never reviewed" hover. `notes`, reviews and the sheet columns are never touched; an import is not a
+  review, so it sets no `last_reviewed_*`. A taken row that was matched by tag only is listed after
+  the apply for Noah to check (its ids are now written in, as an edit would).
+- **Limit.** The request body cap (200 KB, `app/server.js` `readBody`) bounds a file; the page refuses
+  one over 190 KB with a message. A game's shared tiers are far smaller than that.
+
+### A2.3 Seeds you arrange
+
+Noah: *"The main view should have a seed associated with players, such that when the sheet initially
+loads sorted by tier, the seeds are also there in ascending order (top tier of an event is seed 1). Rows
+should be draggable, so rather than just tiers a user can arrange actual seeds and sort the sheet by
+seeds."* Rulings: the dragged order is the source of truth for the push; tiers only set the initial
+order; the order is saved per event across reloads, with a "reset to tier order"; newcomers slot in by
+tier and removed players close the gap; keep the existing within-tier tie-break; a sort-by-seed option;
+the Seed column shown; keyboard reordering; show clearly whether the push uses a hand-arranged order or
+pure tier order. Added the same day (relayed): **rows stay draggable right up to the push**: nothing
+before the push locks, freezes or snapshots the order; the push reads the order at the moment Push is
+clicked, a drag one second earlier included, never a debounced or unsaved copy; a confirm or preview
+step either keeps rows draggable or re-reads on confirm; after a push the rows are still draggable and
+a re-push works.
+
+Decisions:
+
+- **Two modes per event** (`lib/view/model.js` `seedOrder`). *Tier order* (nothing arranged): the
+  event's entrants by tier descending, untiered last, then by tag, the table's existing tie-break
+  (`orderPlayers` now calls the same comparator), recomputed on every read, so a tier edit moves the
+  seed. *Arranged*: the order Noah dragged, saved in `out/<t>/state.json` as
+  `seeding: { <event slug>: { order: [player id], at } }` (never written by the pull, gone with the
+  tournament). Seeds are 1..N over the event's entrants; a tab player who did not enter the column's
+  event has no seed. "Reset to tier order" deletes the event's entry (it asks first: an arrangement
+  is work).
+- **Reconciling** (`reconcileOrder`, used by the page, the export and the push alike): ids no longer
+  entered are dropped, so the gap closes; each newcomer, in tier order among themselves, goes right
+  after the **last** player in the order whose tier is at least its own (untiered: at the end; nobody
+  that high: at the top). "Last", not "first below": a newcomer joins the bottom of its tier band even
+  when Noah dragged a lower tier above it.
+- **The push.** With an arrangement, the proposed order is exactly the arrangement reconciled with
+  start.gg's seeds (a seed whose player is not in it slots in by tier), then the unmappable seeds. With
+  nothing arranged the push is unchanged from Outputs: tiers, **start.gg's current order within a
+  tier** (premise 1), because that protects a within-tier conflict fix Noah made in start.gg from a
+  re-push. *Amendable default:* the alternative, pushing the table's alphabetical within-tier order in
+  tier mode, is a one-line change in `pushPlan`; it would make the tier-mode Seed column exact for the
+  push at the cost of reverting start.gg-side within-tier moves. The dry run's first line says which
+  order it uses, and the bar beside the table says *Seeds: tier order* or *Seeds: arranged by hand*.
+  The push record in `state.json.pushes` gains `seed_order: tiers | arranged`.
+- **Nothing goes stale before the push.** The push fingerprint now covers **start.gg's side only**
+  (the phase's seed ids, current numbers and players). Noah's own inputs, the seed order and the tiers,
+  are read when he posts. The page sends the order it shows with the dry run (used, not saved) and with
+  the post (saved first, then read back for the push), so the order posted is the order on screen at
+  the click, and a reload shows the same. Every drag is saved at once (no debounce) through one
+  serialized chain, and Post waits for that chain before it reads the order. An open dry run is redrawn
+  in the page after every drag or tier edit (`pushPlan` over the dry run's start.gg seeds), so it is
+  never stale and dragging is never paused. The confirm dialog is modal; the order is read after it is
+  accepted. A change on start.gg's side since the dry run still refuses the post (409), and the page
+  then shows a fresh dry run. The post returns start.gg's side as it now stands, so the panel stays and
+  a re-push needs no new dry run. This revises "Push mechanics" above, where the post was refused if
+  the tiers had changed since the dry run.
+- **Exports.** The CSV export's Seed column (and `seeds.csv`) follows the arrangement of the tab's
+  **first** event when it has one; otherwise numbering is as before. *Known limit:* on a tab with two
+  events of one game, the export numbers the first event even when the Seed column shows the second
+  (the page's export call is another engineer's surface this pass; the fix is one parameter).
+- **Interaction.** Each seeded row has a ⠿ handle. Pointer events, not HTML5 drag-and-drop: the desktop
+  shell builds its window without `disable_drag_drop_handler()` (`src-tauri/src/main.rs`, the
+  `WebviewWindowBuilder` call), so Tauri's own drag-drop handler is on, and Tauri 2 documents that call
+  as required for HTML5 drag-and-drop on Windows (model knowledge, not verified against a run). Pointer
+  events need no change to the shell and behave the same in the webview and a browser. A line marks where the row lands; the table scrolls near its edges; Esc
+  cancels. Keyboard (the WAI-ARIA reorderable-list practice): with the handle focused, ↑ / ↓ move one
+  row, Page Up / Page Down ten, Home / End to the first / last seed, focus stays on the moved row, and an
+  assertive live region says "tag: seed n of N". Moves step over rows hidden by *Needs tier only*.
+  Moving while the table is sorted by another column first returns it to seed order; *Sort by seed*
+  and the Seed header (ascending) do the same. When a tab has several events, *Seeds for* picks which
+  event the column numbers (remembered per browser).

@@ -3665,3 +3665,142 @@ All in `test/outputs.test.js`, each because A2.3 redefined the behaviour it enco
 - Parked: none; the tree is committed and green.
 - Needs attention: (1) the UI checklist, in the desktop app too; (2) confirm or flip the tier-mode push
   default; (3) the merge notes above when the parallel branch lands.
+
+## Build D — Pass 2 — lead engineer (repair: CHANGES REQUIRED, Noah's ruling; 2026-11-07)
+
+Same branch (`worktree-agent-a85de818d452d2b6a`). Same persona (lead-engineer v0.4.0). Same hard rules:
+no app, server, browser or window launched; no network; local commits only.
+
+### Terms as understood
+
+- **Step 0:** merge `main` @ 4b7624e (the other engineer's fixes and the updater) and resolve the three
+  conflicts as the orchestrator did.
+- **Noah's ruling** (overrides pass 1's Assumption 1): *"push should prepare the seed column and then
+  send what was finalized"*. The Seed column is always the push's source of truth, tier mode included.
+  Consequences (a) to (d) as listed by the orchestrator.
+- **Auditor findings to fix:** 2 (closed by main's `readTierTable`; check that the import shows the
+  error), 4, 5, 6, 7, 8. The orchestrator relayed these by number; the auditor's full report was not in
+  the repo, so the findings are taken as worded in the relay.
+- **Done** = `node --test --require ./testlib/no-network.js` green, with the REPORT and an updated
+  visual checklist.
+
+### Assumptions I supplied
+
+1. **Tier mode is not stored as an arrangement when posted** (finding 5 says "make the post save the
+   order it actually sends"). A tier-order post saves the column's *state* (tier order, `order` null)
+   under the write rules, and the push record keeps the exact order sent (`pushes[].order`). Storing it
+   as an arrangement would freeze the column, so later tier edits would stop moving seeds.
+   Alternative: store it as arranged; that is one line in `lib/seeding.js` `setOrder`.
+2. **The conflict rule refuses; it does not merge.** On a 409 `seed-conflict` the page adopts the other
+   window's order, drops its own queued writes and says so. It does not try to re-apply its last move on
+   top. Re-applying would guess at what Noah meant in a race.
+3. **A write without `base` is not conflict-checked.** That covers scripts and tests; the page always
+   sends one.
+4. **One tag on two rows here is ambiguous in an import**, including one unlinked row and one linked row
+   that share a tag. In pass 1 the unlinked row won, as T1's matcher does. For an import that could
+   change a tier, refusing to guess is safer.
+
+### Merge (step 0)
+
+`git merge main`, then conflicts resolved:
+- `app/public/app.css`: both blocks kept.
+- `app/server.js`: both require sets kept. `indexPage(outRoot, jobs, nowMs, notices, tiersFile)` renders
+  the Tiers section, then the events list, then main's version footer. Its scripts are model, render and
+  index, then update.js and notices.js. The `/api/notices`, `/api/update*` and `/api/tiers/*` routes are
+  all kept. The exports keep main's `postedOrder` and pass `seeds`.
+- `lib/view/data.js`: `readTiers` keeps the `hasGame` guard over main's `readTiersText`.
+
+Suite after the merge, before any repair: 368/368 (commit b0b8a94).
+
+### Dispositions
+
+| item | status | what changed | evidence |
+|---|---|---|---|
+| Ruling: the column is the push's source of truth | fixed | `pushPlan(entries, { order, mode })` always numbers from the column: the page's, or `seeding.columnOrder` when none is sent. The within-tier start.gg branch is gone. | `test/seed-order.test.js` push-plan test and ruling (a)/(c)/(d) tests; `test/seed-order-page.test.js` tier-order test |
+| (a) tier mode sends its order | fixed | `currentSeeding` returns `{ mode, order }` in both modes; the dry run, the post and the export send it | page test "nothing arranged, Post sends the tier-order column" |
+| (b) export, column, dry run and post agree | fixed | `seedNumbers` uses the column for tabs, both modes; the export POST carries `event` + `seeding` | `test/seed-order.test.js` "ruling (b)" (both modes, through the routes); `test/outputs.test.js` retitled agreement test; page Export test |
+| (c) what is posted is what was on screen | fixed | the post plans from the column the page sends and must equal `proposed` (the pairs drawn), else 409 `not-as-shown` with the server's dry run | "ruling (c)": a tier raised in another window does not change the post; a stale drawing is refused |
+| (d) no hidden reorder on the first drag | fixed by (a) | both modes post the column | "ruling (a), (d)" |
+| 2 import wiping tiers on a read error | closed by main + display | main's `readTierTable` throws on non-ENOENT errors; the import and export answer 503 with that message; the Tiers section shows it, drops the "(none yet)" counts, and disables both buttons | "finding 2 (with main's readTiersText)" in `test/tiers-share.test.js` |
+| 4 tag-only file row vs a linked player | fixed | `matchShared` matches by tag against every row here and leaves out rows whose ids contradict; several matches are ambiguous; an id match beats tag claims on the same row | two "finding 4" tests; both **fail on the pass-1 `lib/tiers-share.js`** (swapped in and run) |
+| 5 a stale window erasing an arrangement | fixed | `rev` per event; a write on an old rev made by another page is refused (409 `seed-conflict` with the current state); the page adopts it | route test, push test and page test "finding 5" |
+| 6 a drag's save overtaken by the post's | fixed | the post goes through the same page chain as moves; `client` + `seq` make an older write from the same page ignored | route test "finding 6" (out of order); page test "finding 6" (a move during the post is saved after it) |
+| 7 source-text tests | fixed | `test/seed-order-page.test.js` runs model.js, render.js and app.js on `testlib/fake-dom.js` against the real server and the fake start.gg; the pass-1 source pins are removed; `:50`'s false claim is corrected, and `outputs.test.js:45` is retitled and rewritten | 7 page tests; all 7 fail with the pass-1 app.js swapped in (see *Could not verify* for what that does and does not show) |
+| 8a linkPlayers message | fixed | "The tiers file was not linked: this list has no game, …" | `test/tier-game-keying.test.js` |
+| 8b 190 KB vs 200 KB JSON cap | fixed | the tier routes read up to 2 MB (`TIERS_BODY_MAX`, written into the page); the page measures the encoded request before sending | "finding 8" (a 4,000-row, quote-heavy file over 250 KB goes through) |
+| 8c multi-event export | fixed | the export sends the event being viewed | page Export test (body `event`) |
+
+### Changed tests (oracle corrections: the ruling redefines what they encode)
+
+- `test/export.test.js`: "honours ?order= within a tier" now asserts that the Seed column (by tag) numbers
+  the export and that the table's sort does not renumber it.
+- `test/export-post.test.js`: a big POST order no longer renumbers. The page's `seeding` in the same
+  body does, and that is now asserted.
+- `test/outputs.test.js`:
+  - line 45: the agreement test is retitled and rewritten (column-based, both modes, start.gg's order
+    deliberately different);
+  - export seeds CSV: the expected order changes to the column's;
+  - fake dry run: tier then tag;
+  - push post: the reply and the record add `order` (and `seeding`);
+  - page pin: the post-body pin moves to the behavioural tests.
+- `test/tier-game-keying.test.js`: the reworded message.
+- `test/seed-order.test.js`: rewritten for the protocol. The pass-1 page pins are replaced by
+  `test/seed-order-page.test.js`.
+- `testlib/seed-world.js` (new): the shared fake world.
+
+### Verification
+
+`node --test --require ./testlib/no-network.js` → **tests 383 · pass 383 · fail 0**
+(368 after the merge; 15 added).
+
+### Could not verify
+
+- **The page was still never run in a browser.** The fake DOM runs app.js's logic and its requests, but
+  has no layout. The pointer-drag path (hit-testing rows, the drop line, edge scrolling) is untested;
+  the keyboard path stands in for it in the page tests, since both end in `applySeedMove`.
+- **The "fails on pass-1 app.js" check is partly confounded.** Pass-1 app.js calls `M.pushPlan` with
+  the old parameter name, so some of its failures are interface drift, not the defect. The finding-5 and
+  finding-6 page tests target mechanisms the pass-1 page did not have (no `base`, the post not on the
+  chain), so those failures are the defect.
+- **No live start.gg.**
+
+### UI checklist for Noah (updated; nothing here was seen)
+
+1. A game tab: the **Seed** column sits left of Team, frozen; seeds run 1..N on first load; the bar says
+   *Seeds: tier order*.
+2. Drag a row by ⠿, in the **desktop app** and in a browser: the row dims, a line marks where it lands,
+   the table scrolls near its edges, and Esc cancels. Only that player moves (no other row changes
+   place).
+3. Keyboard: ↑ / ↓ / Page Up / Page Down / Home / End on a focused ⠿. Focus stays on the moved row, and
+   a screen reader says "tag: seed n of N".
+4. Reload: the order is kept. **Reset to tier order** asks first.
+5. Open a dry run without dragging: its first line says *the Seed column in tier order*, and the
+   proposed seeds equal the Seed column top to bottom. Post: start.gg's seeding matches the column.
+6. With a dry run open, drag: the diff redraws at once, and the confirm names the order. After the post
+   the panel stays, Post is enabled, and dragging then posting again works.
+7. Two windows on the same tab: arrange in one, then drag (or Reset) in the other. The second says its
+   change was not saved and shows the first window's order.
+8. Export to CSV: its Seed column matches the page's column. On a tab with two events of one game, pick
+   the second under *Seeds for*; the export numbers that event.
+9. Home page **Tiers**: Export (no notes in the file); Import a friend's file whose rows name your
+   players by tag only, which should show as conflicts and not as new players; the four bulk buttons;
+   *Apply: add N, change M*. With `registry/tiers.csv` open in Excel, the home page should say the table
+   can't be read and grey out Export / Import.
+10. Dark mode: the drop line, the *arranged* pill and the push banner are legible.
+
+### REPORT
+
+- Overview: main is merged (368/368), and Noah's ruling and every relayed finding are fixed. The suite is
+  383/383 with no network. The Seed column is now the push's order in both modes. Column writes carry a
+  rev, a page id and a write number, so the page's last write wins and another window's arrangement is
+  never erased. The post is refused unless its plan is the dry run on screen. The page guarantees are
+  tested by running app.js against the server.
+- Found: confounding in the old-code check for the page tests (above). `.sr-only` still has no CSS rule
+  (unchanged, reported in pass 1).
+- Ran: commits b0b8a94 (merge), 873da4c, 597b2b7, 227e7ff, plus the docs and this record.
+- Queued: the visual checklist (uncertainty: nothing was seen; the pointer path is untested). Assumptions
+  1–4 are open for Noah to flip.
+- Spend: no budget given; no network, no app runs, local commits only.
+- Parked: none; the tree is committed and green.
+- Needs attention: (1) the visual checklist, the desktop app included; (2) Assumption 1 (tier-mode posts
+  are not stored as an arrangement); (3) Assumption 4 (ambiguous tag matches in imports).

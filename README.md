@@ -87,7 +87,8 @@ of yours; each with an Add box, plus *Add all* / *Add none*) and **conflicts** (
 side by side; *Mine* / *Theirs* per row, plus *Keep all mine* / *Take all theirs*). Players are matched
 by start.gg id, then discriminator, then tag. **Apply** writes only the rows you picked, only in that
 game; their notes and reviews stay yours, and each changed row's `source` says
-`import <date> from <file>`, which the grey "never reviewed" hover shows. Rows for other games in the file are
+`import <date> from <file>`, which the grey "never reviewed" hover shows. A file row with only a tag
+that matches a player you already have (linked or not) is shown against your row, never added again. Rows for other games in the file are
 counted and ignored; a file with none for the picked game is refused, naming the games it has. A row
 matched by tag only that you take is listed afterwards for you to check. If your tiers change between
 the review and Apply, the review is shown again.
@@ -133,8 +134,8 @@ never changes, and a **browser reload** shows the newest data. Old event links
 - **⇅ Compare** splits the window: tick up to three players and the lower half shows their summary
   rows, the events they entered together (each one's placement and W-L there; this is *not*
   head-to-head sets), and their series side by side.
-- **Export to CSV** saves this table as a CSV, in seed order with a **Seed** column first (numbered by
-  tier with the same sequence the push uses; the table's current order within a tier; untiered last).
+- **Export to CSV** saves this table as a CSV, in seed order with a **Seed** column first: the Seed
+  column on the page as it stands (tier order, or your arranged order), the same numbers the push posts.
   You pick where to save it; a small card shows the progress and goes away when done. For Google Sheets:
   *File → Import → Upload*, then *Replace current sheet*. Tags that start with `=`, `+`, `-` or `@` get a
   leading `'` so Sheets keeps them as text.
@@ -184,22 +185,24 @@ tier order** forgets the arrangement (it asks first). **Sort by seed** (or the S
 table back in seed order after sorting by another column; dragging does that by itself. When a tab
 covers two events of one game, *Seeds for* picks which event the column numbers.
 
-**Getting your tiers into start.gg (optional).** These two buttons on a game's tab hand the seeds
-over. Both number seeds the same way: one sequence 1..N, **your arranged order** when you have one,
-otherwise **higher tier gets the lower seed number**, untiered players after tiered ones.
+**Getting your seeds into start.gg (optional).** These two buttons on a game's tab hand the **Seed
+column** over, as it stands: tier order (higher tier gets the lower seed number, by tag within a tier,
+untiered last) until you arrange it, then your arranged order. One sequence 1..N.
 
 - **Push to start.gg… → Dry run** reads the event's seeding from start.gg (its first phase by phase
   order, named in the dry run; nothing is sent) and shows current seed → proposed seed. The line above
-  the table says which order it uses. **Tier order:** tiered players by tier with **start.gg's current
-  order within a tier**, then players without a tier. **Your arranged order:** exactly the Seed column
-  (a seed whose player isn't in it is slotted in by tier). Then seeds with no single player
-  (placeholders, teams). A move that crosses a tier boundary
+  the table says whether the column is in tier order or your arranged order; either way the proposed
+  seeds are exactly the Seed column (a seed whose player isn't in it yet is slotted in by tier), then
+  seeds with no single player (placeholders, teams). A move that crosses a tier boundary
   relative to start.gg's current order is flagged, so a conflict fix you made by hand in start.gg
   is visible before a re-push would revert it. Seeds whose player isn't in this tournament's pool
   are marked (Refresh to pull them). **Rows stay draggable while the dry run is open**: it redraws
-  after every drag or tier edit, and **Post sends the order as it is when you click**. **Posting needs
-  a click on the dry run and a confirm**; if start.gg's own seeding changed since the dry run (seeds
-  moved there), nothing is posted and a fresh dry run is shown. After a post the panel stays open:
+  after every drag or tier edit, and **Post sends the column and the dry run as they are when you
+  click**; the app posts only if they agree (a tier changed in another window can't change what you
+  saw). **Posting needs a click on the dry run and a confirm**; if start.gg's own seeding changed since
+  the dry run (seeds moved there), nothing is posted and a fresh dry run is shown. If another window
+  arranged this event since this page loaded, nothing of this page's is saved over it: the page shows
+  that order and says so. After a post the panel stays open:
   drag again and post again to update start.gg. Each push is recorded on the page. Failures show as one status line, with no retry: the
   bracket has started or the phase is locked, the token isn't an admin of the tournament, or
   start.gg's rate limit. Your token must be an admin of the tournament to post. *The post has been

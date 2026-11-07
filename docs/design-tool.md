@@ -549,11 +549,19 @@ Decisions:
   tier is not a whole number 0..20, its `player_id` is not digits, its discriminator is not a start.gg
   code (bare, `user/<code>` or a profile link are accepted), or it has nothing to match by. A row with
   no tier is skipped and counted.
-- **The review.** Each file row is matched to this game's rows with T1's precedence. Categories:
+- **The review.** Each file row is matched to this game's rows: by `player_id`, then by
+  `discriminator` (unless that row names another player), then **by tag against every row here,
+  linked by an id or not** (build D pass 2, auditor finding 4: in pass 1 the tag step looked only at
+  unlinked rows, as T1's own matcher does, so a file row with only a tag for a player Noah had linked
+  by id read as new, and the default Apply added a hidden tag-only duplicate of him). A tag match is
+  left out when the file row's own `player_id` or discriminator differs from the row's (someone
+  else); one remaining row is the match, two or more are ambiguous. So a player who already has a row
+  here is never added again by tag. Categories:
   **new** (no tier here: no row, or a row with no tier); **conflict** (a different tier here, shown
-  side by side with the match method and Noah's own note on hover); **same** (counted); **repeated**
-  (two file rows on one row here by an id: the same start.gg player, the first is used); **ambiguous**
-  (two file rows on one row here by tag only, A6-1's one-tag-two-people: neither is applied).
+  side by side with the match method and Noah's own note on hover; a tag match is marked "check");
+  **same** (counted); **repeated** (two file rows on one row here, at least one by an id: the same
+  start.gg player, the first id match is used); **ambiguous** (one tag naming two or more rows here,
+  or two file rows on one row here by tag only, A6-1's one-tag-two-people: never applied).
   Defaults: a new row is added, a conflict keeps Noah's. Per-row picks; the bulk buttons are **per
   section**: *Keep all mine* / *Take all theirs* for conflicts, *Add all* / *Add none* for new players
   (a "keep mine" has no meaning for a player Noah has no tier for, so one global pair would be
@@ -567,8 +575,15 @@ Decisions:
   "never reviewed" hover. `notes`, reviews and the sheet columns are never touched; an import is not a
   review, so it sets no `last_reviewed_*`. A taken row that was matched by tag only is listed after
   the apply for Noah to check (its ids are now written in, as an edit would).
-- **Limit.** The request body cap (200 KB, `app/server.js` `readBody`) bounds a file; the page refuses
-  one over 190 KB with a message. A game's shared tiers are far smaller than that.
+- **Limit.** The import routes read a request of up to 2 MB (`TIERS_BODY_MAX` in `app/server.js`, the
+  cap main's export POST uses), not the default 200 KB: the whole file travels as a JSON string, and
+  escaping adds up to ~30% (auditor finding 8). The server writes the cap into the page
+  (`data-max-bytes`), and the page measures the request it would send (UTF-8 bytes of the JSON, plus
+  room for Apply's picks) against it before sending, with a message naming both sizes.
+- **An unreadable table** (main's `readTiersText`: only a missing file means "no tiers"; a file held
+  open elsewhere throws): the import's review and apply and the export answer 503 with that message,
+  so nothing is applied over a table that could not be read (auditor finding 2), and the home page's
+  Tiers section says so, lists no "(none yet)" counts, and turns Export and Import off.
 
 ### A2.3 Seeds you arrange
 
@@ -585,14 +600,22 @@ clicked, a drag one second earlier included, never a debounced or unsaved copy; 
 step either keeps rows draggable or re-reads on confirm; after a push the rows are still draggable and
 a re-push works.
 
+**Ruling, 2026-11-07 (build D pass 2):** Noah: *"push should prepare the seed column and then send
+what was finalized."* The Seed column is always the push's source of truth, in tier order as well as
+arranged: the dry run prepares the column (tier order on first load, or the saved arrangement), Noah
+adjusts it by dragging, and Post sends exactly the column as it stands at the click; the dry run shows
+that same sequence. This replaces pass 1's tier-mode default (start.gg's order within a tier), which is
+dropped.
+
 Decisions:
 
 - **Two modes per event** (`lib/view/model.js` `seedOrder`). *Tier order* (nothing arranged): the
   event's entrants by tier descending, untiered last, then by tag, the table's existing tie-break
   (`orderPlayers` now calls the same comparator), recomputed on every read, so a tier edit moves the
   seed. *Arranged*: the order Noah dragged, saved in `out/<t>/state.json` as
-  `seeding: { <event slug>: { order: [player id], at } }` (never written by the pull, gone with the
-  tournament). Seeds are 1..N over the event's entrants; a tab player who did not enter the column's
+  `seeding: { <event slug>: { order: [player id] | null, at, rev, by, seq } }` (never written by the
+  pull, gone with the tournament; `order` null is tier order; `rev`, `by`, `seq` are the write rules
+  below). Seeds are 1..N over the event's entrants; a tab player who did not enter the column's
   event has no seed. "Reset to tier order" deletes the event's entry (it asks first: an arrangement
   is work).
 - **Reconciling** (`reconcileOrder`, used by the page, the export and the push alike): ids no longer
@@ -600,31 +623,51 @@ Decisions:
   after the **last** player in the order whose tier is at least its own (untiered: at the end; nobody
   that high: at the top). "Last", not "first below": a newcomer joins the bottom of its tier band even
   when Noah dragged a lower tier above it.
-- **The push.** With an arrangement, the proposed order is exactly the arrangement reconciled with
-  start.gg's seeds (a seed whose player is not in it slots in by tier), then the unmappable seeds. With
-  nothing arranged the push is unchanged from Outputs: tiers, **start.gg's current order within a
-  tier** (premise 1), because that protects a within-tier conflict fix Noah made in start.gg from a
-  re-push. *Amendable default:* the alternative, pushing the table's alphabetical within-tier order in
-  tier mode, is a one-line change in `pushPlan`; it would make the tier-mode Seed column exact for the
-  push at the cost of reverting start.gg-side within-tier moves. The dry run's first line says which
-  order it uses, and the bar beside the table says *Seeds: tier order* or *Seeds: arranged by hand*.
-  The push record in `state.json.pushes` gains `seed_order: tiers | arranged`.
-- **Nothing goes stale before the push.** The push fingerprint now covers **start.gg's side only**
-  (the phase's seed ids, current numbers and players). Noah's own inputs, the seed order and the tiers,
-  are read when he posts. The page sends the order it shows with the dry run (used, not saved) and with
-  the post (saved first, then read back for the push), so the order posted is the order on screen at
-  the click, and a reload shows the same. Every drag is saved at once (no debounce) through one
-  serialized chain, and Post waits for that chain before it reads the order. An open dry run is redrawn
-  in the page after every drag or tier edit (`pushPlan` over the dry run's start.gg seeds), so it is
-  never stale and dragging is never paused. The confirm dialog is modal; the order is read after it is
-  accepted. A change on start.gg's side since the dry run still refuses the post (409), and the page
-  then shows a fresh dry run. The post returns start.gg's side as it now stands, so the panel stays and
-  a re-push needs no new dry run. This revises "Push mechanics" above, where the post was refused if
-  the tiers had changed since the dry run.
-- **Exports.** The CSV export's Seed column (and `seeds.csv`) follows the arrangement of the tab's
-  **first** event when it has one; otherwise numbering is as before. *Known limit:* on a tab with two
-  events of one game, the export numbers the first event even when the Seed column shows the second
-  (the page's export call is another engineer's surface this pass; the fix is one parameter).
+- **The push** (`lib/view/model.js` `pushPlan`). The proposed order is the Seed column, in both modes,
+  reconciled with start.gg's seeds (a seed whose player is not in the column, not in the pool yet,
+  slots in by its T1 tier; a column player start.gg no longer seeds is skipped), then the unmappable
+  seeds. The page sends its column (both modes) with the dry run and the post; a request without one
+  (a script, a test) gets the column the server computes the same way (`lib/seeding.js`
+  `columnOrder`). Start.gg's own order matters only for an exact tie of tier and tag among seeds that
+  are not in the column. There is no hidden whole-event reorder on a first drag: both modes post the
+  column, so a drag moves one player and nothing else. The dry run's first line says which mode the
+  column is in, and the bar beside the table says *Seeds: tier order* or *Seeds: arranged by hand*.
+  The push record in `state.json.pushes` gains `seed_order: tiers | arranged` and `order`, the player
+  ids it sent in seed order. Premise 1's "within-tier order left as start.gg already has it" no longer
+  holds; the crosses-tier flag still shows a move that passes a seed of another tier relative to
+  start.gg's current order.
+- **Nothing goes stale before the push, and what is posted is what was on screen.** The push
+  fingerprint covers **start.gg's side only** (the phase's seed ids, current numbers and players): a
+  change there since the dry run refuses the post (409 `stale`) and the page shows a fresh dry run.
+  Noah's own inputs are sent by the page at the click: the column (`seeding`) and the dry run it shows
+  (`proposed`, the [seed id, number] pairs). The server saves the column first (write rules below),
+  plans from **the column sent** (so a tier changed in another window cannot change what is posted),
+  and posts only when its plan equals `proposed`; otherwise 409 `not-as-shown` with its dry run, the
+  page redraws from it, nothing is posted. An open dry run is redrawn in the page after every drag,
+  tier edit, reset or adopted change (`pushPlan` over the dry run's start.gg seeds), so dragging is
+  never paused. The confirm dialog is modal; the column and the dry run are read after it is accepted.
+  The post returns start.gg's side as it now stands, so the panel stays and a re-push needs no new dry
+  run. This revises "Push mechanics" above, where the post was refused if the tiers had changed since
+  the dry run.
+- **Write rules** (`lib/seeding.js`; auditor findings 5 and 6). Every change of the column from the
+  page (a move, a reset, the post) goes through one serialized chain in the page, in order, and carries
+  `base` (the `rev` it builds on), `client` (a random id per page load) and `seq` (its write number):
+  - a write from the same page whose `seq` is not newer than the stored one is an overtaken copy and is
+    ignored, so the page's last write wins even if requests arrive out of order (a move made while the
+    post is on its way is sent after it, and is what a reload shows);
+  - a write whose `base` is not the stored `rev`, when another page made that change, is refused (409
+    `seed-conflict`, with the current state): a stale window or a second one can never erase an
+    arrangement made elsewhere, by a reset or by a tier-order post. The page then shows that order,
+    drops its queued writes, and says nothing of its own was saved; Noah checks and posts again;
+  - a write without `base` (scripts, tests) is not conflict-checked;
+  - in tier order the column is posted as sent but not stored as an arrangement (`order` stays null),
+    so later tier edits keep moving seeds; the push record keeps the order that was sent.
+- **Exports.** The CSV export's Seed column (and `seeds.csv`'s `proposed_seed`) is the Seed column:
+  the page sends the event it shows (`event`) and the column as it stands (`seeding`) in the export's
+  POST body (main moved the export to a POST); without them, the tab's first event's saved state. The
+  table's sort no longer renumbers a tab's export (it did in pass 1 and before, within a tier); a
+  run-shaped folder (the CLI view) keeps the old numbering. So the export, the column, the dry run and
+  the post agree in both modes (`test/seed-order.test.js`, ruling (b)).
 - **Interaction.** Each seeded row has a ⠿ handle. Pointer events, not HTML5 drag-and-drop: the desktop
   shell builds its window without `disable_drag_drop_handler()` (`src-tauri/src/main.rs`, the
   `WebviewWindowBuilder` call), so Tauri's own drag-drop handler is on, and Tauri 2 documents that call

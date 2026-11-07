@@ -135,13 +135,18 @@ class Jobs {
     job.promise = Promise.resolve()
       .then(() => {
         const token = this.opts.getToken();
-        if (!token) throw new Error('No start.gg token. Paste it after STARTGG_TOKEN= in the .env file and restart the app.');
+        if (!token) throw new Error('No start.gg token. Connect to start.gg with Connect… in the bar at the top of the page.');
         return (this.opts.pullSchedule || pullSchedule)({ slug: t, token, seedsOnly, outRoot: this.opts.outRoot,
           fetchImpl: this.stoppable(job, this.opts.queue.fetchFor()), now: this.opts.now, sleep: this.opts.sleep });
       })
       .catch((err) => { job.error = job.cancelled ? 'Stopped.' : (err && err.message) || String(err); })
       .finally(() => { job.running = false; job.finishedAt = new Date(this.now()).toISOString(); });
     return { started: true, job };
+  }
+
+  // Anything running or queued, any tournament (an update restarts the app, which would cut it off).
+  busyAnywhere() {
+    return !!this.current || this.waiting.length > 0 || [...this.schedules.values()].some((s) => s.running);
   }
 
   busyWith(t) {
@@ -188,7 +193,7 @@ class Jobs {
   async executePull(job) {
     const { outRoot } = this.opts;
     const token = this.opts.getToken();
-    if (!token) throw new Error('No start.gg token. Paste it after STARTGG_TOKEN= in the .env file and restart the app.');
+    if (!token) throw new Error('No start.gg token. Connect to start.gg with Connect… in the bar at the top of the page.');
     const tDir = this.tDir(job.t);
     const state = pool.readState(tDir);
     if (!state) throw new Error('This tournament has not been added.');
@@ -310,7 +315,7 @@ class Jobs {
 
   async executeArchive(job) {
     const token = this.opts.getToken();
-    if (!token) throw new Error('No start.gg token. Paste it after STARTGG_TOKEN= in the .env file and restart the app.');
+    if (!token) throw new Error('No start.gg token. Connect to start.gg with Connect… in the bar at the top of the page.');
     const tDir = this.tDir(job.t);
     const state = pool.readState(tDir);
     const cur = pool.currentPull(tDir);

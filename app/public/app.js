@@ -816,8 +816,9 @@
     const slug = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
     return `${slug(T)}-${slug(vm && vm.tab && vm.tab.game && vm.tab.game.name)}-seeding.csv`;
   }
-  async function fetchCsvWithProgress(url, onProgress) {
-    const res = await fetch(url, { cache: 'no-store' });
+  async function fetchCsvWithProgress(url, onProgress, order) {
+    // The table order goes in the body: every registrant's id does not fit in a URL (431 past ~2000).
+    const res = await fetch(url, { method: 'POST', cache: 'no-store', headers: { 'X-Seeding-App': '1', 'Content-Type': 'application/json' }, body: JSON.stringify({ order }) });
     if (!res.ok) throw new Error(`The server answered ${res.status}.`);
     const total = Number(res.headers.get('Content-Length')) || 0;
     const fromHeader = /filename="([^"]+)"/.exec(res.headers.get('Content-Disposition') || '');
@@ -832,7 +833,8 @@
     return { blob: new Blob(chunks, { type: 'text/csv;charset=utf-8' }), filename: fromHeader ? fromHeader[1] : suggestedName(), bytes: got };
   }
   $('exportCsv').addEventListener('click', async () => {
-    const url = api(`export.csv?order=${tableOrder().join(',')}`);
+    const url = api('export.csv');
+    const order = tableOrder();
     let handle = null;
     if (window.showSaveFilePicker) {
       try {
@@ -842,7 +844,7 @@
     exportUi.show('Exporting…', 'Building the table');
     $('exportCsv').disabled = true;
     try {
-      const { blob, filename, bytes } = await fetchCsvWithProgress(url, exportUi.progress);
+      const { blob, filename, bytes } = await fetchCsvWithProgress(url, exportUi.progress, order);
       if (handle) {
         exportUi.progress(0.95); $('exportDetail').textContent = 'Saving';
         const w = await handle.createWritable(); await w.write(blob); await w.close();

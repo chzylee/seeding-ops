@@ -15,6 +15,11 @@
 	binary's __dirname points inside the bundle and the server reads real files
 	(the page's JS, config/majors.json, registry/tiers.csv, out/, .env).
 
+	SEEDING_DATA names where the user's data lives (registry/tiers.csv, out/,
+	.env). Beside the code, except in an installed copy, whose install folder
+	belongs to the installer: there it is the per-user data folder, and the first
+	launch moves what an older install left beside the exe (lib/data-dir.js).
+
 	The "./server.js" require is static so Bun bundles it into the binary; the
 	live require is a runtime-computed path, which a Bun-compiled binary resolves
 	against the real filesystem.
@@ -42,11 +47,17 @@ function candidates() {
 	return dirs.filter(Boolean);
 }
 
+// Where the data lives, decided before the server loads (it reads SEEDING_DATA at load). A failure
+// there never stops the app: it runs on the project folder, as every version before this one did.
+const { applyDataRoot } = require("../lib/data-dir");   // static, so Bun bundles it
+const useDataRoot = (root) => applyDataRoot({ root, exeDir: path.dirname(process.execPath) });
+
 const dirs = candidates();
 const liveDir = dirs.find(d => fs.existsSync(path.join(d, "app", "server.js")));
 
 if (liveDir) {
 	process.env.SEEDING_ROOT = liveDir;
+	useDataRoot(liveDir);
 	const live = path.join(liveDir, "app", "server.js");
 	console.log(`  server code   : live from ${live}`);
 	require(live).main([]);
@@ -54,6 +65,7 @@ if (liveDir) {
 	// Embedded server; the project files must still be on disk beside the exe.
 	const root = dirs.find(d => fs.existsSync(path.join(d, "config", "majors.json"))) || path.dirname(process.execPath);
 	process.env.SEEDING_ROOT = root;
+	useDataRoot(root);
 	console.log(`  server code   : embedded; project folder ${root}`);
 	require("./server.js").main([]);   // embedded at compile time
 }

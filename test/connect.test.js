@@ -25,17 +25,13 @@ test('connect: no token -> status says missing and the home page carries the con
   try {
     const app = createApp({ outRoot, envFile, fetchImpl: fake, sleep: async () => {} });
     let st = (await inject(app.handler, { url: '/api/token' })).json();
-    assert.deepStrictEqual(st, { configured: false, source: null, ok: false, as: null, prefix: null, image: null, slug: null, kind: 'missing', message: 'No start.gg token yet.', env_wins: false });
+    assert.deepStrictEqual(st, { configured: false, source: null, ok: false, state: 'missing', as: null, prefix: null, image: null, slug: null, kind: 'missing', message: 'No start.gg token yet.', env_wins: false });
     assert.strictEqual(fake.calls.length, 0, 'nothing is asked of start.gg without a token');
     // One entry point (Noah, 2026-11-05): the account bar's dialog (account.js, on every page), which
-    // opens by itself when nobody is signed in. No separate card on the home page.
+    // opens by itself when nobody is signed in (test/account-script.test.js runs it). No home-page card.
     const home = (await inject(app.handler, { url: '/' })).text;
     assert.match(home, /<script src="\/static\/account\.js" defer><\/script>/);
     assert.doesNotMatch(home, /id="connect"/);
-    const acc = (await inject(app.handler, { url: '/static/account.js' })).text;
-    assert.match(acc, /if \(!st\.ok && !opened\) \{ opened = true; openDialog\(\); \}/, 'the dialog opens itself when not signed in');
-    assert.match(acc, /start\.gg\/admin\/profile\/developer/);
-    assert.match(acc, /<input id="accountToken" type="password"/);
     // Adding a tournament without a token is refused with a pointer to the connect screen.
     const add = await post(app, '/api/tournaments', { url: 'https://www.start.gg/tournament/x/event/y' });
     assert.strictEqual(add.status, 400);
@@ -54,11 +50,13 @@ test('connect: no token -> status says missing and the home page carries the con
     assert.deepStrictEqual(good.json(), { ok: true, as: 'TestTO', saved: '.env', env_wins: false });
     assert.strictEqual(fs.readFileSync(envFile, 'utf8'), 'STARTGG_TOKEN=good-token-abc\n');
     st = (await inject(app.handler, { url: '/api/token' })).json();
-    assert.deepStrictEqual(st, { configured: true, source: '.env', ok: true, as: 'TestTO', prefix: 'FAKE', image: 'https://images.start.gg/fake/testto-profile.png', slug: 'user/testto00', kind: null, message: null, env_wins: false }, 'the account bar gets the tag, prefix and profile picture');
+    assert.deepStrictEqual(st, { configured: true, source: '.env', ok: true, state: 'ok', as: 'TestTO', prefix: 'FAKE', image: 'https://images.start.gg/fake/testto-profile.png', slug: 'user/testto00', kind: null, message: null, env_wins: false }, 'the account bar gets the tag, prefix and profile picture');
     const calls = fake.calls.length;
     assert.strictEqual((await inject(app.handler, { url: '/api/token' })).status, 200);
     assert.strictEqual(fake.calls.length, calls, 'the check is cached; no request per page load');
-    assert.strictEqual((await inject(app.handler, { url: '/api/token?check=1' })).status, 200);
+    assert.strictEqual((await inject(app.handler, { url: '/api/token?check=1' })).status, 403, '?check=1 spends a start.gg request, so it needs the app header');
+    assert.strictEqual(fake.calls.length, calls);
+    assert.strictEqual((await inject(app.handler, { url: '/api/token?check=1', headers: { 'X-Seeding-App': '1' } })).status, 200);
     assert.strictEqual(fake.calls.length, calls + 1, '?check=1 asks again');
     // The token never comes back in any status body.
     for (const r of [st, good.json()]) assert.ok(!JSON.stringify(r).includes('good-token-abc'));
@@ -82,6 +80,92 @@ test('connect: a saved token that start.gg later rejects reads as rejected (kind
     assert.strictEqual(st.configured, true);
     assert.strictEqual(st.ok, false);
     assert.strictEqual(st.kind, 'bad-token');
+    assert.strictEqual(st.state, 'rejected');
     assert.ok(!JSON.stringify(st).includes('bad-token\n'));
+  } finally { if (saved != null) process.env.STARTGG_TOKEN = saved; }
+});
+
+// ---- start.gg unreachable is not a rejected token (found 2026-11-06: since ab77a9a any failure read
+// "start.gg rejected the saved token", was remembered for ten minutes, and opened Connect on every page).
+function failingFetch(kind) {
+  const calls = [];
+  const f = async (url, init) => {
+    calls.push(init);
+    if (kind === 'network') throw new Error('getaddrinfo ENOTFOUND api.start.gg');
+    if (kind === 'rate-limited') return new Response(JSON.stringify({ success: false, message: 'Rate limit exceeded - api-token' }), { status: 429 });
+    if (kind === 'time-budget') return new Response(JSON.stringify({ errors: [{ message: 'You have gone over the threshold for recent request time. Please wait before sending another request.' }] }), { status: 200 });
+    if (kind === 'server') return new Response('<html>502</html>', { status: 502 });
+    throw new Error(kind);
+  };
+  f.calls = calls;
+  return f;
+}
+
+for (const kind of ['network', 'rate-limited', 'time-budget', 'server']) {
+  test(`connect: start.gg ${kind} reads as "unreachable" (not rejected), after ONE request, with no backoff waits`, async () => {
+    const envFile = path.join(tmp(), '.env');
+    fs.writeFileSync(envFile, 'STARTGG_TOKEN=fine-token\n');
+    const saved = process.env.STARTGG_TOKEN; delete process.env.STARTGG_TOKEN;
+    const slept = [];
+    try {
+      const fetchImpl = failingFetch(kind);
+      const app = createApp({ outRoot: tmp(), envFile, fetchImpl, sleep: async (ms) => { slept.push(ms); } });
+      const st = (await inject(app.handler, { url: '/api/token' })).json();
+      assert.strictEqual(st.ok, false);
+      assert.strictEqual(st.state, 'unreachable');
+      assert.strictEqual(st.kind, kind);
+      assert.doesNotMatch(st.message, /rejected/);
+      assert.strictEqual(fetchImpl.calls.length, 1, 'one try: the check is never retried');
+      assert.ok(!slept.some((ms) => ms >= 4000), `no backoff waits (slept ${slept})`);
+    } finally { if (saved != null) process.env.STARTGG_TOKEN = saved; }
+  });
+}
+
+test('connect: a real answer is remembered for ten minutes; an unreachable start.gg is asked again after thirty seconds', async () => {
+  const envFile = path.join(tmp(), '.env');
+  fs.writeFileSync(envFile, 'STARTGG_TOKEN=fine-token\n');
+  const saved = process.env.STARTGG_TOKEN; delete process.env.STARTGG_TOKEN;
+  let t = Date.UTC(2026, 10, 6, 12);
+  let mode = 'network';
+  const world = buildWorld(Math.floor(Date.UTC(2026, 9, 12) / 1000));
+  const good = createFakeFetch(world);
+  let calls = 0;
+  const fetchImpl = async (url, init) => { calls++; if (mode === 'network') throw new Error('offline'); return good(url, init); };
+  try {
+    const app = createApp({ outRoot: tmp(), envFile, fetchImpl, now: () => t, sleep: async () => {} });
+    const get = async () => (await inject(app.handler, { url: '/api/token' })).json();
+    assert.strictEqual((await get()).state, 'unreachable');
+    t += 10 * 1000;
+    await get();
+    assert.strictEqual(calls, 1, 'within thirty seconds the answer is reused');
+    mode = 'up';
+    t += 25 * 1000;
+    const back = await get();
+    assert.strictEqual(calls, 2, 'after thirty seconds start.gg is asked again');
+    assert.strictEqual(back.state, 'ok', 'and the bar recovers by itself once start.gg answers');
+    t += 9 * 60 * 1000;
+    await get();
+    assert.strictEqual(calls, 2, 'a real answer is kept for ten minutes');
+  } finally { if (saved != null) process.env.STARTGG_TOKEN = saved; }
+});
+
+test('connect: checks asked for at once (every page load asks) share one start.gg request', async () => {
+  const envFile = path.join(tmp(), '.env');
+  fs.writeFileSync(envFile, 'STARTGG_TOKEN=fine-token\n');
+  const saved = process.env.STARTGG_TOKEN; delete process.env.STARTGG_TOKEN;
+  const world = buildWorld(Math.floor(Date.UTC(2026, 9, 12) / 1000));
+  const good = createFakeFetch(world);
+  let calls = 0;
+  let release;
+  const gate = new Promise((r) => { release = r; });
+  const fetchImpl = async (url, init) => { calls++; await gate; return good(url, init); };
+  try {
+    const app = createApp({ outRoot: tmp(), envFile, fetchImpl, sleep: async () => {} });
+    const all = Promise.all([1, 2, 3, 4].map(() => inject(app.handler, { url: '/api/token' })));
+    for (let i = 0; i < 5; i++) await new Promise((r) => setImmediate(r));
+    release();
+    const res = await all;
+    assert.strictEqual(calls, 1);
+    for (const r of res) assert.strictEqual(r.json().state, 'ok');
   } finally { if (saved != null) process.env.STARTGG_TOKEN = saved; }
 });

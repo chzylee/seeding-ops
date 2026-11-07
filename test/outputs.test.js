@@ -225,7 +225,7 @@ test('the page: posting needs a click on a dry run and a confirm, sends the fing
   assert.match(postFn, /pushLine\(r\.body\.error \|\| 'Not posted\.', true\)/);
   assert.match(fn('runDry'), /R\.pushDiffTable\(dry\)/);
   // Noah, 2026-10-30: one export; it carries the table's order to export.csv (the Seed column uses it).
-  assert.match(src, /api\(`export\.csv\?order=\$\{tableOrder\(\)\.join\(','\)\}`\)/);
+  // The export's order is checked by running app.js (test/export-order-script.test.js), not here.
   assert.doesNotMatch(src, /seeds\.csv/, 'the seeds.csv button is gone from the page');
 });
 

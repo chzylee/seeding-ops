@@ -29,8 +29,12 @@
 //   GET  /api/t/<t>/schedule                  out/<t>/schedule.json + status
 //   POST /api/t/<t>/schedule/refresh          [?only=seeds] the schedule pull, through the queue
 //   GET  /api/t/<t>/g/<game>/data             one tab's view model
-//   GET  /api/t/<t>/g/<game>/export.csv       the tab's summary for Google Sheets
-//   GET  /api/t/<t>/g/<game>/seeds.csv        [?order=<player ids>] seeds in seed order (no start.gg request)
+//   GET  /api/t/<t>/g/<game>/export.csv       the tab's summary for Google Sheets (also POST { order })
+//   GET  /api/t/<t>/g/<game>/seeds.csv        [?order=<player ids>] seeds in seed order (no start.gg request; also POST { order })
+//   GET  /api/token[?check=1]                 who is signed in to start.gg; POST { token } saves one
+//   GET  /api/update                          this copy's version and whether it can install updates
+//   POST /api/update/check                    asks GitHub for the newest release (lib/update.js)
+//   POST /api/update/install                  { version } downloads, verifies, runs the installer, exits
 //   POST /api/t/<t>/g/<game>/player/<id>      edit tier / notes in registry/tiers.csv
 //   POST /api/t/<t>/g/<game>/player/<id>/review   the ✓ review mark (T1)
 //   POST /api/t/<t>/g/<game>/seeds            { event, mode: tiers | arranged, order? } the event's seed
@@ -63,12 +67,17 @@ const U = require('../lib/upload');
 const majorsConfig = require('../lib/view/majors');
 const share = require('../lib/tiers-share');
 const seeding = require('../lib/seeding');
+const update = require('../lib/update');
+const dataDir = require('../lib/data-dir');
 const { Jobs } = require('./jobs');
 const { createQueue } = require('./queue');
 
 // SEEDING_ROOT points the server at a project folder on disk when this file runs from inside
 // the compiled desktop sidecar (app/app-main.js sets it). From source it is simply the repo.
 const ROOT = process.env.SEEDING_ROOT ? path.resolve(process.env.SEEDING_ROOT) : path.join(__dirname, '..');
+// SEEDING_DATA: where out/ and .env live. The project folder, except in an installed copy, where
+// app/app-main.js points it at the per-user data folder (lib/data-dir.js).
+const DATA_ROOT = process.env.SEEDING_DATA ? path.resolve(process.env.SEEDING_DATA) : ROOT;
 const APP_DIR = path.join(ROOT, 'app');
 const DEFAULT_PORT = 8765;
 const HOST = '127.0.0.1';
@@ -86,6 +95,8 @@ const STATIC = {
   'theme.js': [path.join(APP_DIR, 'public', 'theme.js'), JS],
   'busy.js': [path.join(APP_DIR, 'public', 'busy.js'), JS],
   'account.js': [path.join(APP_DIR, 'public', 'account.js'), JS],
+  'update.js': [path.join(APP_DIR, 'public', 'update.js'), JS],
+  'notices.js': [path.join(APP_DIR, 'public', 'notices.js'), JS],
 };
 // The upload picker's game logos (config/games.json, copied from find-my-fgc), served as
 // /static/games/<file>: only files the config names, only image types, only under app/public/games.
@@ -169,7 +180,15 @@ function tiersSection(tiersFile) {
 </section>`;
 }
 const DONE_NOTE = '<li class="done-note dim">Tournaments are marked done automatically once their last seeded event\'s date has passed. Delete one when you no longer need it: right-click it here, or use Delete on its page; both ask first.</li>';
-function indexPage(outRoot, jobs, nowMs, tiersFile) {
+// The data folder's notices (lib/data-dir.js): a tiers table the old uninstaller probably removed, a
+// move out of the old install folder that failed or was partial, an old copy left behind. Lasting ones
+// have Dismiss (notices.js).
+function noticesHtml(notices) {
+  if (!notices.length) return '';
+  const link = (n) => (n.link && typeof n.link.href === 'string' && /^https:\/\/github\.com\//.test(n.link.href) ? ` <a href="${esc(n.link.href)}" target="_blank" rel="noopener">${esc(n.link.text || n.link.href)}</a>` : '');
+  return `<section class="data-notices" aria-label="About your data">${notices.map((n) => `<div class="data-notice ${n.level === 'warn' ? 'warn' : 'info'}" role="${n.level === 'warn' ? 'alert' : 'status'}" data-id="${esc(n.id)}"><span>${esc(n.text)}${link(n)}</span>${n.lasting ?`<button type="button" class="plain" data-dismiss="${esc(n.id)}">Dismiss</button>` : ''}</div>`).join('')}</section>`;
+}
+function indexPage(outRoot, jobs, nowMs, notices = [], tiersFile) {
   const list = pool.listTournaments(outRoot, nowMs);
   const firstDone = list.findIndex((x) => x.status !== 'live');
   const items = list.map((x, i) => {
@@ -185,7 +204,7 @@ function indexPage(outRoot, jobs, nowMs, tiersFile) {
   }).join('');
   return `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Seeding tournaments</title><link rel="stylesheet" href="/static/app.css"><script src="/static/theme.js"></script><script src="/static/busy.js"></script><script src="/static/account.js" defer></script>
-<body class="index"><main><h1>Tournaments</h1>
+<body class="index"><main><h1>Tournaments</h1>${noticesHtml(notices)}
 <section class="add-section" aria-labelledby="addHead"><h2 id="addHead">Add a tournament</h2>
 <form id="add" class="add-t"><label for="addUrl" class="sr-only">start.gg tournament or event link</label>
 <input id="addUrl" name="url" placeholder="start.gg tournament or event link" autocomplete="off" spellcheck="false" required title="Adding makes one request to start.gg for the tournament's events; you pick the singles events to seed on its page.">
@@ -193,8 +212,9 @@ function indexPage(outRoot, jobs, nowMs, tiersFile) {
 ${uploadForm()}
 </section>
 ${tiersSection(tiersFile)}
-<ul class="events">${items || '<li class="dim">No tournaments yet. Add one above.</li>'}</ul></main>
-<script src="/static/model.js"></script><script src="/static/render.js"></script><script src="/static/index.js"></script></body></html>`;
+<ul class="events">${items || '<li class="dim">No tournaments yet. Add one above.</li>'}</ul>
+<footer class="app-version" aria-label="Version and updates"><span id="appVersion" class="dim">Seeding Ops ${esc(update.currentVersion(ROOT))}</span><button type="button" id="updateCheck">Check for updates</button><button type="button" id="updateInstall" class="primary" hidden>Install</button><a id="updateLink" href="#" target="_blank" rel="noopener" hidden>Release page</a><span id="updateMsg" class="status" role="status" aria-live="polite"></span></footer></main>
+<script src="/static/model.js"></script><script src="/static/render.js"></script><script src="/static/index.js"></script><script src="/static/update.js"></script><script src="/static/notices.js"></script></body></html>`;
 }
 
 function notAddedPage(t) {
@@ -211,9 +231,18 @@ function trustedHost(req) {
   return /^(127\.0\.0\.1|localhost)(:\d+)?$/.test(h);
 }
 
-async function readBody(req) {
-  let body = '';
-  for await (const chunk of req) { body += chunk; if (body.length > 200000) throw bad(413, 'Too large'); }
+// The body is collected as bytes and decoded once: decoding chunk by chunk turns a character whose
+// UTF-8 bytes straddle two chunks into U+FFFD ("Zoë" -> "Zo��").
+async function readBody(req, limit = 200000) {
+  const chunks = [];
+  let size = 0;
+  for await (const chunk of req) {
+    const b = typeof chunk === 'string' ? Buffer.from(chunk) : chunk;
+    size += b.length;
+    if (size > limit) throw bad(413, 'Too large');
+    chunks.push(b);
+  }
+  const body = Buffer.concat(chunks).toString('utf8');
   let fields;
   try { fields = JSON.parse(body || '{}'); } catch { throw bad(400, 'Body must be JSON.'); }
   if (!fields || typeof fields !== 'object' || Array.isArray(fields)) throw bad(400, 'Body must be a JSON object.');
@@ -221,25 +250,36 @@ async function readBody(req) {
 }
 
 function createApp(opts = {}) {
-  const outRoot = opts.outRoot || path.join(ROOT, 'out');
+  const outRoot = opts.outRoot || path.join(DATA_ROOT, 'out');
   // The token: STARTGG_TOKEN in the environment, else <root>/.env, read on every use so a token saved
   // from the app's connect screen takes effect at once (Noah, 2026-11-05: no restart).
-  const envFile = opts.envFile || path.join(ROOT, '.env');
+  const envFile = opts.envFile || path.join(DATA_ROOT, '.env');
   const tokenInfo = opts.getToken ? () => ({ token: opts.getToken(), source: 'app' }) : () => loadToken({ envFile });
   const getToken = () => tokenInfo().token;
   // What the last check of the current token found; re-checked when the token changes, on demand, or
-  // after ten minutes. The value itself is never sent to the page.
-  const tokenCheck = { token: null, at: 0, result: null };
+  // when it is old: ten minutes for an answer (signed in, or rejected), thirty seconds when start.gg
+  // could not be reached or was rate limiting, so a blip is not remembered for ten minutes. Checks
+  // asked for while one is in flight share it (every page load asks). The value itself is never sent
+  // to the page.
+  const tokenCheck = { token: null, at: 0, result: null, pending: null, pendingToken: null };
+  const ANSWER_MS = 10 * 60 * 1000, TRANSIENT_MS = 30 * 1000;
   async function tokenStatus({ force = false } = {}) {
     const { token, source } = tokenInfo();
-    if (!token) return { configured: false, source: null, ok: false, as: null, prefix: null, image: null, slug: null, kind: 'missing', message: 'No start.gg token yet.', env_wins: false };
-    const stale = tokenCheck.token !== token || force || nowMs() - tokenCheck.at > 10 * 60 * 1000;
+    if (!token) return { configured: false, source: null, ok: false, state: 'missing', as: null, prefix: null, image: null, slug: null, kind: 'missing', message: 'No start.gg token yet.', env_wins: false };
+    const r0 = tokenCheck.result;
+    const maxAge = r0 && !r0.ok && r0.state === 'unreachable' ? TRANSIENT_MS : ANSWER_MS;
+    const stale = tokenCheck.token !== token || force || nowMs() - tokenCheck.at > maxAge;
     if (stale) {
-      tokenCheck.result = await validateToken({ token, fetchImpl: queue.fetch, now: opts.now, sleep: opts.sleep });
-      tokenCheck.token = token; tokenCheck.at = nowMs();
+      if (!tokenCheck.pending || tokenCheck.pendingToken !== token) {
+        tokenCheck.pendingToken = token;
+        tokenCheck.pending = validateToken({ token, fetchImpl: queue.fetch, now: opts.now, sleep: opts.sleep })
+          .then((res) => { tokenCheck.result = res; tokenCheck.token = token; tokenCheck.at = nowMs(); return res; })
+          .finally(() => { tokenCheck.pending = null; tokenCheck.pendingToken = null; });
+      }
+      await tokenCheck.pending;
     }
     const r = tokenCheck.result;
-    return { configured: true, source, ok: !!r.ok, as: r.as || null, prefix: r.prefix || null, image: r.image || null, slug: r.slug || null,
+    return { configured: true, source, ok: !!r.ok, state: r.ok ? 'ok' : (r.state || 'unreachable'), as: r.as || null, prefix: r.prefix || null, image: r.image || null, slug: r.slug || null,
       kind: r.ok ? null : r.kind, message: r.ok ? null : r.message, env_wins: source === 'environment' };
   }
   const tiersFile = opts.tiersFile; // undefined => data.js's own default (SEED_TIERS_FILE or registry/tiers.csv)
@@ -251,10 +291,79 @@ function createApp(opts = {}) {
   const jobs = new Jobs({ outRoot, getToken, queue, now: opts.now, sleep: opts.sleep, pull: opts.pull, pullSchedule: opts.pullSchedule, tiersFile });
   const client = () => {
     const token = getToken();
-    if (!token) throw bad(400, 'No start.gg token yet. Connect to start.gg at the top of the tournaments page.');
+    if (!token) throw bad(400, 'No start.gg token yet. Connect to start.gg with Connect… in the bar at the top of the page.');
     return sgg.createClient({ token, fetchImpl: queue.fetch, now: opts.now, sleep: opts.sleep });
   };
   const requireApp = (req) => { if (req.headers['x-seeding-app'] !== '1') throw bad(403, 'Missing X-Seeding-App header'); };
+
+  // ---- The data folder's notices (lib/data-dir.js): this launch's (SEEDING_DATA_NOTICES, set by
+  // app/app-main.js) and the lasting ones in <data>/notices.json ----
+  const dataRoot = opts.dataRoot || DATA_ROOT;
+  function dataNotices() {
+    let launch = opts.dataNotices;
+    if (!launch) { try { launch = JSON.parse(process.env.SEEDING_DATA_NOTICES || '[]'); } catch { launch = []; } }
+    return [...(Array.isArray(launch) ? launch : []), ...dataDir.readNotices(dataRoot).map((n) => ({ ...n, lasting: true }))];
+  }
+
+  // ---- Check for updates (lib/update.js; Noah, 2026-11-06) ----
+  // opts.update injects the network, the installer launch and the exit for tests.
+  const up = opts.update || {};
+  const updateConfig = () => ({ ...update.readConfig(ROOT), ...(up.config || {}) });
+  const installedCopy = () => (up.installed != null ? up.installed : process.env.SEEDING_INSTALLED === '1');
+  let updating = null;   // the version being installed, once an install has started
+  function updateStatus() {
+    const config = updateConfig();
+    const current = up.current || update.currentVersion(ROOT);
+    const platform = up.platform || process.platform;
+    let reason = null;
+    if (!installedCopy()) reason = 'This copy is not the installed app (it runs from a folder: a checkout or the portable ZIP). Update a checkout with git pull; replace a portable copy with a new download.';
+    else if (platform !== 'win32') reason = 'Installing updates from the app is Windows only; download the new version from the release page.';
+    else if (!config.pubkey) reason = 'This build has no update signing key, so it cannot check that an update is genuine. Download the installer from the release page instead.';
+    return { current, installed: installedCopy(), can_install: !reason, reason, releases_page: config.releasesPage, updating };
+  }
+  async function checkForUpdate() {
+    const st = updateStatus();
+    try {
+      const r = await update.check({ fetchImpl: up.fetchImpl || globalThis.fetch, config: updateConfig(), current: st.current });
+      return { ...st, ok: true, latest: r.latest, available: r.available, notes: r.notes, pub_date: r.pub_date };
+    } catch (err) {
+      return { ...st, ok: false, kind: err.kind || 'error', error: err.message };
+    }
+  }
+  async function installUpdate(fields) {
+    const st = updateStatus();
+    if (updating) throw bad(409, `Version ${updating} is already being installed.`);
+    if (!st.can_install) throw bad(409, st.reason);
+    if (jobs.busyAnywhere()) throw bad(409, 'A pull, schedule pull or archive is running or queued. Wait for it to finish (or stop it), then update; the update restarts the app.');
+    const config = updateConfig();
+    // The client's version is a confirmation, not an instruction: what is installed is what latest.json says now.
+    let info;
+    try { info = await update.check({ fetchImpl: up.fetchImpl || globalThis.fetch, config, current: st.current }); } catch (err) { throw bad(502, err.message, { kind: err.kind }); }
+    if (!info.available) throw bad(409, `Already up to date (${st.current}).`);
+    if (fields.version && String(fields.version) !== info.latest) throw bad(409, `The latest version is now ${info.latest}, not ${fields.version}. Check again.`);
+    updating = info.latest;
+    let file;
+    try {
+      file = await update.download({ fetchImpl: up.fetchImpl || globalThis.fetch, info, config, tmpDir: up.tmpDir });
+      // A launcher that starts the installer after update.LAUNCH_DELAY_S; a failure to start it is
+      // answered here, with the server still up (audit #3).
+      await update.runInstaller(file, { spawnImpl: up.spawnImpl, exists: up.exists });
+    } catch (err) {
+      updating = null;
+      throw bad(err.kind === 'unreachable' ? 502 : 409, err.message, { kind: err.kind });
+    }
+    // If the installer never starts after the launcher's wait, nothing running can say so; the next
+    // launch reads this marker and does (update.settlePending, from main()).
+    try { update.writePending(dataRoot, { from: st.current, to: info.latest, releasesPage: config.releasesPage }); } catch { /* the notice is a courtesy */ }
+    // Leave the way clear: the installer replaces both exes, so neither may still be running when it
+    // starts (audit #7). In the desktop shell (SEEDING_EMBEDDED) the shell is this process's parent;
+    // it is ended too. Half a second lets the response reach the page; the launcher waits longer.
+    (up.exit || (() => setTimeout(() => {
+      if (process.env.SEEDING_EMBEDDED === '1') { try { process.kill(process.ppid); } catch { /* already gone */ } }
+      process.exit(0);
+    }, 500)))();
+    return { ok: true, installing: info.latest, file: path.basename(file) };
+  }
 
   function tournamentInfo(t) {
     const tDir = pool.tournamentDir(outRoot, t);
@@ -515,7 +624,7 @@ function createApp(opts = {}) {
       const method = req.method;
       const slug = (x) => pool.SLUG_PART.test(x);
 
-      if (p === '/' && method === 'GET') return send(res, 200, indexPage(outRoot, jobs, nowMs(), tiersFile), 'text/html; charset=utf-8');
+      if (p === '/' && method === 'GET') return send(res, 200, indexPage(outRoot, jobs, nowMs(), dataNotices(), tiersFile), 'text/html; charset=utf-8');
 
       let m = /^\/static\/((?:games\/)?[a-z0-9._-]+)$/i.exec(p);
       if (m && method === 'GET') {
@@ -552,7 +661,13 @@ function createApp(opts = {}) {
       }
 
       if (p === '/api/token') {
-        if (method === 'GET') return json(res, 200, await tokenStatus({ force: url.searchParams.get('check') === '1' }));
+        if (method === 'GET') {
+          // ?check=1 forces a start.gg request, so it takes the app header like every other action:
+          // another site's page can't make the app spend the token's rate limit.
+          const force = url.searchParams.get('check') === '1';
+          if (force) requireApp(req);
+          return json(res, 200, await tokenStatus({ force }));
+        }
         if (method !== 'POST') return send(res, 405, 'Method not allowed');
         requireApp(req);
         const fields = await readBody(req);
@@ -569,7 +684,7 @@ function createApp(opts = {}) {
           return json(res, 200, { ok: true, as: r.as, saved: path.basename(envFile), env_wins: true, note: 'Saved to .env, but the STARTGG_TOKEN environment variable is set and wins. Unset it, or set it to this token.' });
         }
         saveToken({ envFile, token });
-        tokenCheck.token = token; tokenCheck.at = nowMs(); tokenCheck.result = r;
+        tokenCheck.token = token; tokenCheck.at = nowMs(); tokenCheck.result = { ...r, state: 'ok' };
         return json(res, 200, { ok: true, as: r.as, saved: path.basename(envFile), env_wins: false });
       }
       // Amendment A2.2: one game's tiers out (a download) and in (a review, then the rows Noah picked).
@@ -590,6 +705,27 @@ function createApp(opts = {}) {
         const args = { csv: fields.csv, gameId: game, fileName: typeof fields.file_name === 'string' ? fields.file_name.slice(0, 200) : null, gameName: known && known.name, ...tiersOpt() };
         if (p.endsWith('/preview')) return json(res, 200, share.previewImport(args));
         return json(res, 200, share.applyImport({ ...args, fingerprint: fields.fingerprint, take: fields.take, now: nowDate() }));
+      }
+      if (p === '/api/notices/dismiss') {
+        if (method !== 'POST') return send(res, 405, 'Method not allowed');
+        requireApp(req);
+        const fields = await readBody(req);
+        return json(res, 200, { dismissed: dataDir.dismissNotice(dataRoot, String(fields.id || '')) });
+      }
+      if (p === '/api/update') {
+        if (method !== 'GET') return send(res, 405, 'Method not allowed');
+        return json(res, 200, updateStatus());
+      }
+      if (p === '/api/update/check') {
+        if (method !== 'POST') return send(res, 405, 'Method not allowed');
+        requireApp(req);   // it reaches GitHub
+        await readBody(req);
+        return json(res, 200, await checkForUpdate());
+      }
+      if (p === '/api/update/install') {
+        if (method !== 'POST') return send(res, 405, 'Method not allowed');
+        requireApp(req);
+        return json(res, 202, await installUpdate(await readBody(req)));
       }
       if (p === '/api/tournaments') {
         if (method !== 'POST') return send(res, 405, 'Method not allowed');
@@ -613,7 +749,16 @@ function createApp(opts = {}) {
           return json(res, 200, { ...body, status });
         }
         let g = /^\/g\/(\d+)\/(data|export\.csv|seeds\.csv)$/.exec(rest);
-        if (g && method === 'GET') {
+        // The CSVs also take POST { order: [player ids] }: the page's table order for every registrant
+        // does not fit in a URL (2000+ ids pass Node's 16 KB header limit: 431, "Export failed").
+        let postedOrder = null;
+        if (g && g[2] !== 'data' && method === 'POST') {
+          requireApp(req);
+          const fields = await readBody(req, 2_000_000);
+          if (fields.order != null && !Array.isArray(fields.order)) throw bad(400, '"order" must be a list of player ids.');
+          postedOrder = (fields.order || []).map(String).filter((x) => /^\d+$/.test(x));
+        }
+        if (g && (method === 'GET' || postedOrder)) {
           const src = tabOr404(t, g[1]);
           const records = jobs.liveRecords(t);
           if (g[2] === 'data') {
@@ -628,12 +773,12 @@ function createApp(opts = {}) {
           const seeds = seeding.forTab(src).events[0];
           if (g[2] === 'export.csv') {
             // ?order=<player ids>: the table's current order, kept within a tier (the page sends it).
-            const order = (url.searchParams.get('order') || '').split(',').filter((x) => /^\d+$/.test(x));
+            const order = postedOrder || (url.searchParams.get('order') || '').split(',').filter((x) => /^\d+$/.test(x));
             const { filename, csv } = data.summaryExport(src, { records, tiersFile, today: data.todayOf(nowDate()), order, seeds });
             // Content-Length lets the page show a real progress bar while it downloads.
             return send(res, 200, csv, 'text/csv; charset=utf-8', { 'Content-Disposition': `attachment; filename="${filename}"`, 'Content-Length': Buffer.byteLength(csv) });
           }
-          const order = (url.searchParams.get('order') || '').split(',').filter((x) => /^\d+$/.test(x));
+          const order = postedOrder || (url.searchParams.get('order') || '').split(',').filter((x) => /^\d+$/.test(x));
           const { filename, csv } = data.seedsExport(src, { order, tiersFile, seeds });
           return send(res, 200, csv, 'text/csv; charset=utf-8', { 'Content-Disposition': `attachment; filename="${filename}"` });
         }
@@ -712,7 +857,7 @@ function createApp(opts = {}) {
     } catch (err) {
       // start.gg's errors first: a StartggError's .status is start.gg's HTTP status, not ours.
       if (err instanceof sgg.StartggError) return json(res, err.kind === 'event-not-found' ? 404 : 502, { error: err.kind === 'bad-token' ? 'start.gg rejected the token.' : err.message });
-      if (err && err.status) return json(res, err.status, { error: err.message, ...(err.failure ? { failure: err.failure } : {}) });
+      if (err && err.status) return json(res, err.status, { error: err.message, ...(err.failure ? { failure: err.failure } : {}), ...(err.kind ? { kind: err.kind } : {}) });
       return send(res, 500, `Server error: ${err && err.message}`);
     }
   }
@@ -739,7 +884,9 @@ function main(argv = process.argv.slice(2)) {
   const arg = (k) => { const i = argv.indexOf(k); return i >= 0 ? argv[i + 1] : null; };
   const portArg = arg('--port');
   const port = resolvePort(portArg != null ? portArg : process.env.PORT);
-  const outRoot = arg('--out') ? path.resolve(arg('--out')) : path.join(ROOT, 'out');
+  const outRoot = arg('--out') ? path.resolve(arg('--out')) : path.join(DATA_ROOT, 'out');
+  // An update that was started last time but did not happen becomes a home-page notice (lib/update.js).
+  try { update.settlePending({ dataRoot: DATA_ROOT, current: update.currentVersion(ROOT), addNotice: dataDir.addNotice, readNotices: dataDir.readNotices, dismissNotice: dataDir.dismissNotice }); } catch (err) { console.log(`  pending update: ${err.message}`); }
   const app = createApp({ outRoot });
   const server = http.createServer(app.handler);
   const url = `http://${HOST}:${port}/`;

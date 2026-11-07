@@ -219,3 +219,76 @@ test('A2.2 routes: export download, preview, apply; X-Seeding-App on the POSTs; 
   const html = R.importReview(S.previewImport({ csv: theirs([[A.id, A.name, '1', '', 'Alpha', '', '10'], [A.id, A.name, '6', '', 'New', '', '2']]), gameId: A.id, tiersFile }), {});
   for (const s of ['Keep all mine', 'Take all theirs', 'Add all', 'Add none', 'Your tier', 'Their tier']) assert.ok(html.includes(s), s);
 });
+
+// ---- Build D pass 2 ------------------------------------------------------------------------------
+
+test('finding 4: a file row with only a tag finds a player already linked by id (a conflict, by tag), so the default Apply never adds a tag-only duplicate of him', () => {
+  const { tiersFile } = mine();
+  const before = read(tiersFile);
+  // Alpha is linked here (player_id 1, discriminator aaaa0001, tier 9). The friend's file names him by tag only.
+  const csv = theirs([[A.id, A.name, '', '', 'Alpha', '', '10'], [A.id, A.name, '', '', 'Team | Bravo', '', '5'], [A.id, A.name, '', '', 'Nobody', '', '4']]);
+  const p = S.previewImport({ csv, gameId: A.id, tiersFile });
+  assert.deepStrictEqual(p.conflicts.map((x) => [x.tag, x.by, x.mine, x.theirs]), [['Alpha', 'tag', 9, 10]], 'shown as a conflict with his tier, matched by tag');
+  assert.deepStrictEqual(p.new.map((x) => x.tag), ['Nobody'], 'only a player with no row here is new');
+  assert.strictEqual(p.counts.same, 1, 'Bravo (linked, tier 5) is the same');
+  // The default picks: new rows added, conflicts kept. No row for Alpha is added.
+  const res = S.applyImport({ csv, gameId: A.id, fingerprint: p.fingerprint, take: M.importTake(p, {}), tiersFile, now: NOW });
+  assert.deepStrictEqual([res.added, res.updated], [1, 0]);
+  const after = read(tiersFile);
+  assert.strictEqual(after.filter((r) => r.game_id === A.id && /alpha/i.test(r.startgg_tag + r.sheet_tag)).length, 1, 'still one Alpha row');
+  assert.strictEqual(after.length, before.length + 1, 'only Nobody was added');
+  // Taking theirs changes his linked row (and lists it for checking: it was matched by tag).
+  const q = S.previewImport({ csv, gameId: A.id, tiersFile });
+  const t = S.applyImport({ csv, gameId: A.id, fingerprint: q.fingerprint, take: [q.conflicts[0].key], tiersFile, now: NOW });
+  assert.deepStrictEqual(t.linked_by_tag.map((x) => x.row_tag), ['Alpha']);
+  assert.strictEqual(read(tiersFile).find((r) => r.game_id === A.id && r.player_id === '1').tier, '10');
+});
+
+test('finding 4: a tag match that the ids contradict is someone else; one tag on two rows here is ambiguous', () => {
+  const { tiersFile } = mine();
+  // Same tag, a different player_id or discriminator: a different person, so new (and it has its own id).
+  let p = S.previewImport({ csv: theirs([[A.id, A.name, '77', '', 'Alpha', '', '3'], [A.id, A.name, '', 'ffff0099', 'Alpha', '', '3']]), gameId: A.id, tiersFile });
+  assert.deepStrictEqual(p.new.map((x) => [x.player_id, x.discriminator]), [['77', ''], ['', 'ffff0099']]);
+  assert.strictEqual(p.conflicts.length, 0);
+  // Two rows here answer to "Delta" (one linked, one unlinked from the sheet): the file's tag-only row is ambiguous.
+  const rows = read(tiersFile);
+  rows.push(row(A, { sheet_tag: 'delta', tier: '2', source: 'sheet import' }));
+  fs.writeFileSync(tiersFile, out.toCsv(data.TIER_COLS, rows));
+  p = S.previewImport({ csv: theirs([[A.id, A.name, '', '', 'Delta', '', '6']]), gameId: A.id, tiersFile });
+  assert.deepStrictEqual([p.counts.ambiguous, p.counts.new, p.counts.conflicts], [1, 0, 0]);
+  assert.match(p.ambiguous[0].mine_tag, /Delta \/ delta/);
+  // A tag-only file row and an id row for the same linked player: the id row is used, the other is a repeat.
+  p = S.previewImport({ csv: theirs([[A.id, A.name, '', '', 'Alpha', '', '10'], [A.id, A.name, '1', '', 'Alpha', '', '10']]), gameId: A.id, tiersFile });
+  assert.deepStrictEqual(p.conflicts.map((x) => [x.line, x.by]), [[3, 'player_id']]);
+  assert.deepStrictEqual(p.duplicates.map((d) => [d.line, d.kept_line]), [[2, 3]]);
+});
+
+test('finding 2 (with main\'s readTiersText): a tiers table that cannot be read is said on the page and in the import, never shown as "none yet" or treated as empty', async () => {
+  const dir = tmp();
+  const tiersFile = path.join(dir, 'tiers.csv');
+  fs.mkdirSync(tiersFile);   // exists, but cannot be read as a file (EISDIR): like a file held open elsewhere
+  assert.throws(() => S.previewImport({ csv: theirs([[A.id, A.name, '1', '', 'Alpha', '', '10']]), gameId: A.id, tiersFile }), (e) => e.status === 503 && /could not be read/.test(e.message));
+  assert.throws(() => S.exportTiers(A.id, { tiersFile }), (e) => e.status === 503);
+  const app = createApp({ outRoot: path.join(dir, 'out'), tiersFile, getToken: () => 'T', fetchImpl: async () => { throw new Error('no start.gg request expected'); } });
+  const home = (await inject(app.handler, { url: '/' })).text;
+  assert.match(home, /id="tierReadError"[^>]*>The tiers table could not be read/);
+  assert.doesNotMatch(home, /\(none yet\)/, 'no game is shown as having no tiers');
+  assert.match(home, /id="tierExport" disabled/);
+  assert.match(home, /id="tierImport" disabled/);
+  const r = await inject(app.handler, { url: '/api/tiers/import/preview', method: 'POST', headers: { 'X-Seeding-App': '1' }, body: JSON.stringify({ game_id: A.id, csv: theirs([[A.id, A.name, '1', '', 'Alpha', '', '10']]) }) });
+  assert.strictEqual(r.status, 503);
+  assert.match(r.json().error, /could not be read/);
+});
+
+test('finding 8: the import\'s request cap is the server\'s for these routes (2 MB, sent to the page), and a file past the old 200 KB cap goes through', async () => {
+  const { dir, tiersFile } = mine();
+  const app = createApp({ outRoot: path.join(dir, 'out'), tiersFile, getToken: () => 'T', fetchImpl: async () => { throw new Error('no start.gg request expected'); } });
+  assert.match((await inject(app.handler, { url: '/' })).text, /id="tierFile"[^>]*data-max-bytes="2000000"/);
+  // ~4,000 rows of quote-heavy tags: well over 200 KB once JSON-escaped.
+  const lines = Array.from({ length: 4000 }, (_, i) => [A.id, A.name, String(100000 + i), '', `"Q" "${i}" "tag"`, '', '3']);
+  const csv = theirs(lines);
+  assert.ok(Buffer.byteLength(JSON.stringify({ csv })) > 250000);
+  const r = await inject(app.handler, { url: '/api/tiers/import/preview', method: 'POST', headers: { 'X-Seeding-App': '1' }, body: JSON.stringify({ game_id: A.id, csv }) });
+  assert.strictEqual(r.status, 200, r.text.slice(0, 200));
+  assert.strictEqual(r.json().counts.new, 4000);
+});

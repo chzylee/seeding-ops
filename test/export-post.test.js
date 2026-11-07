@@ -33,11 +33,16 @@ test('export: POST { order } gives the same CSV as ?order=, takes thousands of i
   assert.strictEqual(viaPost.status, 200, viaPost.text);
   assert.strictEqual(viaPost.text, viaGet.text);
   assert.match(viaPost.headers['Content-Disposition'], /attachment; filename=/);
-  // 3000 ids (more than any URL would carry), unknown ones ignored as before.
+  // 3000 ids (more than any URL would carry), unknown ones ignored as before. Build D pass 2 (Noah,
+  // 2026-11-07): a tab's Seed numbers are the Seed column, so the table order no longer reorders the
+  // export; the page's column travels in the same body as `seeding`, and that is what numbers it.
   const many = [...rev, ...Array.from({ length: 3000 }, (_, i) => String(9000000 + i))];
   const big = await inject(app.handler, { url, method: 'POST', headers: H, body: JSON.stringify({ order: many }) });
   assert.strictEqual(big.status, 200);
-  assert.deepStrictEqual(parseCsv(big.text).map((x) => x['start.gg player id']), rev);
+  assert.deepStrictEqual(parseCsv(big.text).map((x) => x['start.gg player id']), ids, 'the table order alone does not renumber');
+  const col = await inject(app.handler, { url, method: 'POST', headers: H, body: JSON.stringify({ order: many, event: E_SLUG, seeding: { mode: 'arranged', order: rev } }) });
+  assert.strictEqual(col.status, 200, col.text);
+  assert.deepStrictEqual(parseCsv(col.text).map((x) => x['start.gg player id']), rev, 'the page\'s Seed column does');
   assert.strictEqual((await inject(app.handler, { url, method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })).status, 403);
   assert.strictEqual((await inject(app.handler, { url, method: 'POST', headers: H, body: JSON.stringify({ order: 'x' }) })).status, 400);
   // seeds.csv takes the same body; data stays GET only.

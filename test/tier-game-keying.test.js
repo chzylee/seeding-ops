@@ -95,7 +95,7 @@ test('A2.1 linking: an upload for game A links A\'s rows only; the discriminator
   // Identity, not tier: player 1's discriminator is written on both games' rows, tiers untouched.
   assert.deepStrictEqual(rows.filter((r) => r.player_id === '1').map((r) => [r.game_id, r.tier, r.discriminator]),
     [[A.id, '9', 'aaaa1111'], [B.id, '4', 'aaaa1111']]);
-  assert.throws(() => data.linkPlayers(uploaded, { tiersFile }), /needs the game/);
+  assert.throws(() => data.linkPlayers(uploaded, { tiersFile }), /this list has no game/, 'the reworded message (auditor finding 8): it reaches the upload summary');
 });
 
 test('A2.1 push: the dry run uses the event\'s own game\'s tiers; an event with no game is refused', async () => {

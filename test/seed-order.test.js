@@ -6,6 +6,10 @@
 // Noah, 2026-11-06 (relayed): rows stay draggable right up to the push; the push posts the order as it
 // is when Post is clicked (a drag one second earlier included), never a debounced or stale copy; an
 // open dry run never goes stale on Noah's own drags; a re-push after a push works.
+// Build D pass 2 (Noah, 2026-11-07: "push should prepare the seed column and then send what was
+// finalized"; auditor findings 5, 6, 7): the push posts the Seed column in tier order too; writes carry
+// a rev, a page id and a write number. The page's own guarantees are checked by running app.js:
+// test/seed-order-page.test.js.
 const { test } = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
@@ -18,15 +22,14 @@ const M = require('../lib/view/model');
 const R = require('../lib/view/render');
 const push = require('../lib/push');
 const seeding = require('../lib/seeding');
-const { run } = require('../lib/run');
 const { createApp } = require('../app/server');
 const { inject } = require('../testlib/inject');
-const { makePool, addTournament } = require('../testlib/pool-fixture');
-const { buildWorld, createFakeFetch, virtualClock, sink, T_SLUG, E_SLUG, GAME } = require('../testlib/fake-api');
+const { makePool } = require('../testlib/pool-fixture');
+const { T_SLUG, E_SLUG, GAME } = require('../testlib/fake-api');
+const { seedWorld, tierRow: worldRow } = require('../testlib/seed-world');
 
 const ROOT = path.join(__dirname, '..');
 const TOKEN = 'TOKEN-SENTINEL-c0ffee';
-const START = Date.UTC(2026, 9, 12, 15, 0, 0);
 const H = { 'X-Seeding-App': '1' };
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'seeding-seeds-'));
 const G = { id: '22407', name: 'MBAACC' };
@@ -47,8 +50,15 @@ test('tier order: top tier is seed 1, untiered last, and the within-tier tie-bre
     assert.deepStrictEqual(M.tierOrder(entrants), M.orderPlayers(players, notes).map((p) => p.player_id));
     const so = M.seedOrder(entrants, null);
     assert.strictEqual(so.mode, 'tiers');
-    // Numbered 1..N it is exactly the export's and the tier push's sequence over the table order.
-    assert.deepStrictEqual(so.order, M.seedSequence(M.orderPlayers(players, notes).map((p) => ({ id: p.player_id, tier: notes[p.player_id] ? notes[p.player_id].tier : null }))).map((s) => s.id));
+    // (Pass 1 claimed here that this was also the tier push's sequence; it was not: the push kept
+    // start.gg's order within a tier. Auditor finding 7. Since pass 2 the push posts this column, which
+    // the routes test below and test/seed-order-page.test.js check.) Over the starting players and their
+    // tiers in pushPlan, with no start.gg order to lean on, it is the same sequence:
+    const entries = M.orderPlayers(players, notes).reverse().map((p, i) => ({ id: `s${p.player_id}`, current: i + 1, mappable: true, player_id: p.player_id, tag: p.gamer_tag, sort_tag: p.gamer_tag, tier: notes[p.player_id] ? notes[p.player_id].tier : null, in_pool: true }));
+    assert.deepStrictEqual(M.pushPlan(entries, { order: so.order, mode: so.mode }).rows.map((r) => r.player_id), so.order);
+    // With no column given, pushPlan applies the column's rule to the seeds themselves (an exact tie of
+    // tier and tag keeps start.gg's order: the only place that order still shows).
+    assert.deepStrictEqual(M.pushPlan(entries).rows.map((r) => r.player_id), M.tierOrder(entries.map((e) => ({ id: e.player_id, tier: e.tier, tag: e.sort_tag }))));
   }
   assert.deepStrictEqual(M.tierOrder([E(1, null), E(2, 0), E(3, 9, 'b'), E(4, 9, 'A')]), ['4', '3', '2', '1'], 'tier 0 is a real tier, above untiered');
 });
@@ -81,26 +91,30 @@ test('a move: before / after a target; moving onto itself or with an unknown id 
   assert.deepStrictEqual(o, ['a', 'b', 'c', 'd'], 'the given order is not changed');
 });
 
-test('the push plan: an arrangement is the proposed order; a seed not in it slots in by tier; a gone player closes the gap; unmappable last; every seed exactly once', () => {
+test('the push plan: the Seed column is the proposed order in both modes; a seed not in it slots in by tier; a gone player closes the gap; unmappable last; every seed exactly once', () => {
   const s = (id, cur, pid, tier, tag) => ({ id, current: cur, mappable: pid != null, player_id: pid == null ? null : String(pid), tag: tag || `T${pid}`, sort_tag: tag || `T${pid}`, tier, in_pool: true });
-  const entries = [s('a', 1, 11, 9), s('b', 2, 12, 9), s('c', 3, 13, 5), s('d', 4, null, null, '(no entrant)'), s('e', 5, 14, null), s('f', 6, 15, 7, 'Late')];
+  // start.gg has Zed above Abe (both 9). Noah's ruling (2026-11-07): tier order is the column's (by
+  // tag), never start.gg's order within a tier.
+  const entries = [s('z', 1, 21, 9, 'Zed'), s('a', 2, 22, 9, 'Abe'), s('c', 3, 13, 5), s('d', 4, null, null, '(no entrant)'), s('e', 5, 14, null), s('f', 6, 15, 7, 'Late')];
   const tiers = M.pushPlan(entries);
   assert.strictEqual(tiers.mode, 'tiers');
-  assert.deepStrictEqual(tiers.rows.map((r) => r.seed_id), ['a', 'b', 'f', 'c', 'e', 'd'], 'no arrangement: as before A2.3 (tiers, start.gg order within a tier)');
-  // Noah's order: 13 first, 12 above 11; 99 has left start.gg; 15 (tier 7) is not in it.
-  const plan = M.pushPlan(entries, { arrangement: ['13', '99', '12', '11', '14'] });
+  assert.deepStrictEqual(tiers.rows.map((r) => r.seed_id), ['a', 'z', 'f', 'c', 'e', 'd'], 'no column given: the seeds in the column\'s tier order (Abe before Zed)');
+  // The column in tier mode, as the page sends it, is posted as given.
+  assert.deepStrictEqual(M.pushPlan(entries, { order: ['22', '21', '15', '13', '14'], mode: 'tiers' }).rows.map((r) => r.player_id), ['22', '21', '15', '13', '14', null]);
+  // Noah's order: 13 first, 22 above 21; 99 has left start.gg; 15 (tier 7) is not in it.
+  const plan = M.pushPlan(entries, { order: ['13', '99', '22', '21', '14'], mode: 'arranged' });
   assert.strictEqual(plan.mode, 'arranged');
-  assert.deepStrictEqual(plan.rows.map((r) => [r.player_id, r.proposed]), [['13', 1], ['12', 2], ['11', 3], ['15', 4], ['14', 5], [null, 6]]);
-  assert.deepStrictEqual(plan.rows.map((r) => r.seed_id).sort(), ['a', 'b', 'c', 'd', 'e', 'f']);
-  assert.strictEqual(plan.summary.seeds, 6);
+  assert.deepStrictEqual(plan.rows.map((r) => [r.player_id, r.proposed]), [['13', 1], ['22', 2], ['21', 3], ['15', 4], ['14', 5], [null, 6]]);
+  assert.deepStrictEqual(plan.rows.map((r) => r.seed_id).sort(), ['a', 'c', 'd', 'e', 'f', 'z']);
   // A player on two seeds (start.gg should never send it) still leaves no seed unnumbered.
-  const twice = M.pushPlan([s('a', 1, 11, 9), s('b', 2, 11, 9), s('c', 3, 12, 1)], { arrangement: ['12', '11'] });
+  const twice = M.pushPlan([s('a', 1, 11, 9), s('b', 2, 11, 9), s('c', 3, 12, 1)], { order: ['12', '11'], mode: 'arranged' });
   assert.deepStrictEqual(twice.rows.map((r) => [r.seed_id, r.proposed]), [['c', 1], ['a', 2], ['b', 3]]);
+  assert.deepStrictEqual(M.proposedPairs(twice.rows), [['c', 1], ['a', 2], ['b', 3]]);
 });
 
 // ---- The store and the routes ----------------------------------------------------------------------
 
-test('the seed order is saved per event in state.json and comes back on a reload; reset returns to tier order; bad orders are refused', async () => {
+test('the seed order is saved per event, with a rev, and comes back on a reload; reset returns to tier order; bad orders are refused', async () => {
   const outRoot = tmp();
   makePool(outRoot, { t: 'tour', events: [{ slug: 'main', game: G }, { slug: 'side', game: G }],
     players: [player(1, 'A', ['main']), player(2, 'B', ['main', 'side']), player(3, 'C', ['main']), player(4, 'D', ['side'])] });
@@ -110,14 +124,13 @@ test('the seed order is saved per event in state.json and comes back on a reload
   const seeds = (body) => inject(app.handler, { url: `/api/t/tour/g/${G.id}/seeds`, method: 'POST', headers: H, body: JSON.stringify(body) });
   const vm = async () => (await inject(app.handler, { url: `/api/t/tour/g/${G.id}/data` })).json();
   let v = await vm();
-  assert.deepStrictEqual(v.seeding.events.map((e) => [e.slug, e.entrants, e.saved]), [['main', ['1', '2', '3'], null], ['side', ['2', '4'], null]]);
-  let r = await seeds({ event: 'main', mode: 'arranged', order: ['3', '1', '2'] });
+  assert.deepStrictEqual(v.seeding.events.map((e) => [e.slug, e.entrants, e.saved, e.rev]), [['main', ['1', '2', '3'], null, 0], ['side', ['2', '4'], null, 0]]);
+  let r = await seeds({ event: 'main', mode: 'arranged', order: ['3', '1', '2'], base: 0, client: 'pA', seq: 1 });
   assert.strictEqual(r.status, 200, r.text);
-  assert.deepStrictEqual(r.json(), { event: 'main', mode: 'arranged', saved: { order: ['3', '1', '2'], at: '2026-11-06T12:00:00.000Z' } });
+  assert.deepStrictEqual(r.json(), { event: 'main', mode: 'arranged', saved: { order: ['3', '1', '2'], at: '2026-11-06T12:00:00.000Z', rev: 1 }, rev: 1, changed: true });
   v = await vm();
-  assert.deepStrictEqual(v.seeding.events[0].saved.order, ['3', '1', '2'], 'a reload shows the arranged order');
+  assert.deepStrictEqual([v.seeding.events[0].saved.order, v.seeding.events[0].rev], [['3', '1', '2'], 1], 'a reload shows the arranged order and its rev');
   assert.strictEqual(v.seeding.events[1].saved, null, 'per event: the side event is untouched');
-  assert.deepStrictEqual(pool.readState(path.join(outRoot, 'tour')).seeding, { main: { order: ['3', '1', '2'], at: '2026-11-06T12:00:00.000Z' } });
   for (const [body, re] of [[{ event: 'main', mode: 'arranged', order: ['4'] }, /not an entrant/], [{ event: 'main', mode: 'arranged', order: ['1', '1'] }, /twice/],
     [{ event: 'main', mode: 'sorted' }, /"mode"/], [{ event: 'main', mode: 'arranged', order: 'x' }, /list/], [{ event: 'nope', mode: 'tiers' }, /not seeded on this tab/]]) {
     r = await seeds(body);
@@ -125,178 +138,181 @@ test('the seed order is saved per event in state.json and comes back on a reload
     assert.match(r.json().error, re);
   }
   assert.strictEqual((await inject(app.handler, { url: `/api/t/tour/g/${G.id}/seeds`, method: 'POST', body: '{}' })).status, 403, 'X-Seeding-App required');
-  r = await seeds({ event: 'main', mode: 'tiers' });
-  assert.deepStrictEqual(r.json(), { event: 'main', mode: 'tiers', saved: null });
-  assert.deepStrictEqual(pool.readState(path.join(outRoot, 'tour')).seeding, {});
+  r = await seeds({ event: 'main', mode: 'tiers', order: ['1', '3', '2'], base: 1, client: 'pA', seq: 2 });
+  assert.deepStrictEqual(r.json(), { event: 'main', mode: 'tiers', saved: null, rev: 2, changed: true }, 'reset: the column in tier mode is not stored as an arrangement');
+  assert.deepStrictEqual(seeding.entryFor(pool.readState(path.join(outRoot, 'tour')), 'main').order, null);
 });
 
-test('the CSV export\'s Seed column follows an arranged order (the push\'s source of truth); in tier order it is as before', () => {
+test('finding 5: a stale window (or a second one) cannot erase an arrangement made elsewhere: its write on an old rev is refused with the current one', async () => {
   const outRoot = tmp();
   makePool(outRoot, { t: 'tour', events: [{ slug: 'main', game: G }], players: [player(1, 'A'), player(2, 'B'), player(3, 'C')] });
-  const tiersFile = path.join(outRoot, 'tiers.csv');
-  fs.writeFileSync(tiersFile, out.toCsv(data.TIER_COLS, [tierRow({ player_id: '1', tier: '9' }), tierRow({ player_id: '2', tier: '5' })]));
   const src = data.tabSource(outRoot, 'tour', G.id);
-  const seq = (opts) => data.summaryExport(src, { tiersFile, today: '2026-11-06', ...opts }).sequence.map((x) => [x.id, x.seed]);
-  assert.deepStrictEqual(seq({ seeds: seeding.forTab(src).events[0] }), [['1', 1], ['2', 2], ['3', 3]]);
-  seeding.setOrder(src, 'main', { mode: 'arranged', order: ['3', '2', '1'] });
-  assert.deepStrictEqual(seq({ seeds: seeding.forTab(src).events[0] }), [['3', 1], ['2', 2], ['1', 3]]);
-  const csv = data.summaryExport(src, { tiersFile, today: '2026-11-06', seeds: seeding.forTab(src).events[0] }).csv;
-  assert.deepStrictEqual(out.parseCsv(csv).map((r) => [r.Seed, r.Player]), [['1', 'C'], ['2', 'B'], ['3', 'A']]);
+  // Both windows loaded at rev 0. Window B arranges.
+  assert.strictEqual(seeding.setOrder(src, 'main', { mode: 'arranged', order: ['3', '2', '1'], base: 0, client: 'pB', seq: 1 }).rev, 1);
+  // Window A, still showing tier order, resets (or posts tier order): refused, B's order kept.
+  assert.throws(() => seeding.setOrder(src, 'main', { mode: 'tiers', base: 0, client: 'pA', seq: 1 }), (e) => e.status === 409 && e.failure === 'seed-conflict'
+    && e.current.mode === 'arranged' && e.current.saved.order.join() === '3,2,1' && e.current.rev === 1);
+  assert.throws(() => seeding.setOrder(src, 'main', { mode: 'arranged', order: ['1', '2', '3'], base: 0, client: 'pA', seq: 2 }), (e) => e.failure === 'seed-conflict');
+  assert.deepStrictEqual(seeding.savedFor(pool.readState(src.tDir), 'main').order, ['3', '2', '1']);
+  // Having adopted rev 1, window A can change it.
+  assert.strictEqual(seeding.setOrder(src, 'main', { mode: 'arranged', order: ['1', '2', '3'], base: 1, client: 'pA', seq: 3 }).rev, 2);
 });
 
-// ---- The push reads the order at the click --------------------------------------------------------
-
-async function pushWorld() {
+test('finding 6: the page\'s last write wins even if its writes arrive out of order (an older write number from the same page is ignored)', () => {
   const outRoot = tmp();
-  const world = buildWorld(START / 1000);
-  addTournament(outRoot, world, [E_SLUG]);
-  const clock = virtualClock(START);
-  assert.strictEqual(await run({ tournament: T_SLUG, events: [E_SLUG], token: TOKEN, outRoot, fetchImpl: createFakeFetch(world), now: clock.now, sleep: clock.sleep, stderr: sink(), stdout: sink() }), 0);
-  const tiersFile = path.join(outRoot, 'tiers.csv');
-  const gid = String(GAME.id);
-  fs.writeFileSync(tiersFile, out.toCsv(data.TIER_COLS, [tierRow({ game_id: gid, player_id: '101', tier: '9' }), tierRow({ game_id: gid, player_id: '115', tier: '9' }), tierRow({ game_id: gid, player_id: '103', tier: '4' })]));
-  const fake = createFakeFetch(world);
-  const app = createApp({ outRoot, tiersFile, getToken: () => TOKEN, fetchImpl: fake, now: () => Date.UTC(2026, 10, 2), sleep: clock.sleep });
-  const req = (url, body) => inject(app.handler, { url: `/api/t/${T_SLUG}/${url}`, method: 'POST', headers: H, body: JSON.stringify(body || {}) });
-  const vm = (await inject(app.handler, { url: `/api/t/${T_SLUG}/g/${gid}/data` })).json();
-  const entrants = vm.seeding.events.find((e) => e.slug === E_SLUG).entrants;
-  const tag = new Map(vm.players.map((p) => [p.player_id, p.gamer_tag]));
-  const tierOf = (id) => (vm.notes[id] && Number.isFinite(vm.notes[id].tier) ? vm.notes[id].tier : null);
-  const initial = M.seedOrder(entrants.map((id) => ({ id, tier: tierOf(id), tag: tag.get(id) })), null).order;
-  const pushed = () => { const c = fake.calls.filter((x) => x.op === 'UpdatePhaseSeeding').pop(); return c && c.variables.seedMapping; };
-  // The posted mapping as player ids in seed order (the unmappable seeds dropped).
-  const playersOf = (dry, mapping) => {
-    const pidOf = new Map(dry.rows.map((r) => [r.seed_id, r.player_id]));
-    return [...mapping].sort((a, b) => a.seedNum - b.seedNum).map((m) => pidOf.get(String(m.seedId))).filter(Boolean);
-  };
-  // The fake's phase has fewer players than the pool (pool players no longer in start.gg are ignored:
-  // the gap closes), so an order is compared over the players start.gg seeds. `seeded(order, dry)`.
-  const seeded = (order, dry) => { const inPhase = new Set(dry.rows.map((r) => r.player_id).filter(Boolean)); return order.filter((id) => inPhase.has(id)); };
-  // A drag that matters: the last player start.gg seeds, moved to the very top.
-  const dragLastSeeded = (order, dry) => { const s2 = seeded(order, dry); return M.moveSeed(order, s2[s2.length - 1], order[0], 'before'); };
-  return { world, fake, app, req, gid, entrants, initial, pushed, playersOf, seeded, dragLastSeeded, tDir: path.join(outRoot, T_SLUG) };
-}
-
-test('PIN (Noah, 2026-11-06): drag, then push at once: the pushed seed order is the new order, even with the dry run taken before the drag', async () => {
-  const { req, gid, initial, pushed, playersOf, seeded, dragLastSeeded, fake } = await pushWorld();
-  const dry = (await req(`push/${E_SLUG}/dry-run`)).json();
-  assert.strictEqual(dry.mode, 'tiers');
-  // The drag: the last seeded player to the top, the way app.js saves it (one POST per drop, no debounce).
-  const dragged = dragLastSeeded(initial, dry);
-  assert.notDeepStrictEqual(seeded(dragged, dry), seeded(initial, dry), 'a drag that changes the seeding');
-  assert.notDeepStrictEqual(playersOf(dry, dry.rows.map((r) => ({ seedId: r.seed_id, seedNum: r.proposed }))), seeded(dragged, dry), 'and differs from the dry run shown');
-  assert.strictEqual((await req(`g/${gid}/seeds`, { event: E_SLUG, mode: 'arranged', order: dragged })).status, 200);
-  // Push immediately, with the fingerprint of the dry run taken BEFORE the drag: not stale.
-  const r = await req(`push/${E_SLUG}/post`, { fingerprint: dry.fingerprint, confirm: true });
-  assert.strictEqual(r.status, 200, r.text);
-  assert.deepStrictEqual(playersOf(dry, pushed()), seeded(dragged, dry), 'start.gg received the dragged order, seed 1 first');
-  assert.strictEqual(r.json().seed_order, 'arranged');
-  assert.deepStrictEqual(fake.calls.slice(-2).map((c) => c.op), ['PhaseSeeds', 'UpdatePhaseSeeding']);
+  makePool(outRoot, { t: 'tour', events: [{ slug: 'main', game: G }], players: [player(1, 'A'), player(2, 'B'), player(3, 'C')] });
+  const src = data.tabSource(outRoot, 'tour', G.id);
+  // The page sent write 5 (the post's save, order O1) and then write 6 (a drag, O2); 6 lands first.
+  assert.strictEqual(seeding.setOrder(src, 'main', { mode: 'arranged', order: ['2', '1', '3'], base: 0, client: 'pA', seq: 6 }).changed, true);
+  const late = seeding.setOrder(src, 'main', { mode: 'arranged', order: ['3', '1', '2'], base: 0, client: 'pA', seq: 5 });
+  assert.deepStrictEqual([late.ignored, late.changed], [true, false]);
+  assert.deepStrictEqual(seeding.savedFor(pool.readState(src.tDir), 'main').order, ['2', '1', '3'], 'a reload shows the newer order');
 });
 
-test('PIN: a drag whose save has not landed yet is still what is posted: the page sends the order on screen with Post, and it is saved', async () => {
-  const { req, initial, pushed, playersOf, seeded, dragLastSeeded, tDir } = await pushWorld();
-  const dry = (await req(`push/${E_SLUG}/dry-run`)).json();
-  const onScreen = dragLastSeeded(initial, dry);
-  const r = await req(`push/${E_SLUG}/post`, { fingerprint: dry.fingerprint, confirm: true, seeding: { mode: 'arranged', order: onScreen } });
+// ---- The push posts the Seed column, as it is on screen at the click --------------------------------
+
+test('PIN (Noah, 2026-11-06/07): drag, then push at once: the pushed seed order is the column, even with the dry run taken before the drag', async () => {
+  const w = await seedWorld();
+  const dry = (await w.req(`push/${E_SLUG}/dry-run`)).json();
+  assert.strictEqual(dry.mode, 'tiers');
+  const dragged = w.dragLastSeeded(w.initial, dry);
+  assert.notDeepStrictEqual(w.seeded(dragged, dry), w.seeded(w.initial, dry), 'a drag that changes the seeding');
+  // The drag's save (one POST per drop, no debounce), then Post at once with the dry run redrawn.
+  assert.strictEqual((await w.req(`g/${w.gid}/seeds`, { event: E_SLUG, mode: 'arranged', order: dragged, base: 0, client: 'pA', seq: 1 })).status, 200);
+  const r = await w.req(`push/${E_SLUG}/post`, { fingerprint: dry.fingerprint, confirm: true, seeding: { mode: 'arranged', order: dragged, base: 1, client: 'pA', seq: 2 }, proposed: w.proposedFor(dry, dragged) });
   assert.strictEqual(r.status, 200, r.text);
-  assert.deepStrictEqual(playersOf(dry, pushed()), seeded(onScreen, dry));
-  assert.notDeepStrictEqual(seeded(onScreen, dry), seeded(initial, dry));
-  assert.deepStrictEqual(seeding.savedFor(pool.readState(tDir), E_SLUG).order, onScreen, 'and a reload shows the order that was posted');
+  assert.deepStrictEqual(w.playersOf(dry, w.pushed()), w.seeded(dragged, dry), 'start.gg received the dragged column, seed 1 first');
+  assert.deepStrictEqual(r.json().order, w.seeded(dragged, dry), 'and the push record keeps it');
+  assert.strictEqual(r.json().seed_order, 'arranged');
+});
+
+test('ruling (a), (d): in tier order the push sends the column too, exactly as on screen; nothing is reordered on a first drag', async () => {
+  const w = await seedWorld();
+  const dry = (await w.req(`push/${E_SLUG}/dry-run`, { seeding: { mode: 'tiers', order: w.initial } })).json();
+  assert.deepStrictEqual(dry.rows.filter((x) => x.player_id).map((x) => x.player_id), w.seeded(w.initial, dry), 'the dry run is the column');
+  const r = await w.req(`push/${E_SLUG}/post`, { fingerprint: dry.fingerprint, confirm: true, seeding: { mode: 'tiers', order: w.initial, base: 0, client: 'pA', seq: 1 }, proposed: w.proposedFor(dry, w.initial, 'tiers') });
+  assert.strictEqual(r.status, 200, r.text);
+  assert.deepStrictEqual(w.playersOf(dry, w.pushed()), w.seeded(w.initial, dry));
+  assert.strictEqual(r.json().seed_order, 'tiers');
+  assert.strictEqual(seeding.savedFor(pool.readState(w.tDir), E_SLUG), null, 'tier order stays tier order (not stored as an arrangement)');
+  // A first drag moves one player; every other player keeps the place it had in the posted column.
+  const one = M.moveSeed(w.initial, w.seeded(w.initial, dry)[3], w.initial[0], 'before');
+  const others = (o) => o.filter((id) => id !== w.seeded(w.initial, dry)[3]);
+  assert.deepStrictEqual(others(one), others(w.initial));
+});
+
+test('ruling (b): the export\'s proposed_seed, the Seed column, the dry run and the post agree, in tier order and arranged', async () => {
+  const w = await seedWorld();
+  const exportSeeds = async (seedingBody) => {
+    const r = await inject(w.app.handler, { url: `/api/t/${T_SLUG}/g/${w.gid}/seeds.csv`, method: 'POST', headers: { ...H, 'Content-Type': 'application/json' }, body: JSON.stringify({ order: [], event: E_SLUG, seeding: seedingBody }) });
+    assert.strictEqual(r.status, 200, r.text);
+    return out.parseCsv(r.text).filter((x) => x.proposed_seed).sort((a, b) => a.proposed_seed - b.proposed_seed).map((x) => x.player_id);
+  };
+  let seq = 0;
+  let base = 0;
+  for (const mode of ['tiers', 'arranged']) {
+    const column = mode === 'tiers' ? w.initial : w.dragLastSeeded(M.moveSeed(w.initial, w.initial[1], w.initial[0], 'before'), (await w.req(`push/${E_SLUG}/dry-run`)).json());
+    const body = { mode, order: column };
+    assert.deepStrictEqual(await exportSeeds(body), column, `${mode}: the export numbers the column`);
+    const dry = (await w.req(`push/${E_SLUG}/dry-run`, { seeding: body })).json();
+    assert.deepStrictEqual(dry.rows.filter((x) => x.player_id).map((x) => x.player_id), w.seeded(column, dry), `${mode}: the dry run is the column`);
+    const r = await w.req(`push/${E_SLUG}/post`, { fingerprint: dry.fingerprint, confirm: true, seeding: { ...body, base, client: 'pA', seq: ++seq }, proposed: w.proposedFor(dry, column, mode) });
+    assert.strictEqual(r.status, 200, r.text);
+    base = r.json().seeding.rev;
+    assert.deepStrictEqual(w.playersOf(dry, w.pushed()), w.seeded(column, dry), `${mode}: the post is the column`);
+    // Saved state (no page body): the server's own column is the same one.
+    assert.deepStrictEqual(await exportSeeds(undefined), column, `${mode}: and the export without a page body (the saved state)`);
+  }
+});
+
+test('ruling (c): a tier changed elsewhere cannot change what is posted (the page sends its column); a dry run on screen that differs from the plan is refused, nothing posted', async () => {
+  const w = await seedWorld();
+  const dry = (await w.req(`push/${E_SLUG}/dry-run`, { seeding: { mode: 'tiers', order: w.initial } })).json();
+  // Another window raises a low player to tier 10 after this page drew its column.
+  const rows = out.parseCsv(fs.readFileSync(w.tiersFile, 'utf8'));
+  const low = w.seeded(w.initial, dry).slice(-1)[0];
+  rows.push(worldRow({ player_id: low, tier: '10' }));
+  fs.writeFileSync(w.tiersFile, out.toCsv(data.TIER_COLS, rows));
+  assert.strictEqual(data.readTiers(String(GAME.id), w.tiersFile).find((x) => x.player_id === low).tier, '10', 'the other window\'s change is in this game\'s tiers');
+  const serverNow = seeding.columnOrder(data.tabSource(w.outRoot, T_SLUG, w.gid), E_SLUG, { tiersFile: w.tiersFile }).order;
+  assert.notDeepStrictEqual(w.seeded(serverNow, dry), w.seeded(w.initial, dry), 'the server\'s own tier order has moved: posting it would differ from the screen');
+  let r = await w.req(`push/${E_SLUG}/post`, { fingerprint: dry.fingerprint, confirm: true, seeding: { mode: 'tiers', order: w.initial, base: 0, client: 'pA', seq: 1 }, proposed: w.proposedFor(dry, w.initial, 'tiers') });
+  assert.strictEqual(r.status, 200, r.text);
+  assert.deepStrictEqual(w.playersOf(dry, w.pushed()), w.seeded(w.initial, dry), 'what was on screen, not the other window\'s tier order');
+  // A page whose drawn dry run is not the plan for the column it sends (stale on screen): refused.
+  const before = w.pushes().length;
+  const shownStale = M.proposedPairs(dry.rows).reverse();
+  r = await w.req(`push/${E_SLUG}/post`, { fingerprint: r.json().fingerprint, confirm: true, seeding: { mode: 'tiers', order: w.initial, base: 0, client: 'pA', seq: 2 }, proposed: shownStale });
+  assert.strictEqual(r.status, 409);
+  assert.strictEqual(r.json().failure, 'not-as-shown');
+  assert.ok(r.json().dry && Array.isArray(r.json().dry.entries), 'with the server\'s dry run, for the page to redraw from');
+  assert.strictEqual(w.pushes().length, before, 'nothing posted');
+  assert.strictEqual((await w.req(`push/${E_SLUG}/post`, { fingerprint: 'x', confirm: true, proposed: 'nope' })).status, 400);
+});
+
+test('finding 5 at the push: a post from a stale window that would erase an arrangement made elsewhere is refused; nothing is posted', async () => {
+  const w = await seedWorld();
+  const dry = (await w.req(`push/${E_SLUG}/dry-run`)).json();
+  const other = w.dragLastSeeded(w.initial, dry);
+  assert.strictEqual((await w.req(`g/${w.gid}/seeds`, { event: E_SLUG, mode: 'arranged', order: other, base: 0, client: 'pB', seq: 1 })).status, 200);
+  const r = await w.req(`push/${E_SLUG}/post`, { fingerprint: dry.fingerprint, confirm: true, seeding: { mode: 'tiers', order: w.initial, base: 0, client: 'pA', seq: 1 }, proposed: w.proposedFor(dry, w.initial, 'tiers') });
+  assert.strictEqual(r.status, 409);
+  assert.strictEqual(r.json().failure, 'seed-conflict');
+  assert.deepStrictEqual(r.json().current.saved.order, other, 'the page is told the order it would have erased');
+  assert.strictEqual(w.pushes().length, 0, 'nothing posted');
+  assert.deepStrictEqual(seeding.savedFor(pool.readState(w.tDir), E_SLUG).order, other, 'and it is still saved');
 });
 
 test('PIN: after a push the rows are still draggable and a re-push works: drag again, post again with the fingerprint the post returned (no new dry run)', async () => {
-  const { req, gid, initial, pushed, playersOf, seeded, dragLastSeeded, fake } = await pushWorld();
-  const dry = (await req(`push/${E_SLUG}/dry-run`)).json();
-  const first = dragLastSeeded(initial, dry);
-  let r = await req(`push/${E_SLUG}/post`, { fingerprint: dry.fingerprint, confirm: true, seeding: { mode: 'arranged', order: first } });
+  const w = await seedWorld();
+  const dry = (await w.req(`push/${E_SLUG}/dry-run`)).json();
+  const first = w.dragLastSeeded(w.initial, dry);
+  let r = await w.req(`push/${E_SLUG}/post`, { fingerprint: dry.fingerprint, confirm: true, seeding: { mode: 'arranged', order: first, base: 0, client: 'pA', seq: 1 }, proposed: w.proposedFor(dry, first) });
   assert.strictEqual(r.status, 200, r.text);
-  const fp = r.json().fingerprint;
-  const second = dragLastSeeded(first, dry);
-  assert.notDeepStrictEqual(seeded(second, dry), seeded(first, dry));
-  assert.strictEqual((await req(`g/${gid}/seeds`, { event: E_SLUG, mode: 'arranged', order: second })).status, 200);
-  const before = fake.calls.length;
-  r = await req(`push/${E_SLUG}/post`, { fingerprint: fp, confirm: true });
+  const after = { ...dry, entries: r.json().entries };
+  const second = w.dragLastSeeded(first, dry);
+  assert.notDeepStrictEqual(w.seeded(second, dry), w.seeded(first, dry));
+  assert.strictEqual((await w.req(`g/${w.gid}/seeds`, { event: E_SLUG, mode: 'arranged', order: second, base: r.json().seeding.rev, client: 'pA', seq: 2 })).status, 200);
+  const before = w.fake.calls.length;
+  r = await w.req(`push/${E_SLUG}/post`, { fingerprint: r.json().fingerprint, confirm: true, seeding: { mode: 'arranged', order: second, base: r.json().seeding.rev + 1, client: 'pA', seq: 3 }, proposed: w.proposedFor(after, second) });
   assert.strictEqual(r.status, 200, r.text);
-  assert.deepStrictEqual(fake.calls.slice(before).map((c) => c.op), ['PhaseSeeds', 'UpdatePhaseSeeding'], 'one fresh seeds read and the post; no dry-run round trip from the page');
-  assert.deepStrictEqual(playersOf(dry, pushed()), seeded(second, dry));
-  // And back to tier order (reset), pushed the same way.
-  r = await req(`push/${E_SLUG}/post`, { fingerprint: r.json().fingerprint, confirm: true, seeding: { mode: 'tiers' } });
-  assert.strictEqual(r.status, 200, r.text);
-  assert.strictEqual(r.json().seed_order, 'tiers');
+  assert.deepStrictEqual(w.fake.calls.slice(before).map((c) => c.op), ['PhaseSeeds', 'UpdatePhaseSeeding'], 'one fresh seeds read and the post');
+  assert.deepStrictEqual(w.playersOf(dry, w.pushed()), w.seeded(second, dry));
 });
 
 test('a change on start.gg\'s side since the dry run still stops the post (stale); Noah\'s own drags never do', async () => {
-  const { world, req, initial } = await pushWorld();
-  const dry = (await req(`push/${E_SLUG}/dry-run`)).json();
-  // Someone swaps two seeds on start.gg.
-  const all = world.seeds[5001];
+  const w = await seedWorld();
+  const dry = (await w.req(`push/${E_SLUG}/dry-run`)).json();
+  const all = w.world.seeds[5001];
   [all[0].seedNum, all[1].seedNum] = [all[1].seedNum, all[0].seedNum];
   all.sort((a, b) => a.seedNum - b.seedNum);
-  const r = await req(`push/${E_SLUG}/post`, { fingerprint: dry.fingerprint, confirm: true, seeding: { mode: 'arranged', order: initial } });
+  const r = await w.req(`push/${E_SLUG}/post`, { fingerprint: dry.fingerprint, confirm: true, seeding: { mode: 'tiers', order: w.initial } });
   assert.strictEqual(r.status, 409);
   assert.strictEqual(r.json().failure, 'stale');
   assert.match(r.json().error, /start\.gg's seeding changed/);
 });
 
-test('the dry run numbers from the order the page sends (not saved), else the saved order; the page can redraw it with M.pushPlan from the dry run\'s entries', async () => {
-  const { req, initial, seeded, dragLastSeeded, tDir } = await pushWorld();
-  const plain = (await req(`push/${E_SLUG}/dry-run`)).json();
-  const shown = dragLastSeeded(initial, plain);
-  const dry = (await req(`push/${E_SLUG}/dry-run`, { seeding: { mode: 'arranged', order: shown } })).json();
+test('the dry run numbers from the column the page sends (not saved), else the server\'s own column; the page can redraw it with M.pushPlan from the dry run\'s entries', async () => {
+  const w = await seedWorld();
+  const plain = (await w.req(`push/${E_SLUG}/dry-run`)).json();
+  assert.deepStrictEqual(plain.rows.filter((r) => r.player_id).map((r) => r.player_id), w.seeded(w.initial, plain), 'no body: the server computes the column the page would show');
+  const shown = w.dragLastSeeded(w.initial, plain);
+  const dry = (await w.req(`push/${E_SLUG}/dry-run`, { seeding: { mode: 'arranged', order: shown } })).json();
   assert.strictEqual(dry.mode, 'arranged');
-  assert.deepStrictEqual(dry.rows.filter((r) => r.player_id).map((r) => r.player_id), seeded(shown, dry));
-  assert.strictEqual(seeding.savedFor(pool.readState(tDir), E_SLUG), null, 'a dry run saves nothing');
-  // Redrawn in the page after another drag: the same function, the dry run's entries, the new order.
-  const again = M.moveSeed(shown, seeded(shown, dry)[3], shown[0], 'before');
-  const redrawn = M.pushPlan(dry.entries, { arrangement: again });
-  assert.deepStrictEqual(redrawn.rows.filter((r) => r.player_id).map((r) => r.player_id), seeded(again, dry));
-  assert.notDeepStrictEqual(seeded(again, dry), seeded(shown, dry));
-  // Bad orders are refused here too.
-  assert.strictEqual((await req(`push/${E_SLUG}/dry-run`, { seeding: { mode: 'arranged', order: ['nope'] } })).status, 400);
-  // The diff says which order it uses.
+  assert.deepStrictEqual(dry.rows.filter((r) => r.player_id).map((r) => r.player_id), w.seeded(shown, dry));
+  assert.strictEqual(seeding.savedFor(pool.readState(w.tDir), E_SLUG), null, 'a dry run saves nothing');
+  const again = M.moveSeed(shown, w.seeded(shown, dry)[3], shown[0], 'before');
+  const redrawn = M.pushPlan(dry.entries, { order: again, mode: 'arranged' });
+  assert.deepStrictEqual(redrawn.rows.filter((r) => r.player_id).map((r) => r.player_id), w.seeded(again, dry));
+  assert.strictEqual((await w.req(`push/${E_SLUG}/dry-run`, { seeding: { mode: 'arranged', order: ['nope'] } })).status, 400);
   assert.match(R.pushDiffTable(dry), /your arranged seed order/i);
-  assert.match(R.pushDiffTable(M.pushPlan(dry.entries)), /tier order/i);
+  assert.match(R.pushDiffTable(M.pushPlan(dry.entries)), /the Seed column in tier order/i);
 });
 
-// ---- The page (source pins: what a browser test would check, without launching one) ---------------
-
-test('the page: every drop saves at once (no debounce), Post awaits pending saves and sends the order on screen, and dragging is never disabled by the push panel', () => {
-  const src = fs.readFileSync(path.join(ROOT, 'app', 'public', 'app.js'), 'utf8');
-  const fn = (name) => { const i = src.indexOf(`function ${name}(`); assert.ok(i >= 0, name); return src.slice(i, src.indexOf('\n  }\n', i)); };
-  const save = fn('saveSeeds');
-  assert.doesNotMatch(save, /setTimeout|debounce/i, 'no debounce in the save');
-  assert.match(save, /seedWrites = seedWrites\.then\(/, 'saves are serialized, in order');
-  const postFn = fn('postSeeding');
-  assert.match(postFn, /await seedWrites;/, 'Post waits for every save in flight');
-  assert.match(postFn, /\{ fingerprint: dry\.fingerprint, confirm: true, seeding: currentSeeding\(dry\.event\.slug\) \}/, 'and sends the order on screen');
-  assert.ok(postFn.indexOf('window.confirm(') < postFn.indexOf('seeding: currentSeeding('), 'the order is read after the confirm, at the click');
-  assert.match(fn('runDry'), /seeding: currentSeeding\(e\)/);
-  // A move updates the order the push reads (ev.saved) before its save is even sent.
-  const move = fn('applySeedMove');
-  assert.ok(move.indexOf('ev.saved = {') < move.indexOf('saveSeeds('), 'the page\'s order changes first, then the save is queued');
-  // After a post the panel stays with a Post button: a re-push needs no new dry run.
-  assert.match(postFn, /dry = \{ \.\.\.dry, entries: r\.body\.entries, fingerprint: r\.body\.fingerprint \};/);
-  assert.doesNotMatch(postFn, /btn\.remove\(\)|dry = null/);
-  const after = postFn.slice(postFn.indexOf('dry = { ...dry, entries: r.body.entries'));
-  assert.match(after, /redrawPush\(\);\n\s+if \(\$\('pushPost'\)\) \$\('pushPost'\)\.disabled = false;/, 'and its Post button is enabled again (redrawPush keeps a disabled state)');
-  assert.match(fn('applySeedMove'), /redrawPush\(\)/, 'an open dry run is redrawn after every move');
-  assert.match(fn('redrawPush'), /M\.pushPlan\(/);
-  assert.doesNotMatch(src, /seedsLocked|lockSeeds|disableDrag/);
-  // Keyboard reordering on the handle.
-  assert.match(fn('onHandleKey'), /ev\.key in MOVE_KEYS/);
-  const keys = /const MOVE_KEYS = \{[^}]*\}/.exec(src)[0];
-  for (const k of ['ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown']) assert.ok(keys.includes(`'${k}'`), k);
-  assert.match(src, /table\.addEventListener\('keydown', onHandleKey\)/);
-  // The row's id is read before ensureSeedOrder() can redraw (and detach) the handle, in both handlers.
-  const kb = fn('onHandleKey');
-  assert.ok(kb.indexOf("const id = btn.closest('tr').dataset.pid") < kb.indexOf('ensureSeedOrder()'));
-  const down = src.slice(src.indexOf("table.addEventListener('pointerdown'"));
-  assert.ok(down.indexOf("const pid = btn.closest('tr').dataset.pid") < down.indexOf('ensureSeedOrder()'));
-  // The handle and the indicator exist in the page.
-  const html = fs.readFileSync(path.join(ROOT, 'app', 'public', 'tournament.html'), 'utf8');
-  for (const id of ['seedMode', 'seedSort', 'seedReset', 'seedEvent', 'seedLive']) assert.match(html, new RegExp(`id="${id}"`));
+test('the Seed cell: a drag handle in the app, the number only in the compare panel', () => {
   const c = { app: true, notes: {}, seeds: new Map([['7', 3]]), seedMode: 'arranged' };
   assert.match(R.seedCell({ player_id: '7', gamer_tag: 'X' }, c, { app: true }), /<td class="seed arranged" data-v="3"><button class="drag" type="button"[^>]*aria-label="Seed 3: X\. Arrow keys move it\."/);
-  assert.doesNotMatch(R.seedCell({ player_id: '7', gamer_tag: 'X' }, c, {}), /button/, 'the compare panel shows the number only');
+  assert.doesNotMatch(R.seedCell({ player_id: '7', gamer_tag: 'X' }, c, {}), /button/);
+  const html = fs.readFileSync(path.join(ROOT, 'app', 'public', 'tournament.html'), 'utf8');
+  for (const id of ['seedMode', 'seedSort', 'seedReset', 'seedEvent', 'seedLive']) assert.match(html, new RegExp(`id="${id}"`));
 });

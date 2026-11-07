@@ -215,10 +215,13 @@
   }
   // The seeding a push uses for one event, as the page shows it right now (ev.saved is updated on
   // every move before the save is sent).
+  // Noah, 2026-11-07: "push should prepare the seed column and then send what was finalized": the
+  // column is sent in both modes, tier order included, so what is posted is the column on screen.
   function currentSeeding(slug) {
     const ev = seedInfo(slug);
-    if (!ev || !ev.saved) return { mode: 'tiers' };
-    return { mode: 'arranged', order: M.seedOrder(entrantsOf(ev), ev.saved).order };
+    if (!ev) return { mode: 'tiers' };
+    const so = M.seedOrder(entrantsOf(ev), ev.saved);
+    return { mode: so.mode, order: so.order };
   }
   function renderSeedBar() {
     const has = !!seedState;
@@ -230,7 +233,7 @@
     $('seedMode').classList.toggle('arranged', arranged);
     $('seedMode').title = arranged
       ? `Push to start.gg posts this order exactly${when ? ` (saved ${when})` : ''}. New registrants slot in by tier; withdrawn ones close the gap.`
-      : 'Nothing arranged: seeds follow tiers. Push to start.gg sets tiers and keeps start.gg\'s current order within each tier. Drag a row by its ⠿ handle (or focus it and use the arrow keys) to fix an exact order.';
+      : 'Nothing arranged: seeds follow tiers (by tag within a tier) and move when a tier changes. Push to start.gg posts this column as it stands. Drag a row by its ⠿ handle (or focus it and use the arrow keys) to arrange it.';
     $('seedReset').hidden = !arranged;
   }
   // The Seed cells, every row (and the compare panel), after the numbers change; in seed order the
@@ -264,17 +267,45 @@
     const p = byId.get(String(id));
     $('seedLive').textContent = n ? `${p ? p.gamer_tag : id}: seed ${n} of ${ctx.seeds.size}` : '';
   }
+  // Every write of the column (a move, a reset, the post) goes through this one chain, in order, each
+  // carrying the rev it builds on (`base`), this page's id and its write number (lib/seeding.js): this
+  // page's last write wins, and a change made in another window is never overwritten silently.
+  const CLIENT = `p${Math.random().toString(36).slice(2, 10)}${Date.now().toString(36)}`;
+  let writeSeq = 0;
+  let seedGeneration = 0;   // bumped when the page adopts another window's order: older queued writes are dropped
+  const stamp = (slug) => { const ev = seedInfo(slug); return { base: ev ? ev.rev || 0 : 0, client: CLIENT, seq: ++writeSeq }; };
+  function enqueueSeedWrite(job) {
+    const gen = seedGeneration;
+    const run = seedWrites.then(() => (gen === seedGeneration ? job() : undefined));
+    seedWrites = run.catch(() => {});
+    return run;
+  }
+  // Another window changed this event's column: show its order here (nothing of this page's was saved).
+  function adoptSeeding(slug, current, why) {
+    const ev = seedInfo(slug);
+    if (!ev || !current) return;
+    seedGeneration++;
+    ev.saved = current.saved || null;
+    ev.rev = current.rev;
+    if (slug === seedEvent) { computeSeeds(); refreshSeeds(); renderSeedBar(); }
+    redrawPush();
+    showNote(why, { err: true });
+  }
   function saveSeeds(body) {
     const slug = seedEvent;
-    seedWrites = seedWrites.then(async () => {
-      const r = await postJson(api('seeds'), { event: slug, ...body });
-      if (!r.ok) { showNote(`Seed order not saved: ${r.body.error || 'error'}`, { err: true }); return; }
-      // Only the save time comes back into the page: a later move's order is already in ev.saved.
+    return enqueueSeedWrite(async () => {
+      const r = await postJson(api('seeds'), { event: slug, ...body, ...stamp(slug) });
       const ev = seedInfo(slug);
+      if (!r.ok) {
+        if (r.body && r.body.failure === 'seed-conflict') { adoptSeeding(slug, r.body.current, `Seed order not saved: ${r.body.error}`); return; }
+        showNote(`Seed order not saved: ${r.body.error || 'error'}`, { err: true });
+        return;
+      }
+      if (ev) ev.rev = r.body.rev;
+      // Only the save time comes back into the page: a later move's order is already in ev.saved.
       if (ev && ev.saved && r.body.saved && ev.saved.order.join(',') === r.body.saved.order.join(',')) ev.saved.at = r.body.saved.at;
       if (slug === seedEvent) { computeSeeds(); renderSeedBar(); }
     });
-    return seedWrites;
   }
   function applySeedMove(id, targetId, where) {
     const ev = seedInfo();
@@ -376,7 +407,7 @@
   $('seedReset').addEventListener('click', () => {
     const ev = seedInfo();
     if (!ev || !ev.saved) return;
-    if (!window.confirm(`Reset the seeds of ${ev.name} to tier order?\n\nYour arranged order for this event is discarded; seeds follow tiers again, and the push keeps start.gg's order within each tier.`)) return;
+    if (!window.confirm(`Reset the seeds of ${ev.name} to tier order?\n\nYour arranged order for this event is discarded; seeds follow tiers again (by tag within a tier), and that is what the push posts.`)) return;
     ev.saved = null;
     computeSeeds();
     refreshSeeds();
@@ -818,7 +849,10 @@
   }
   async function fetchCsvWithProgress(url, onProgress, order) {
     // The table order goes in the body: every registrant's id does not fit in a URL (431 past ~2000).
-    const res = await fetch(url, { method: 'POST', cache: 'no-store', headers: { 'X-Seeding-App': '1', 'Content-Type': 'application/json' }, body: JSON.stringify({ order }) });
+    // A2.3: so do the event the Seed column shows and that column as it stands, so the export's Seed
+    // numbers are the column's (multi-event tabs included).
+    const body = seedEvent ? { order, event: seedEvent, seeding: currentSeeding(seedEvent) } : { order };
+    const res = await fetch(url, { method: 'POST', cache: 'no-store', headers: { 'X-Seeding-App': '1', 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     if (!res.ok) throw new Error(`The server answered ${res.status}.`);
     const total = Number(res.headers.get('Content-Length')) || 0;
     const fromHeader = /filename="([^"]+)"/.exec(res.headers.get('Content-Disposition') || '');
@@ -902,16 +936,18 @@
     if (!r.ok) { pushLine(r.body.error || 'Dry run failed.', true); return; }
     dry = r.body;
     pushLine(`Dry run: ${dry.event.name}, phase "${dry.phase.name || dry.phase.id}". Nothing has been sent.`);
-    $('pushBody').innerHTML = R.pushDiffTable(dry) + postButton();
+    redrawPush();
   }
   // The dry run's start.gg seeds with the tiers this page shows now (a tier edited since the dry run).
   function liveEntries(entries) {
     return entries.map((e) => (e.mappable && byId.has(String(e.player_id)) ? { ...e, tier: tierOfId(String(e.player_id)) } : e));
   }
+  // The dry run, drawn from the Seed column as it stands (M.pushPlan over start.gg's seeds): after every
+  // move, tier edit, reset or adopted change, so it is never stale and dragging is never paused.
   function redrawPush() {
     if (!dry || !dry.entries || pushPanel.hidden) return;
     const s = currentSeeding(dry.event.slug);
-    const plan = M.pushPlan(liveEntries(dry.entries), { arrangement: s.mode === 'arranged' ? s.order : null });
+    const plan = M.pushPlan(liveEntries(dry.entries), { order: s.order, mode: s.mode });
     dry = { ...dry, mode: plan.mode, rows: plan.rows, summary: plan.summary };
     const keep = document.activeElement && document.activeElement.id === 'pushPost';
     const disabled = $('pushPost') && $('pushPost').disabled;
@@ -921,20 +957,39 @@
   }
   async function postSeeding() {
     if (!dry) return;
+    const slug = dry.event.slug;
     const btn = $('pushPost');
     if (btn) btn.disabled = true;
     await seedWrites;   // every drag saved, in order, before anything is posted
-    redrawPush();       // the confirm counts from the order as it is now
+    redrawPush();       // the confirm counts from the column as it is now
     const flagged = dry.summary.crosses_tier ? ` ${dry.summary.crosses_tier} seed(s) move across a tier boundary relative to start.gg's current order: a conflict fix made by hand there would be reverted.` : '';
-    const order = dry.mode === 'arranged' ? 'your arranged seed order' : 'tier order (start.gg\'s order within each tier)';
-    if (!window.confirm(`Post the proposed seeding for ${dry.event.name} (phase "${dry.phase.name || dry.phase.id}") to start.gg, in ${order}?${flagged}`)) { if ($('pushPost')) $('pushPost').disabled = false; return; }
+    const order = dry.mode === 'arranged' ? 'your arranged seed order' : 'tier order';
+    if (!window.confirm(`Post the Seed column for ${dry.event.name} (phase "${dry.phase.name || dry.phase.id}") to start.gg, in ${order}?${flagged}`)) { if ($('pushPost')) $('pushPost').disabled = false; return; }
     pushLine('Posting to start.gg…');
-    // The order is read here, after the confirm: the one on screen at the click.
-    const r = await postJson(tapi(`push/${encodeURIComponent(dry.event.slug)}/post`), { fingerprint: dry.fingerprint, confirm: true, seeding: currentSeeding(dry.event.slug) });
+    // The post is one more write of the column, on the same chain: a drag made while it is on its way
+    // is saved after it, so the page's last write wins. The column and the dry run are read here, after
+    // the confirm: what is posted is what is on screen at the click, and the server checks the plan.
+    const r = await enqueueSeedWrite(async () => {
+      redrawPush();
+      return postJson(tapi(`push/${encodeURIComponent(slug)}/post`), { fingerprint: dry.fingerprint, confirm: true, seeding: { ...currentSeeding(slug), ...stamp(slug) }, proposed: M.proposedPairs(dry.rows) });
+    });
+    if (!r) { pushLine('Not posted: the seed order changed in another window. Check the column and post again.', true); if ($('pushPost')) $('pushPost').disabled = false; return; }
+    const ev = seedInfo(slug);
+    if (r.body && r.body.seeding && ev) ev.rev = r.body.seeding.rev;
     if (!r.ok) {
-      if (r.body && r.body.failure === 'stale') {
+      const f = r.body && r.body.failure;
+      if (f === 'seed-conflict') { adoptSeeding(slug, r.body.current, 'Not posted: the seed order was changed in another window. This page now shows that order; check it and post again.'); pushLine('Not posted: the seed order was changed in another window.', true); if ($('pushPost')) $('pushPost').disabled = false; return; }
+      if (f === 'not-as-shown' && r.body.dry) {
+        // The server's plan differs from the one drawn here (a tier changed elsewhere): its seeds and
+        // tiers replace the dry run's, which is redrawn; nothing was posted.
+        dry = { ...dry, entries: r.body.dry.entries, fingerprint: r.body.dry.fingerprint };
+        redrawPush();
+        if ($('pushPost')) $('pushPost').disabled = false;
+        pushLine(r.body.error, true);
+        return;
+      }
+      if (f === 'stale') {
         // start.gg's side changed (not this page's order): a fresh dry run, then Noah posts again.
-        const slug = dry.event.slug;
         await runDry(slug);
         pushLine('start.gg\'s seeding changed since the dry run, so nothing was posted. This is a fresh dry run: check it and post again.', true);
         return;

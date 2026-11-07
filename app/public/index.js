@@ -154,11 +154,15 @@
     fileInput.addEventListener('change', async () => {
       const file = fileInput.files[0];
       if (!file) return;
-      // The server reads a request body of up to ~200 KB; a game's shared tiers are far smaller.
-      if (file.size > 190000) { say('That file is too large for a tiers file (190 KB).', true); return; }
       say('Reading the file…');
       const csv = await file.text().catch((err) => { say(err.message, true); return null; });
       if (csv == null) return;
+      // The size that counts is the request's (the file as a JSON string, UTF-8: escaping adds up to
+      // ~30%), against the server's cap for these routes (data-max-bytes), less room for Apply's picks.
+      const max = Number(fileInput.dataset.maxBytes) || 2000000;
+      const json = JSON.stringify({ game_id: sel.value, csv, file_name: file.name });
+      const bytes = typeof TextEncoder !== 'undefined' ? new TextEncoder().encode(json).length : json.length * 3;
+      if (bytes + 16 * csv.split('\n').length + 1000 > max) { say(`That file is too large to import (${Math.round(bytes / 1024)} KB as sent; the limit is ${Math.round(max / 1024)} KB).`, true); return; }
       upload = { csv, file_name: file.name };
       if (await preview()) { say(''); modal.showModal(); }
     });

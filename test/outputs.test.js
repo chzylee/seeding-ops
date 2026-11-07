@@ -14,6 +14,7 @@ const M = require('../lib/view/model');
 const R = require('../lib/view/render');
 const sgg = require('../lib/startgg');
 const push = require('../lib/push');
+const seeding = require('../lib/seeding');
 const { run } = require('../lib/run');
 const { createApp } = require('../app/server');
 const { inject } = require('../testlib/inject');
@@ -42,32 +43,39 @@ test('seedSequence: higher tier gets the lower seed, one contiguous 1..N, the gi
   assert.deepStrictEqual(M.seedSequence([]), []);
 });
 
-test('the export and the push number with the same function (one source): both call M.seedSequence, and nothing else orders seeds', () => {
-  const dataSrc = fs.readFileSync(path.join(ROOT, 'lib', 'view', 'data.js'), 'utf8');
+// Build D pass 2 (auditor finding 7; Noah, 2026-11-07: "push should prepare the seed column and then
+// send what was finalized"): the export and the push both number from the Seed column, one function
+// (lib/view/model.js seedOrder / reconcileOrder), in tier order and when arranged. test/seed-order.test.js
+// checks the same agreement through the routes the page uses.
+test('the export and the push number from the same Seed column (M.seedOrder / M.reconcileOrder), in tier order and arranged', () => {
   const pushSrc = fs.readFileSync(path.join(ROOT, 'lib', 'push.js'), 'utf8');
-  assert.match(dataSrc, /M\.seedSequence\(/);
-  // A2.3: the push's sequence is M.pushPlan, which numbers tier order with seedSequence (the same
-  // function the export calls) and an arranged order with the shared reconcileOrder.
   assert.match(pushSrc, /M\.pushPlan\(/);
   const modelSrc = fs.readFileSync(path.join(ROOT, 'lib', 'view', 'model.js'), 'utf8');
-  assert.match(modelSrc.slice(modelSrc.indexOf('function pushPlan(')), /else seq = seedSequence\(entries\);/);
-  // The same players, tiers and order give the same numbers through both paths.
+  assert.match(modelSrc.slice(modelSrc.indexOf('function pushPlan('), modelSrc.indexOf('const proposedPairs')), /reconcileOrder\(/);
   const outRoot = tmp();
   const ps = [player(1, 'A'), player(2, 'B'), player(3, 'C'), player(4, 'D')];
   makePool(outRoot, { t: 'tour', events: [{ slug: 'ev', game: G }], players: ps });
   const tiersFile = path.join(outRoot, 'tiers.csv');
   fs.writeFileSync(tiersFile, out.toCsv(data.TIER_COLS, [tierRow({ player_id: '1', tier: '5' }), tierRow({ player_id: '3', tier: '8' }), tierRow({ player_id: '4', tier: '5' })]));
-  const order = ['2', '4', '1', '3'];
-  const exp = data.seedsExport(data.tabSource(outRoot, 'tour', G.id), { order, tiersFile }).sequence.map((x) => [x.id, x.seed]);
-  const seeds = order.map((id, i) => ({ id: `s${id}`, seedNum: i + 1, entrant: { id: Number(id), participants: [{ player: { id: Number(id), gamerTag: ps[id - 1].gamer_tag } }] } }));
-  const dry = push.buildDryRun({ phase: { id: '1' }, seeds, poolIds: new Set(['1', '2', '3', '4']), tierRows: data.readTiers(G.id, tiersFile) });
-  assert.deepStrictEqual(dry.rows.map((r) => [r.player_id, r.proposed]), exp);
-  assert.deepStrictEqual(exp, [['3', 1], ['4', 2], ['1', 3], ['2', 4]]);
+  const src = data.tabSource(outRoot, 'tour', G.id);
+  // start.gg's current order differs from the column, so agreement is not an accident of input order.
+  const startggOrder = ['2', '4', '1', '3'];
+  const seeds = startggOrder.map((id, i) => ({ id: `s${id}`, seedNum: i + 1, entrant: { id: Number(id), participants: [{ player: { id: Number(id), gamerTag: ps[id - 1].gamer_tag } }] } }));
+  const both = () => {
+    const col = seeding.columnOrder(src, 'ev', { tiersFile });
+    const exp = data.seedsExport(src, { tiersFile, seeds: seeding.forTab(src).events[0] }).sequence.map((x) => [x.id, x.seed]);
+    const dry = push.buildDryRun({ phase: { id: '1' }, seeds, poolIds: new Set(['1', '2', '3', '4']), tierRows: data.readTiers(G.id, tiersFile), order: col.order, mode: col.mode });
+    assert.deepStrictEqual(dry.rows.map((r) => [r.player_id, r.proposed]), exp, col.mode);
+    return exp;
+  };
+  assert.deepStrictEqual(both(), [['3', 1], ['1', 2], ['4', 3], ['2', 4]], 'tier order: tier, then tag (A before D in tier 5), never start.gg\'s order');
+  seeding.setOrder(src, 'ev', { mode: 'arranged', order: ['2', '3', '4', '1'] });
+  assert.deepStrictEqual(both(), [['2', 1], ['3', 2], ['4', 3], ['1', 4]], 'arranged');
 });
 
 // ---- Acceptance 8: Export CSV ---------------------------------------------------------------------
 
-test('export seeds CSV: tier, tag, player_id, proposed seed in seed order (higher tier first, table order within a tier, untiered last); no start.gg request', async () => {
+test('export seeds CSV: tier, tag, player_id, proposed seed in Seed-column order (higher tier first, by tag within a tier, untiered last; the table\'s sort does not renumber); no start.gg request', async () => {
   const outRoot = tmp();
   const ps = [player(1, 'Alpha'), player(2, '=Bravo'), player(3, 'Charlie'), player(4, 'Delta'), player(5, 'Echo'), player(6, 'Foxtrot')];
   makePool(outRoot, { t: 'tour', events: [{ slug: 'ev', game: G }], players: ps });
@@ -82,14 +90,14 @@ test('export seeds CSV: tier, tag, player_id, proposed seed in seed order (highe
     assert.strictEqual(r.status, 200, r.text);
     return { r, rows: out.parseCsv(r.text) };
   };
-  // The table's order as the page shows it (sorted by Noah): Delta, Charlie, Alpha, Foxtrot, Bravo, Echo.
+  // The table sorted by Noah (Delta, Charlie, Alpha, Foxtrot, Bravo, Echo): build D pass 2 (Noah,
+  // 2026-11-07), the Seed column numbers the export, so the table's sort does not change it.
   const { r, rows } = await get('?order=4,3,1,6,2,5');
   assert.match(r.headers['Content-Disposition'], /^attachment; filename="tour-mbaacc-seeds\.csv"$/);
   assert.deepStrictEqual(Object.keys(rows[0]), ['tier', 'tag', 'player_id', 'proposed_seed']);
   assert.deepStrictEqual(rows.map((x) => [x.proposed_seed, x.tier, x.tag, x.player_id]), [
-    ['1', '9', 'Charlie', '3'], ['2', '9', 'Alpha', '1'], ['3', '7', "'=Bravo", '2'], ['4', '0', 'Echo', '5'],
+    ['1', '9', 'Alpha', '1'], ['2', '9', 'Charlie', '3'], ['3', '7', "'=Bravo", '2'], ['4', '0', 'Echo', '5'],
     ['5', '', 'Delta', '4'], ['6', '', 'Foxtrot', '6']]);
-  // Without an order: the page's default order (tier, then tag); ids not in the tab are ignored.
   const d = (await get('?order=999,abc')).rows;
   assert.deepStrictEqual(d.map((x) => x.player_id), ['1', '3', '2', '5', '4', '6']);
   assert.deepStrictEqual(d.map((x) => x.proposed_seed), ['1', '2', '3', '4', '5', '6']);
@@ -155,7 +163,7 @@ test('push dry run against the fake: the first phase by phaseOrder, read-only (t
   assert.deepStrictEqual(dry.phase, { id: '5001', name: 'Bracket' });
   assert.deepStrictEqual(fake.calls.map((c) => [c.op, String(c.variables.phaseId)]), [['PhaseSeeds', '5001']]);
   assert.deepStrictEqual(dry.summary, { seeds: 15, tiered: 3, untiered: 10, unmappable: 2, moved: dry.summary.moved, crosses_tier: dry.summary.crosses_tier, not_in_pool: 0 });
-  assert.deepStrictEqual(dry.rows.slice(0, 3).map((r) => [r.player_id, r.tier, r.proposed]), [['115', 9, 1], ['101', 9, 2], ['103', 4, 3]], 'tier desc, start.gg\'s current order within a tier');
+  assert.deepStrictEqual(dry.rows.slice(0, 3).map((r) => [r.player_id, r.tier, r.proposed]), [['101', 9, 1], ['115', 9, 2], ['103', 4, 3]], 'tier desc, by tag within a tier: the Seed column (build D pass 2, Noah 2026-11-07; no longer start.gg\'s order within a tier)');
   assert.ok(dry.rows.slice(-2).every((r) => r.group === 'unmappable'), 'the team entrant and the empty seed last');
   assert.ok(!fake.calls.some((c) => c.op === 'UpdatePhaseSeeding'), 'a dry run never posts');
   assert.strictEqual((await post('melee-singles/dry-run')).status, 404, 'only a seeded event');
@@ -180,12 +188,16 @@ test('push post: only on a confirmed click with the dry run\'s fingerprint; re-c
   assert.deepStrictEqual(m.seedMapping, dry.rows.map((x) => ({ seedId: x.seed_id, seedNum: x.proposed })));
   // A2.3: the reply also carries what was posted and start.gg's side after it (for a re-push), and the
   // push record says which order it used (tier order here: nothing was arranged).
-  const { rows: postedRows, summary: postedSummary, entries: after, fingerprint: fpAfter, ...entry } = r.json();
+  // Build D pass 2: the record also keeps the player order it sent (auditor finding 5: the post saves
+  // the order it actually sends); `seeding` is null here, no page column was sent.
+  const { rows: postedRows, summary: postedSummary, entries: after, fingerprint: fpAfter, order: sentOrder, seeding: col, ...entry } = r.json();
   assert.deepStrictEqual(entry, { posted: true, event: E_SLUG, phase_id: '5001', phase_name: 'Bracket', at: '2026-11-02T00:00:00.000Z', seed_count: 15, seed_order: 'tiers' });
+  assert.deepStrictEqual(sentOrder, dry.rows.filter((x) => x.player_id).map((x) => x.player_id));
+  assert.strictEqual(col, null);
   assert.deepStrictEqual(postedRows.map((x) => [x.seed_id, x.proposed]), dry.rows.map((x) => [x.seed_id, x.proposed]));
   assert.strictEqual(postedSummary.seeds, 15);
   assert.ok(after.every((e, i) => e.current === i + 1) && typeof fpAfter === 'string');
-  assert.deepStrictEqual(pool.readState(tDir).pushes, [{ event: E_SLUG, phase_id: '5001', phase_name: 'Bracket', at: '2026-11-02T00:00:00.000Z', seed_count: 15, seed_order: 'tiers' }]);
+  assert.deepStrictEqual(pool.readState(tDir).pushes, [{ event: E_SLUG, phase_id: '5001', phase_name: 'Bracket', at: '2026-11-02T00:00:00.000Z', seed_count: 15, seed_order: 'tiers', order: sentOrder }]);
   // After the post start.gg's order is the proposed one: a new dry run moves nothing.
   const again = (await post(`${E_SLUG}/dry-run`)).json();
   assert.strictEqual(again.summary.moved, 0);
@@ -220,10 +232,10 @@ test('the page: posting needs a click on a dry run and a confirm, sends the fing
   const postFn = fn('postSeeding');
   assert.match(postFn, /if \(!dry\) return;/, 'no post without a dry run on the page');
   assert.match(postFn, /window\.confirm\(/);
-  // A2.3: the post also carries the seed order on screen at the click (test/seed-order.test.js pins it).
-  assert.match(postFn, /\{ fingerprint: dry\.fingerprint, confirm: true, seeding: currentSeeding\(dry\.event\.slug\) \}/);
+  // What the post sends (the Seed column on screen at the click, and the dry run shown) is checked by
+  // running app.js against the server: test/seed-order-page.test.js.
   assert.match(postFn, /pushLine\(r\.body\.error \|\| 'Not posted\.', true\)/);
-  assert.match(fn('runDry'), /R\.pushDiffTable\(dry\)/);
+  assert.match(fn('redrawPush'), /R\.pushDiffTable\(dry\)/);
   // Noah, 2026-10-30: one export; it carries the table's order to export.csv (the Seed column uses it).
   // The export's order is checked by running app.js (test/export-order-script.test.js), not here.
   assert.doesNotMatch(src, /seeds\.csv/, 'the seeds.csv button is gone from the page');

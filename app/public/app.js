@@ -322,7 +322,10 @@
   }
   function focusHandle(id) {
     const b = table.querySelector(`tbody tr[data-pid="${CSS.escape(String(id))}"] button.drag`);
-    if (b) { b.focus({ preventScroll: true }); b.closest('tr').scrollIntoView({ block: 'nearest' }); }
+    if (!b) return;
+    b.focus({ preventScroll: true });
+    const tr = b.closest('tr');
+    if (tr) tr.scrollIntoView({ block: 'nearest' });
   }
   // The rows a keyboard move steps over: seeded and shown (Needs tier only hides tiered rows).
   function visibleSeedIds() {

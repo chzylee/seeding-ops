@@ -237,8 +237,8 @@ jobs:
           Windows will say the publisher is unknown (the app is not code signed):
           choose **More info**, then **Run anyway**.
 
-          **Already have Seeding Ops?** From 0.2.0 on, use **Check for updates** at the bottom of the
-          home page.
+          **Already have Seeding Ops?** From 0.2.0 on, the app checks for updates when it opens: the top
+          bar, next to your start.gg name, says "Update available" with an **Update** button.
 
           **Updating from 0.1.0** (it has no such button): don't double-click the installer. That way
           it uninstalls 0.1.0 first, which deletes your tiers table. Instead:

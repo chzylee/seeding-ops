@@ -352,7 +352,10 @@ function createApp(opts = {}) {
   let checked = null;
   async function cachedCheck(force) {
     if (!checked || force) checked = checkForUpdate();
-    return { ...(await checked), ...updateStatus() };
+    const p = checked, r = await p;
+    // A failed check (offline at launch, GitHub down) is not kept: the next page asks again (audit, final #1).
+    if (r && r.ok === false && checked === p) checked = null;
+    return { ...r, ...updateStatus() };
   }
   async function installUpdate(fields) {
     const st = updateStatus();
@@ -369,6 +372,8 @@ function createApp(opts = {}) {
     let file;
     try {
       file = await update.download({ fetchImpl: up.fetchImpl || globalThis.fetch, info, config, tmpDir: up.tmpDir });
+      // A pull or push may have started while the installer downloaded: closing now would cut it off (audit, final #2).
+      if (busyNow()) throw Object.assign(new Error('A pull or push to start.gg started while the update downloaded. Let it finish, then press Update again.'), { kind: 'busy' });
       // A launcher that starts the installer after update.LAUNCH_DELAY_S; a failure to start it is
       // answered here, with the server still up (audit #3).
       await update.runInstaller(file, { spawnImpl: up.spawnImpl, exists: up.exists });

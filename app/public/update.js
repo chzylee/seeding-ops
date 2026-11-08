@@ -50,7 +50,14 @@
 		if (phase === 'downloading') return setText('Downloading update…');
 		if (phase === 'installing' || st.updating) return setText('Installing update… Seeding Ops will reopen in a moment.');
 		if (phase === 'failed') { setText('Update failed. Try again later.', failReason); retry.hidden = false; return; }
-		if (st.ok === false) return setText(cur + (st.dev ? ' (dev)' : ''), "Couldn't check for updates");
+		if (st.ok === false) {   // no error shown: the version, which a click checks again (audit, final #1)
+			text.title = '';
+			text.innerHTML = '<button type="button" class="update-recheck">' + esc(cur + (st.dev ? ' (dev)' : '')) + '</button>';
+			var again = text.querySelector('.update-recheck');
+			again.title = "Couldn't check for updates. Click to try again.";
+			again.addEventListener('click', recheck);
+			return;
+		}
 		if (!st.available) {
 			if (st.dev) return setText(cur + ' (dev)');
 			text.title = '';

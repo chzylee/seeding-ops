@@ -198,11 +198,11 @@ test('update routes: GitHub is asked once per process; every later page reads th
   assert.strictEqual(latestCalls(gh), 1, 'three page loads, one check');
   await post(app, '/api/update/check', { force: true });
   assert.strictEqual(latestCalls(gh), 2, 'a click on "You\'re up to date" asks again');
-  // A failed check is cached too: no re-check while the app is open.
+  // A failed check is not kept (audit, final #1): offline at launch, the next page asks again.
   let n = 0;
   const off = makeApp({ gh: { fetchImpl: async () => { n++; throw new Error('ENOTFOUND github.com'); }, calls: [] } });
   await post(off.app, '/api/update/check'); await post(off.app, '/api/update/check');
-  assert.strictEqual(n, 1);
+  assert.strictEqual(n, 2);
 });
 
 test('update routes: busy (a pull, schedule pull, archive or queued job) is reported fresh on the cached answer and refuses install with 409', async () => {
@@ -323,9 +323,13 @@ test('update bar: a failed check shows only the version, titled, never an error 
     const p = barPage({ '/api/update/check': { body } });
     await p.page.flush();
     assert.strictEqual(p.text.textContent, 'v0.2.0');
-    assert.strictEqual(p.text.title, "Couldn't check for updates");
+    const again = p.text.querySelector('.update-recheck');
+    assert.match(again.title, /^Couldn't check for updates/);
     assert.ok(!p.area.classList.contains('available') && !p.text.classList.contains('err') && !p.bar.classList.contains('off') && !p.bar.classList.contains('warn'));
     assert.deepStrictEqual([p.btn.hidden, p.retry.hidden, p.link.hidden, p.dlg.showModalCalls], [true, true, true, 0]);
+    // The version is a way to try again (audit, final #1).
+    await again.click().results[0];
+    assert.deepStrictEqual(JSON.parse(p.checks().at(-1).body), { force: true });
   }
 });
 

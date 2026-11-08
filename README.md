@@ -442,12 +442,14 @@ lost the tiers table, and any reinstall put the empty table back over yours.
 
 ### Updates
 
-**Check for updates** sits at the bottom of the home page, beside the version. It reads the newest
-release's `latest.json` on GitHub. If there is a newer version, the installed app shows **Install X**:
-it asks once, downloads the installer, checks its signature, closes, updates, and opens again. Your
-data is untouched (it lives in the data folder above). A checkout or a portable copy is told the new
-version exists and gets a link to the release page; update a checkout with `git pull`. Installing is
-refused while a pull, schedule pull or archive is running or queued.
+Install once; after that the app checks for updates by itself each time it opens (once per launch,
+quietly) and says what it found in the bar at the top of every page, beside your profile: "v0.2.0 ·
+You're up to date", or "Update available: v0.3.0" with an **Update** button. Update asks once, then
+downloads the installer, checks its signature, closes, installs, and reopens. Your tiers, tournaments
+and start.gg connection are kept (they live in the data folder above). If the check fails (offline,
+GitHub down) the bar just shows the version. Update waits while a pull, schedule pull, archive or push
+to start.gg is running. A checkout or a portable copy gets a **Download** link to the release page
+instead; update a checkout with `git pull`.
 
 How it works: `lib/update.js`, called from the app's server (`/api/update/check`,
 `/api/update/install`). The release format is Tauri's updater format: `latest.json` plus a minisign
@@ -502,7 +504,7 @@ Why every guard ends in `throw` or `-ErrorAction Stop`: in a pasted PowerShell l
 stops only its own statement, and the rest of the line still runs. Only a `throw` or a
 `-ErrorAction Stop` error stops the whole line, so each check fails that way.
 
-From then on, use **Check for updates**. (A Tauri installer hook can't do the backup itself: it runs
+From then on, use **Update** in the bar at the top. (A Tauri installer hook can't do the backup itself: it runs
 after the old uninstaller.)
 
 **Setting up signing (once, by Noah, before publishing 0.2.0).** The app installs only updates signed
@@ -619,8 +621,8 @@ increment 3, [`docs/design-tool.md`](docs/design-tool.md)):
 - `lib/data-dir.js`: where the data lives (beside the code, or an installed copy's per-user data
   folder) and the one-time move out of an older install folder. `app/app-main.js` runs it before
   the server loads; the server reads `SEEDING_DATA`.
-- `lib/update.js` + `app/public/update.js`: Check for updates (latest.json, the signature check, the
-  installer run). `scripts/updater-manifest.js` writes `latest.json` in the release workflow.
+- `lib/update.js` + `app/public/update.js`: updates, checked once per launch and shown in the account
+  bar (latest.json, the signature check, the installer run). `scripts/updater-manifest.js` writes `latest.json` in the release workflow.
 - `views/major-table.js out/<tournament> [--game <id>]`: one game tab as a single HTML file in
   `out/<tournament>/`, for keeping. It carries your tiers, notes and review marks.
 - `scripts/synth-run.js <folder>`: a synthetic 200 × 100 run-shaped folder for load-testing the view

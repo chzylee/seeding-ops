@@ -97,6 +97,7 @@
 			});
 	}
 
-	window.Account = { reload: function () { return load(true); }, state: function () { return state; }, open: function () { bar.querySelector('.change').click(); } };
+	// bar(): the bar itself, for update.js, which puts the update status beside the profile.
+	window.Account = { reload: function () { return load(true); }, state: function () { return state; }, open: function () { bar.querySelector('.change').click(); }, bar: function () { return bar; } };
 	if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', mount); else mount();
 })();

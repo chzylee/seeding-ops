@@ -32,8 +32,10 @@
 //   GET  /api/t/<t>/g/<game>/export.csv       the tab's summary for Google Sheets (also POST { order })
 //   GET  /api/t/<t>/g/<game>/seeds.csv        [?order=<player ids>] seeds in seed order (no start.gg request; also POST { order })
 //   GET  /api/token[?check=1]                 who is signed in to start.gg; POST { token } saves one
-//   GET  /api/update                          this copy's version and whether it can install updates
-//   POST /api/update/check                    asks GitHub for the newest release (lib/update.js)
+//   GET  /api/update                          this copy's version, whether it can install updates, and
+//                                             whether a job or push is running (busy)
+//   POST /api/update/check                    { force? } the newest release (lib/update.js): asked of
+//                                             GitHub once per process and cached; force asks again
 //   POST /api/update/install                  { version } downloads, verifies, runs the installer, exits
 //   POST /api/t/<t>/g/<game>/player/<id>      edit tier / notes in registry/tiers.csv
 //   POST /api/t/<t>/g/<game>/player/<id>/review   the ✓ review mark (T1)
@@ -211,7 +213,7 @@ function indexPage(outRoot, jobs, nowMs, notices = [], tiersFile) {
     return `${i === firstDone ? DONE_NOTE : ''}<li class="st-${x.status} src-${esc(x.state.source)}" data-t="${esc(x.t)}" data-name="${esc(name)}" title="Right-click for options"><a href="/t/${esc(x.t)}">${esc(name)}</a> ${badge} <span class="pill st-${x.status}">${STATUS_LABEL[x.status]}</span>${busy}<div class="dim">${sub}</div></li>`;
   }).join('');
   return `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Seeding tournaments</title><link rel="stylesheet" href="/static/app.css"><script src="/static/theme.js"></script><script src="/static/busy.js"></script><script src="/static/account.js" defer></script>
+<title>Seeding tournaments</title><link rel="stylesheet" href="/static/app.css"><script src="/static/theme.js"></script><script src="/static/busy.js"></script><script src="/static/account.js" defer></script><script src="/static/update.js" defer></script>
 <body class="index"><main><h1>Tournaments</h1>${noticesHtml(notices)}
 <section class="add-section" aria-labelledby="addHead"><h2 id="addHead">Add a tournament</h2>
 <form id="add" class="add-t"><label for="addUrl" class="sr-only">start.gg tournament or event link</label>
@@ -221,12 +223,12 @@ ${uploadForm()}
 </section>
 ${tiersSection(tiersFile)}
 <ul class="events">${items || '<li class="dim">No tournaments yet. Add one above.</li>'}</ul>
-<footer class="app-version" aria-label="Version and updates"><span id="appVersion" class="dim">Seeding Ops ${esc(update.currentVersion(ROOT))}</span><button type="button" id="updateCheck">Check for updates</button><button type="button" id="updateInstall" class="primary" hidden>Install</button><a id="updateLink" href="#" target="_blank" rel="noopener" hidden>Release page</a><span id="updateMsg" class="status" role="status" aria-live="polite"></span></footer></main>
-<script src="/static/model.js"></script><script src="/static/render.js"></script><script src="/static/index.js"></script><script src="/static/update.js"></script><script src="/static/notices.js"></script></body></html>`;
+<footer class="app-version"><span id="appVersion" class="dim">Seeding Ops ${esc(update.currentVersion(ROOT))}</span></footer></main>
+<script src="/static/model.js"></script><script src="/static/render.js"></script><script src="/static/index.js"></script><script src="/static/notices.js"></script></body></html>`;
 }
 
 function notAddedPage(t) {
-  return `<!doctype html><html lang="en"><meta charset="utf-8"><title>Not added</title><link rel="stylesheet" href="/static/app.css"><script src="/static/theme.js"></script><script src="/static/busy.js"></script><script src="/static/account.js" defer></script>
+  return `<!doctype html><html lang="en"><meta charset="utf-8"><title>Not added</title><link rel="stylesheet" href="/static/app.css"><script src="/static/theme.js"></script><script src="/static/busy.js"></script><script src="/static/account.js" defer></script><script src="/static/update.js" defer></script>
 <body class="index"><main><h1>Not added yet</h1><p>There is no data for <code>${esc(t)}</code>. Pull data happens per tournament now.
 <a href="/?add=${encodeURIComponent(t)}">Add the tournament</a> to seed it.</p></main></body></html>`;
 }
@@ -319,6 +321,11 @@ function createApp(opts = {}) {
   const updateConfig = () => ({ ...update.readConfig(ROOT), ...(up.config || {}) });
   const installedCopy = () => (up.installed != null ? up.installed : process.env.SEEDING_INSTALLED === '1');
   let updating = null;   // the version being installed, once an install has started
+  // Pushes to start.gg run inside their request, not as jobs; counted so an update waits for them too.
+  let pushing = 0;
+  const busyNow = () => jobs.busyAnywhere() || pushing > 0;
+  // A checkout (not a portable copy) says "(dev)" beside its version in the bar.
+  const devCopy = () => (up.dev != null ? up.dev : !installedCopy() && fs.existsSync(path.join(ROOT, '.git')));
   function updateStatus() {
     const config = updateConfig();
     const current = up.current || update.currentVersion(ROOT);
@@ -327,7 +334,7 @@ function createApp(opts = {}) {
     if (!installedCopy()) reason = 'This copy is not the installed app (it runs from a folder: a checkout or the portable ZIP). Update a checkout with git pull; replace a portable copy with a new download.';
     else if (platform !== 'win32') reason = 'Installing updates from the app is Windows only; download the new version from the release page.';
     else if (!config.pubkey) reason = 'This build has no update signing key, so it cannot check that an update is genuine. Download the installer from the release page instead.';
-    return { current, installed: installedCopy(), can_install: !reason, reason, releases_page: config.releasesPage, updating };
+    return { current, installed: installedCopy(), dev: devCopy(), can_install: !reason, reason, releases_page: config.releasesPage, updating, busy: busyNow() };
   }
   async function checkForUpdate() {
     const st = updateStatus();
@@ -338,11 +345,20 @@ function createApp(opts = {}) {
       return { ...st, ok: false, kind: err.kind || 'error', error: err.message };
     }
   }
+  // Once per process (Noah, 2026-11-08: "on open, auto check for updates"): the first page to ask
+  // starts the check, every page after reads the same answer, so moving between pages never asks
+  // GitHub again. force (a click on "You're up to date") asks again. The local fields (busy,
+  // updating) are read fresh on every answer.
+  let checked = null;
+  async function cachedCheck(force) {
+    if (!checked || force) checked = checkForUpdate();
+    return { ...(await checked), ...updateStatus() };
+  }
   async function installUpdate(fields) {
     const st = updateStatus();
     if (updating) throw bad(409, `Version ${updating} is already being installed.`);
     if (!st.can_install) throw bad(409, st.reason);
-    if (jobs.busyAnywhere()) throw bad(409, 'A pull, schedule pull or archive is running or queued. Wait for it to finish (or stop it), then update; the update restarts the app.');
+    if (busyNow()) throw bad(409, 'A pull, schedule pull, archive or push to start.gg is running or queued. Wait for it to finish (or stop it), then update; the update restarts the app.');
     const config = updateConfig();
     // The client's version is a confirmation, not an instruction: what is installed is what latest.json says now.
     let info;
@@ -742,8 +758,8 @@ function createApp(opts = {}) {
       if (p === '/api/update/check') {
         if (method !== 'POST') return send(res, 405, 'Method not allowed');
         requireApp(req);   // it reaches GitHub
-        await readBody(req);
-        return json(res, 200, await checkForUpdate());
+        const fields = await readBody(req);
+        return json(res, 200, await cachedCheck(fields.force === true));
       }
       if (p === '/api/update/install') {
         if (method !== 'POST') return send(res, 405, 'Method not allowed');
@@ -878,7 +894,8 @@ function createApp(opts = {}) {
           notForUpload(t, 'there is nothing to push to');
           const fields = await readBody(req);
           if (g[2] === 'dry-run') return json(res, 200, await dryRun(t, g[1].toLowerCase(), fields));
-          return json(res, 200, await postSeeding(t, g[1].toLowerCase(), fields));
+          pushing++;
+          try { return json(res, 200, await postSeeding(t, g[1].toLowerCase(), fields)); } finally { pushing--; }
         }
         return notFound(res);
       }

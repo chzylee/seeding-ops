@@ -608,12 +608,19 @@ body.seed-dragging, body.seed-dragging * { cursor: grabbing !important; user-sel
 #accountBar .retry { height: 24px; padding: 0 8px; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background: var(--cell); color: var(--ink-2); font: inherit; font-size: 12px; }
 #accountBar .retry[hidden] { display: none; }
 
-/* ---- Updates: the version and "Check for updates" on the home page (update.js) ---- */
-.app-version { margin-top: var(--s-4); padding-top: var(--s-3); border-top: 1px solid var(--line); display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); font-size: 13px; }
-.app-version button { height: var(--ctl-h); padding: 0 var(--s-3); border: 1px solid var(--line-strong); border-radius: var(--radius); background: var(--cell); color: var(--fg); font: inherit; }
-.app-version button.primary { border-color: var(--accent); background: var(--accent); color: var(--on-accent); }
-.app-version button[hidden] { display: none; }
-.app-version .status.err { color: var(--err); }
+/* ---- Updates: the status beside the profile in the account bar, every page (update.js) ---- */
+.app-version { margin-top: var(--s-4); padding-top: var(--s-3); border-top: 1px solid var(--line); font-size: 13px; }
+#accountBar .update { display: inline-flex; align-items: center; gap: 8px; padding-left: 10px; border-left: 1px solid var(--line-strong); min-width: 0; }
+#accountBar .update[hidden], #accountBar .update [hidden] { display: none; }
+#accountBar .update-text { color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#accountBar .update.available .update-text { color: var(--accent-ink); font-weight: 600; }
+#accountBar .update-recheck { padding: 0; border: 0; background: none; color: inherit; font: inherit; cursor: pointer; }
+#accountBar .update-recheck:hover { text-decoration: underline; }
+#accountBar .update-go { height: 24px; padding: 0 10px; border: 1px solid var(--accent); border-radius: var(--radius-sm); background: var(--accent); color: var(--on-accent); font: inherit; font-size: 12px; font-weight: 600; }
+#accountBar .update-go:hover:not(:disabled) { background: var(--accent-ink); }
+#accountBar .update-go:disabled { opacity: .5; cursor: not-allowed; }
+#accountBar .update-retry { height: 24px; padding: 0 8px; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background: var(--cell); color: var(--ink-2); font: inherit; font-size: 12px; }
+#accountBar .update-link { color: var(--accent-ink); font-size: 12px; }
 
 /* ---- Data notices on the home page (lib/data-dir.js; notices.js) ---- */
 .data-notices { display: grid; gap: var(--s-2); margin: var(--s-2) 0 var(--s-3); }

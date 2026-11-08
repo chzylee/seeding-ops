@@ -186,63 +186,233 @@ test('update routes: a bad signature, a missing key, a checkout, a running job o
   for (const x of [noKey, checkout, busy, stale]) assert.deepStrictEqual([x.spawned.length, x.exits.length], [0, 0]);
 });
 
-test('update routes: the home page shows the version and the Check for updates button', async () => {
-  const { app } = makeApp();
-  const html = (await inject(app.handler, { url: '/' })).text;
-  assert.match(html, /<span id="appVersion" class="dim">Seeding Ops \d+\.\d+\.\d+<\/span>/);
-  assert.match(html, /<button type="button" id="updateCheck">Check for updates<\/button>/);
-  assert.match(html, /<script src="\/static\/update\.js"><\/script>/);
+
+// ---- Once per launch (Noah, 2026-11-08: "on open, auto check for updates") ----
+const latestCalls = (gh) => gh.calls.filter((u) => /latest\.json$/.test(u)).length;
+
+test('update routes: GitHub is asked once per process; every later page reads the cached answer; force asks again', async () => {
+  const { app, gh } = makeApp();
+  const [a, b] = await Promise.all([post(app, '/api/update/check'), post(app, '/api/update/check')]);
+  const c = await post(app, '/api/update/check');
+  for (const r of [a, b, c]) assert.deepStrictEqual([r.json().ok, r.json().latest, r.json().available], [true, '0.3.0', true]);
+  assert.strictEqual(latestCalls(gh), 1, 'three page loads, one check');
+  await post(app, '/api/update/check', { force: true });
+  assert.strictEqual(latestCalls(gh), 2, 'a click on "You\'re up to date" asks again');
+  // A failed check is cached too: no re-check while the app is open.
+  let n = 0;
+  const off = makeApp({ gh: { fetchImpl: async () => { n++; throw new Error('ENOTFOUND github.com'); }, calls: [] } });
+  await post(off.app, '/api/update/check'); await post(off.app, '/api/update/check');
+  assert.strictEqual(n, 1);
+});
+
+test('update routes: busy (a pull, schedule pull, archive or queued job) is reported fresh on the cached answer and refuses install with 409', async () => {
+  const { app, spawned, exits } = makeApp();
+  assert.strictEqual((await post(app, '/api/update/check')).json().busy, false);
+  app.jobs.current = { t: 'x' };
+  assert.strictEqual((await inject(app.handler, { url: '/api/update' })).json().busy, true);
+  assert.strictEqual((await post(app, '/api/update/check')).json().busy, true, 'the cached check carries the busy state of now');
+  const r = await post(app, '/api/update/install', { version: '0.3.0' });
+  assert.strictEqual(r.status, 409);
+  assert.match(r.json().error, /running or queued/);
+  app.jobs.current = null;
+  assert.strictEqual((await inject(app.handler, { url: '/api/update' })).json().busy, false);
+  assert.deepStrictEqual([spawned.length, exits.length], [0, 0]);
+});
+
+test('update routes: a push to start.gg in flight counts as busy; install is refused until it is done', async () => {
+  const { seedWorld } = require('../testlib/seed-world');
+  const { E_SLUG, T_SLUG, virtualClock } = require('../testlib/fake-api');
+  const clock = virtualClock(Date.UTC(2026, 10, 2));
+  const w = await seedWorld();
+  let release;
+  const gate = new Promise((r) => { release = r; });
+  const slowPost = async (url, init) => { if (/UpdatePhaseSeeding/.test(String(init && init.body))) await gate; return w.fake(url, init); };
+  const signer = makeSigner();
+  const g = github({ signer });
+  const app = createApp({ outRoot: w.outRoot, dataRoot: tmp('seeding-upd-push-'), tiersFile: w.tiersFile, getToken: () => 'tok', fetchImpl: slowPost, now: clock.now, sleep: clock.sleep,
+    update: { installed: true, current: '0.2.0', platform: 'win32', config: { repo: REPO, endpoint: `https://github.com/${REPO}/releases/latest/download/latest.json`, pubkey: signer.pubkey, releasesPage: `https://github.com/${REPO}/releases/latest` },
+      fetchImpl: g.fetchImpl, tmpDir: tmp('seeding-upd-dl-'), spawnImpl: () => { throw new Error('no install expected'); }, exit: () => { throw new Error('no exit expected'); } } });
+  const req = (u, body) => inject(app.handler, { url: `/api/t/${T_SLUG}/${u}`, method: 'POST', headers: H, body: JSON.stringify(body || {}) });
+  const dry = (await req(`push/${E_SLUG}/dry-run`)).json();
+  const posting = req(`push/${E_SLUG}/post`, { fingerprint: dry.fingerprint, confirm: true });
+  await new Promise((r) => setImmediate(r));
+  for (let i = 0; i < 20 && !(await inject(app.handler, { url: '/api/update' })).json().busy; i++) await new Promise((r) => setImmediate(r));
+  assert.strictEqual((await inject(app.handler, { url: '/api/update' })).json().busy, true, 'busy while the post is in flight');
+  const r = await post(app, '/api/update/install', { version: '0.3.0' });
+  assert.strictEqual(r.status, 409);
+  assert.match(r.json().error, /push to start\.gg/);
+  release();
+  assert.strictEqual((await posting).status, 200);
+  assert.strictEqual((await inject(app.handler, { url: '/api/update' })).json().busy, false, 'not busy once the push is done');
+});
+
+// ---- The page script: account.js + update.js, run against the pages the server renders ----
+const ACCOUNT_SRC = fs.readFileSync(path.join(__dirname, '..', 'app', 'public', 'account.js'), 'utf8');
+const SRC = fs.readFileSync(path.join(__dirname, '..', 'app', 'public', 'update.js'), 'utf8');
+const ST = (o) => ({ ok: true, current: '0.2.0', latest: '0.3.0', available: true, installed: true, dev: false, can_install: true, busy: false, updating: null, releases_page: 'https://github.com/x/y/releases/latest', ...o });
+
+// answers: url -> { status, body } or a function (init) -> that.
+function barPage(answers, html = '') {
+  const page = loadPage(ACCOUNT_SRC + '\n' + SRC, { html, fetch: async (url, init) => {
+    if (url.startsWith('/api/token')) return { body: { ok: true, state: 'ok', as: 'TestTO', image: null } };
+    const a = answers[url];
+    return typeof a === 'function' ? a(init) : a || { status: 404, body: {} };
+  } });
+  const byId = (id) => page.created.find((e) => e.id === id);
+  return { page, byId, bar: byId('accountBar'), area: byId('updateArea'), text: byId('updateStatus'), btn: byId('updateBtn'), retry: byId('updateRetry'), link: byId('updateLink'), dlg: byId('updateDialog'),
+    checks: () => page.requests.filter((r) => r.url === '/api/update/check') };
+}
+
+test('update bar: the home page, a tournament page and the not-added page load it after account.js; the status sits in the account bar, in a polite atomic live region', async () => {
+  const { makePool } = require('../testlib/pool-fixture');
+  const { app, dataRoot } = makeApp();
+  makePool(path.join(dataRoot, 'out'), { t: 'tour', events: [{ slug: 'ev', game: { id: '1', name: 'MBTL' } }], players: [] });
+  const pages = { home: await inject(app.handler, { url: '/' }), tournament: await inject(app.handler, { url: '/t/tour' }), notAdded: await inject(app.handler, { url: '/t/nope' }) };
+  assert.match(pages.tournament.text, /id="tabs"/, 'the real tournament page');
+  for (const [name, r] of Object.entries(pages)) {
+    assert.match(r.text, /<script src="\/static\/account\.js" defer><\/script>\s*<script src="\/static\/update\.js" defer><\/script>/, name);
+    const p = barPage({ '/api/update/check': { body: ST({ available: false, latest: '0.2.0' }) } }, r.text);
+    await p.page.flush();
+    assert.ok(p.bar.children.includes(p.area), `${name}: the update status is inside #accountBar`);
+    assert.ok(p.area.children.includes(p.text) && p.area.children.includes(p.btn));
+    assert.deepStrictEqual([p.text.getAttribute('role'), p.text.getAttribute('aria-live'), p.text.getAttribute('aria-atomic')], ['status', 'polite', 'true']);
+    assert.strictEqual(p.text.textContent, "v0.2.0 · You're up to date", name);
+  }
+  // The home page's old Check for updates footer is gone; the plain version label stays.
+  assert.doesNotMatch(pages.home.text, /updateCheck|updateInstall|Check for updates/);
+  assert.match(pages.home.text, /<span id="appVersion" class="dim">Seeding Ops \d+\.\d+\.\d+<\/span>/);
   assert.strictEqual((await inject(app.handler, { url: '/static/update.js' })).status, 200);
 });
 
-// ---- The page script, run against the rendered home page ----
-const SRC = fs.readFileSync(path.join(__dirname, '..', 'app', 'public', 'update.js'), 'utf8');
-async function page(answers, { confirm = () => true } = {}) {
-  const { app } = makeApp();
-  const html = (await inject(app.handler, { url: '/' })).text;
-  const p = loadPage(SRC, { html, confirm, fetch: async (url) => answers[url] || { status: 404, body: {} } });
-  return { p, $: (id) => p.document.getElementById(id) };
-}
+test('update bar: each state\'s exact words', async () => {
+  const shown = async (body) => { const p = barPage({ '/api/update/check': { body } }); await p.page.flush(); return p; };
+  // Checking: nothing new.
+  const pending = barPage({ '/api/update/check': () => new Promise(() => {}) });
+  await pending.page.flush();
+  assert.strictEqual(pending.area.hidden, true);
+  assert.strictEqual(pending.text.textContent, '');
 
-test('update button: a newer version offers Install; Install asks first, then posts that version and says the app will restart', async () => {
-  const asked = [];
-  const { p, $ } = await page({
-    '/api/update/check': { body: { ok: true, current: '0.2.0', latest: '0.3.0', available: true, can_install: true } },
-    '/api/update/install': { status: 202, body: { ok: true, installing: '0.3.0' } },
-  }, { confirm: (m) => { asked.push(m); return true; } });
-  assert.strictEqual($('updateInstall').hidden, true);
-  await $('updateCheck').dispatch('click').results[0];
-  assert.match($('updateMsg').textContent, /Version 0\.3\.0 is available \(you have 0\.2\.0\)/);
-  assert.strictEqual($('updateInstall').hidden, false);
-  assert.strictEqual($('updateInstall').textContent, 'Install 0.3.0');
-  await $('updateInstall').dispatch('click').results[0];
-  assert.match(asked[0], /Install version 0\.3\.0 now\?[\s\S]*kept/);
-  const req = p.requests.find((r) => r.url === '/api/update/install');
-  assert.deepStrictEqual(JSON.parse(req.body), { version: '0.3.0' });
-  assert.strictEqual(req.headers['X-Seeding-App'], '1');
-  assert.match($('updateMsg').textContent, /close and open again/);
+  let p = await shown(ST({ available: false, latest: '0.2.0' }));
+  assert.strictEqual(p.text.textContent, "v0.2.0 · You're up to date");
+  assert.ok(!p.area.classList.contains('available'));
+  assert.deepStrictEqual([p.btn.hidden, p.link.hidden], [true, true]);
+
+  p = await shown(ST());
+  assert.strictEqual(p.text.textContent, 'Update available: v0.3.0');
+  assert.ok(p.area.classList.contains('available'), 'accent colour');
+  assert.deepStrictEqual([p.btn.hidden, p.btn.textContent, p.btn.disabled], [false, 'Update', false]);
+  assert.deepStrictEqual([p.link.hidden, p.link.textContent, p.link.href], [false, "What's new", 'https://github.com/x/y/releases/latest']);
+
+  p = await shown(ST({ installed: false, can_install: false, reason: 'This copy is not the installed app.' }));
+  assert.strictEqual(p.text.textContent, 'Update available: v0.3.0');
+  assert.strictEqual(p.btn.hidden, true, 'no Update where it cannot install');
+  assert.deepStrictEqual([p.link.hidden, p.link.textContent, p.link.href], [false, 'Download', 'https://github.com/x/y/releases/latest']);
+
+  p = await shown(ST({ installed: false, dev: true, can_install: false, available: false, latest: '0.2.0' }));
+  assert.strictEqual(p.text.textContent, 'v0.2.0 (dev)');
+
+  p = await shown(ST({ updating: '0.3.0' }));
+  assert.strictEqual(p.text.textContent, 'Installing update… Seeding Ops will reopen in a moment.');
 });
 
-test('update button: declining the question installs nothing; up to date says so; not installable says why and links the release page', async () => {
-  let r = await page({ '/api/update/check': { body: { ok: true, current: '0.2.0', latest: '0.3.0', available: true, can_install: true } } }, { confirm: () => false });
-  await r.$('updateCheck').dispatch('click').results[0];
-  r.$('updateInstall').dispatch('click');
-  assert.ok(!r.p.requests.some((x) => x.url === '/api/update/install'));
+test('update bar: a failed check shows only the version, titled, never an error or a pop-up', async () => {
+  for (const body of [
+    { ok: false, kind: 'unreachable', error: 'Could not reach GitHub to check for updates (offline).', current: '0.2.0', installed: true, can_install: true },
+    { ok: false, kind: 'no-release', error: 'no latest.json', current: '0.2.0', installed: true, can_install: true },
+  ]) {
+    const p = barPage({ '/api/update/check': { body } });
+    await p.page.flush();
+    assert.strictEqual(p.text.textContent, 'v0.2.0');
+    assert.strictEqual(p.text.title, "Couldn't check for updates");
+    assert.ok(!p.area.classList.contains('available') && !p.text.classList.contains('err') && !p.bar.classList.contains('off') && !p.bar.classList.contains('warn'));
+    assert.deepStrictEqual([p.btn.hidden, p.retry.hidden, p.link.hidden, p.dlg.showModalCalls], [true, true, true, 0]);
+  }
+});
 
-  r = await page({ '/api/update/check': { body: { ok: true, current: '0.3.0', latest: '0.3.0', available: false } } });
-  await r.$('updateCheck').dispatch('click').results[0];
-  assert.strictEqual(r.$('updateMsg').textContent, 'You have the latest version (0.3.0).');
-  assert.strictEqual(r.$('updateInstall').hidden, true);
+test('update bar: one check request per page load, and none from moving around; a click on "You\'re up to date" asks again with force', async () => {
+  const p = barPage({ '/api/update/check': { body: ST({ available: false, latest: '0.2.0' }) } });
+  await p.page.flush();
+  assert.strictEqual(p.page.timers.length, 0, 'no polling while up to date');
+  assert.strictEqual(p.checks().length, 1);
+  assert.deepStrictEqual(JSON.parse(p.checks()[0].body), {}, 'the page asks for the cached answer');
+  assert.strictEqual(p.checks()[0].headers['X-Seeding-App'], '1');
+  await p.text.querySelector('.update-recheck').click().results[0];
+  assert.strictEqual(p.checks().length, 2);
+  assert.deepStrictEqual(JSON.parse(p.checks()[1].body), { force: true });
+});
 
-  r = await page({ '/api/update/check': { body: { ok: true, current: '0.2.0', latest: '0.3.0', available: true, can_install: false, reason: 'This copy is not the installed app.', releases_page: 'https://github.com/x/y/releases/latest' } } });
-  await r.$('updateCheck').dispatch('click').results[0];
-  assert.match(r.$('updateMsg').textContent, /not the installed app/);
-  assert.strictEqual(r.$('updateInstall').hidden, true);
-  assert.strictEqual(r.$('updateLink').hidden, false);
-  assert.strictEqual(r.$('updateLink').href, 'https://github.com/x/y/releases/latest');
+test('update bar: Update opens the confirm dialog; Cancel installs nothing and puts focus back on Update', async () => {
+  const p = barPage({ '/api/update/check': { body: ST() } });
+  await p.page.flush();
+  p.btn.click();
+  assert.strictEqual(p.dlg.showModalCalls, 1);
+  assert.strictEqual(p.dlg.querySelector('h2').textContent, 'Update to v0.3.0?');
+  assert.match(p.dlg.innerHTML, /<p class="dim">Seeding Ops will close, install the update, and reopen\. Your tiers, tournaments and start\.gg connection are kept\.<\/p>/);
+  assert.match(p.dlg.innerHTML, /<button type="button" class="go">Update<\/button><button type="button" class="plain cancel">Cancel<\/button>/);
+  assert.strictEqual(p.dlg.querySelector('.go').focusCalls, 1, 'focus moves into the dialog');
+  const before = p.btn.focusCalls;
+  p.dlg.querySelector('.cancel').click();
+  p.dlg.dispatch('close');
+  assert.strictEqual(p.dlg.open, false);
+  assert.strictEqual(p.btn.focusCalls, before + 1, 'focus returns to Update');
+  assert.ok(!p.page.requests.some((r) => r.url === '/api/update/install'));
+});
 
-  r = await page({ '/api/update/check': { body: { ok: false, kind: 'unreachable', error: 'Could not reach GitHub to check for updates (offline).' } } });
-  await r.$('updateCheck').dispatch('click').results[0];
-  assert.match(r.$('updateMsg').textContent, /Could not reach GitHub/);
-  assert.ok(r.$('updateMsg').classList.contains('err'));
+test('update bar: confirming posts the install with that version, says Downloading, then Installing', async () => {
+  let finish;
+  const p = barPage({
+    '/api/update/check': { body: ST() },
+    '/api/update/install': () => new Promise((r) => { finish = r; }),
+  });
+  await p.page.flush();
+  p.btn.click();
+  const done = p.dlg.querySelector('.go').click().results[0];
+  await p.page.flush();
+  assert.strictEqual(p.dlg.open, false);
+  const req = p.page.requests.find((r) => r.url === '/api/update/install');
+  assert.deepStrictEqual(JSON.parse(req.body), { version: '0.3.0' });
+  assert.strictEqual(req.headers['X-Seeding-App'], '1');
+  assert.strictEqual(p.text.textContent, 'Downloading update…');
+  assert.strictEqual(p.btn.hidden, true);
+  finish({ status: 202, body: { ok: true, installing: '0.3.0' } });
+  await done;
+  assert.strictEqual(p.text.textContent, 'Installing update… Seeding Ops will reopen in a moment.');
+});
+
+test('update bar: a failed install says so with Retry and the server\'s reason in the title; Retry posts again', async () => {
+  let n = 0;
+  const p = barPage({
+    '/api/update/check': { body: ST() },
+    '/api/update/install': () => (++n === 1 ? { status: 409, body: { error: 'The update\'s signature does not match the file.' } } : { status: 202, body: { ok: true, installing: '0.3.0' } }),
+  });
+  await p.page.flush();
+  p.btn.click();
+  await p.dlg.querySelector('.go').click().results[0];
+  assert.strictEqual(p.text.textContent, 'Update failed. Try again later.');
+  assert.strictEqual(p.text.title, 'The update\'s signature does not match the file.');
+  assert.deepStrictEqual([p.retry.hidden, p.retry.textContent], [false, 'Retry']);
+  await p.retry.click().results[0];
+  assert.strictEqual(n, 2);
+  assert.strictEqual(p.text.textContent, 'Installing update… Seeding Ops will reopen in a moment.');
+  assert.strictEqual(p.retry.hidden, true);
+});
+
+test('update bar: while a pull or push runs Update is disabled with a reason, and comes back when it is done', async () => {
+  let busy = true;
+  const p = barPage({
+    '/api/update/check': { body: ST({ busy: true }) },
+    '/api/update': () => ({ body: { busy, updating: null } }),
+  });
+  await p.page.flush();
+  assert.deepStrictEqual([p.btn.hidden, p.btn.disabled, p.btn.title], [false, true, 'Finish the current pull or push first']);
+  p.btn.click();
+  assert.strictEqual(p.dlg.showModalCalls, 0, 'no dialog while busy');
+  // The busy state is read again every few seconds while Update is on offer (local, not GitHub).
+  busy = false;
+  p.page.runTimers();
+  await p.page.flush();
+  assert.deepStrictEqual([p.btn.disabled, p.btn.title], [false, 'Update to v0.3.0']);
+  const polls = p.page.requests.filter((r) => r.url === '/api/update');
+  assert.strictEqual(polls.length, 1);
+  assert.strictEqual(p.checks().length, 1, 'the poll never re-checks GitHub');
 });

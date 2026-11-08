@@ -65,11 +65,17 @@
 		return /\/status(\?|$)/.test(url) || /\/api\/t\/[^/]+(\?|$)/.test(url) || /\/schedule(\?|$)/.test(url) || /\/api\/schedule\//.test(url);
 	}
 
+	// The update check runs silently on every page (update.js): the bar says what it found, nothing else.
+	function isUpdateCheck(url, init) {
+		var method = (init && init.method || 'GET').toUpperCase();
+		return (method === 'GET' && /\/api\/update(\?|$)/.test(url)) || (method === 'POST' && /\/api\/update\/check(\?|$)/.test(url));
+	}
+
 	var realFetch = window.fetch.bind(window);
 	window.fetch = function (input, init) {
 		var url = typeof input === 'string' ? input : (input && input.url) || '';
 		var ours = /^\/api\//.test(url) || (/^https?:\/\//.test(url) && url.indexOf(location.origin + '/api/') === 0);
-		if (!ours || isPoll(url, init)) return realFetch(input, init);
+		if (!ours || isPoll(url, init) || isUpdateCheck(url, init)) return realFetch(input, init);
 		inflight++; pendingLabel = labelFor(url, init); render();
 		var done = function () { inflight = Math.max(0, inflight - 1); if (!inflight) pendingLabel = ''; render(); };
 		return realFetch(input, init).then(function (r) { done(); return r; }, function (e) { done(); throw e; });

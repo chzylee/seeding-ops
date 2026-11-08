@@ -1,5 +1,5 @@
 {
   "_about": "Check for updates (lib/update.js). repo: the GitHub repository whose releases carry latest.json. pubkey: the PUBLIC half of the update signing key, as printed by `npx tauri signer generate` (the long base64 string); empty means the app can check for updates but will not install one it cannot verify. See README, Desktop app > Updates.",
   "repo": "chzylee/seeding-ops",
-  "pubkey": ""
+  "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEM5QTdGRDczMkY0NTBEQ0IKUldUTERVVXZjLzJueVFxT1ZONFdtSE9KQmlMZGRVRnhnUlJhbGZNcUgyQzZRVmVKcGRTY2hDSWwK"
 }

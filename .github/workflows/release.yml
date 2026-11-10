@@ -231,40 +231,16 @@ jobs:
           # The notes name this release's installer exactly: @VERSION@ is filled in below. The PowerShell
           # line is the README's (Desktop app > Updates), word for word but for the version.
           cat > dist/notes.md <<'NOTES'
-          Download **Seeding-Ops-@VERSION@-windows-setup.exe**, run it, and open **Seeding Ops** from the Start menu.
-          On first launch, paste a start.gg API key and press Save.
+          ## Install or update
 
-          Windows will say the publisher is unknown (the app is not code signed):
-          choose **More info**, then **Run anyway**.
+          1. Download **Seeding-Ops-@VERSION@-windows-setup.exe** below and double-click it.
+          2. If Windows says **"Windows protected your PC"**, click **More info**, then **Run anyway**. (Seeding Ops isn't registered with Microsoft yet; this is expected.)
+          3. **Already have Seeding Ops?** If you have 0.2.0 or later, just click **Update** in the top bar instead. Coming from 0.1.0, the installer asks what to do with the version you have: choose **Do not uninstall**, then click **Next**. Your tiers, tournaments and start.gg connection are kept.
+          4. Click through to **Finish**. Seeding Ops opens.
 
-          **Already have Seeding Ops?** From 0.2.0 on, the app checks for updates when it opens: the top
-          bar, next to your start.gg name, says "Update available" with an **Update** button.
+          From 0.2.0 on, when there's a new version the top bar (next to your start.gg name) says **Update available**. Click **Update** and the app does the rest.
 
-          **Updating from 0.1.0** (it has no such button): don't double-click the installer. That way
-          it uninstalls 0.1.0 first, which deletes your tiers table. Instead:
-          1. Download **Seeding-Ops-@VERSION@-windows-setup.exe** (into your Downloads folder), and close Seeding Ops.
-          2. Open **PowerShell** (Start menu, type PowerShell, Enter), paste this line and press Enter.
-             It checks the file is a Seeding Ops 0.2.0 or later installer, copies your tiers table to a
-             new, dated file on your Desktop (required: if either fails, nothing is installed), then runs
-             the installer in update mode, which keeps everything:
-
-          ```
-          $dl=(New-Object -ComObject Shell.Application).NameSpace('shell:Downloads').Self.Path; $exe=Join-Path $dl 'Seeding-Ops-@VERSION@-windows-setup.exe'; $vi=(Get-Item -LiteralPath $exe -ErrorAction Stop).VersionInfo; if (-not ($vi -and $vi.ProductName -eq 'Seeding Ops' -and $vi.ProductVersion -match '^(\d+)\.(\d+)' -and ([int]$Matches[1] -ge 1 -or [int]$Matches[2] -ge 2))) { throw "Not a Seeding Ops 0.2.0 or later installer: $exe" }; $bak=Join-Path ([Environment]::GetFolderPath('Desktop')) ('seeding-ops-tiers-backup-' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '.csv'); Copy-Item -LiteralPath "$env:LOCALAPPDATA\Seeding Ops\registry\tiers.csv" -Destination $bak -ErrorAction Stop; if (-not ($bak -and (Test-Path -LiteralPath $bak))) { throw 'The tiers backup was not made; nothing was installed.' }; "Tiers backed up to $bak"; & $exe /P /UPDATE /R
-          ```
-
-          3. The app opens by itself and moves your tiers, tournaments and start.gg key to its data
-             folder. Keep the Desktop backup until you've checked your tiers are there.
-
-          If the line stops because there is no tiers table to copy, do NOT double-click the installer
-          (its default uninstalls first and deletes a tiers table kept anywhere else). In the same
-          PowerShell window, type this instead; update mode never uninstalls:
-          & $exe /P /UPDATE /R
-          If your tiers are missing afterwards (the home page warns you), close the app and paste this
-          line; it restores the largest seeding-ops-tiers-backup-*.csv on your Desktop:
-
-          ```
-          $b=Get-ChildItem -LiteralPath ([Environment]::GetFolderPath('Desktop')) -Filter 'seeding-ops-tiers-backup-*.csv' -ErrorAction Stop | Sort-Object Length | Select-Object -Last 1; if (-not $b) { throw 'No seeding-ops-tiers-backup-*.csv on the Desktop.' }; Copy-Item -LiteralPath $b.FullName -Destination "$env:LOCALAPPDATA\net.enpicie.seeding-ops\registry\tiers.csv" -ErrorAction Stop; "Restored $($b.Name)"
-          ```
+          <sub>Picked "Uninstall before installing" by mistake? Your start.gg connection and tournaments are still there, but the tiers table was removed. Import a tiers file from the home page's Tiers section to get them back.</sub>
           NOTES
           sed -i "s/@VERSION@/${VERSION}/g" dist/notes.md
           if ! gh release view "$TAG" >/dev/null 2>&1; then

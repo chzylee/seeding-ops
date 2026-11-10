@@ -74,50 +74,22 @@ test('release check: the command line reads config/updater.json from a root and 
   assert.strictEqual(run('--file', file, '--sig', file + '.sig').code, 0);
 });
 
-// Audit #2a/b: the 0.1.0 -> 0.2.0 manual install. Double-clicking the installer runs 0.1.0's uninstaller
-// first (Tauri's reinstall page ticks it by default), which deletes registry\tiers.csv. The documented
-// path backs the table up (required: -ErrorAction Stop keeps the installer from running if the copy
-// fails) and then runs the installer in update mode, which skips the uninstall. README and the release
-// notes carry the same line.
-//
-// Round 2 #1: 0.1.0 was published as Seeding-Ops-windows-setup.exe, so with that file still in Downloads
-// the browser saved the new one as "...(1).exe" and the line ran the OLD installer; a second paste then
-// overwrote the backup with the empty table. Now: versioned installer names, named exactly; Downloads
-// found through the shell; the exe's own file version checked; a dated backup that is never overwritten.
-// The release notes' line is the README's with the release's version filled in (@VERSION@).
-const lineIn = (text, re) => (text.split(/\r?\n/).map((l) => l.trim()).find((l) => re.test(l)) || '');
-const UPGRADE = /^\$dl=\(New-Object -ComObject Shell\.Application\)/;
-const RESTORE = /^\$b=Get-ChildItem /;
-test('0.1.0 upgrade instructions: README and release notes carry the same two lines (but for the version)', () => {
+// The 0.1.0 -> 0.2.0 manual install (Noah, 2026-11-10: "something someone doubtful or non-technical can
+// easily do"). Double-clicking the installer shows Tauri's reinstall page, which selects "Uninstall
+// before installing" by default; 0.1.0's uninstaller deletes registry	iers.csv. So both README and the
+// release notes say to choose "Do not uninstall", and neither asks anyone to paste a PowerShell line.
+test('0.1.0 upgrade instructions: README and release notes say double-click, then "Do not uninstall"; no PowerShell', () => {
   const readme = fs.readFileSync(path.join(__dirname, '..', 'README.md'), 'utf8');
   const yml = fs.readFileSync(path.join(__dirname, '..', '.github', 'workflows', 'release.yml'), 'utf8');
-  for (const re of [UPGRADE, RESTORE]) {
-    const line = lineIn(readme, re);
-    assert.ok(line, `README has ${re}`);
-    assert.strictEqual(lineIn(yml, re).replace(/@VERSION@/g, '0.2.0'), line, 'the release notes carry the same line');
+  const notes = yml.slice(yml.indexOf("cat > dist/notes.md <<'NOTES'"), yml.indexOf('sed -i "s/@VERSION@/'));
+  for (const [name, text] of [['README', readme], ['release notes', notes]]) {
+    assert.match(text, /double-click it/, name);
+    assert.match(text, /choose \*\*Do not uninstall\*\*, then\s+(click\s+)?\*\*Next\*\*/i, name);
+    assert.match(text, /More info\*\*, then \*\*Run anyway/, name);
+    assert.doesNotMatch(text, /New-Object -ComObject|Get-ChildItem -LiteralPath|Open \*\*PowerShell/, name + ': no PowerShell');
   }
+  assert.match(notes, /Seeding-Ops-@VERSION@-windows-setup\.exe/);
   assert.match(yml, /sed -i "s\/@VERSION@\/\$\{VERSION\}\/g" dist\/notes\.md/, 'the publish step fills in the version');
-  assert.match(readme, /\*\*Don't just double-click it\.\*\*/);
-});
-
-test('0.1.0 upgrade line: finds Downloads, names the versioned installer, checks it is Seeding Ops 0.2.0+, makes a new dated backup, and only then runs /P /UPDATE /R; every guard stops the whole line', () => {
-  const readme = fs.readFileSync(path.join(__dirname, '..', 'README.md'), 'utf8');
-  const steps = lineIn(readme, UPGRADE).split('; ');
-  const at = (re) => { const i = steps.findIndex((s) => re.test(s)); assert.ok(i >= 0, String(re)); return i; };
-  const find = at(/NameSpace\('shell:Downloads'\)\.Self\.Path$/);
-  const name = at(new RegExp(`Join-Path \\$dl '${assetName('0.2.0').replace(/\./g, '\\.')}'$`));
-  const version = at(/^if \(-not \(\$vi -and \$vi\.ProductName -eq 'Seeding Ops' -and \$vi\.ProductVersion -match .*\{ throw /);
-  const backup = at(/^Copy-Item -LiteralPath "\$env:LOCALAPPDATA\\Seeding Ops\\registry\\tiers\.csv" -Destination \$bak -ErrorAction Stop$/);
-  const backedUp = at(/^if \(-not \(\$bak -and \(Test-Path -LiteralPath \$bak\)\)\) \{ throw /);
-  const run = at(/^& \$exe \/P \/UPDATE \/R$/);
-  assert.ok(find < name && name < version && version < backup && backup < backedUp && backedUp < run, 'in that order');
-  assert.strictEqual(run, steps.length - 1, 'the installer runs last');
-  assert.match(steps[at(/^\$vi=/)], /Get-Item -LiteralPath \$exe -ErrorAction Stop/, 'a missing file stops the line');
-  assert.match(steps[at(/^\$bak=/)], /GetFolderPath\('Desktop'\)\) \('seeding-ops-tiers-backup-' \+ \(Get-Date -Format 'yyyyMMdd-HHmmss'\) \+ '\.csv'\)/, 'a new dated name each time');
-  assert.doesNotMatch(lineIn(readme, UPGRADE), /\$env:USERPROFILE\\Downloads|Seeding-Ops-windows-setup\.exe/, 'no hard-coded Downloads, no unversioned name');
-  // The version test, as the line writes it: 0.2.0 and later pass, 0.1.x and missing info do not.
-  const ok = (pv) => { const m = /^(\d+)\.(\d+)/.exec(pv || ''); return !!m && (Number(m[1]) >= 1 || Number(m[2]) >= 2); };
-  assert.deepStrictEqual(['0.1.0', '0.1.9', '', null, '0.2.0', '0.10.1', '1.0.0'].map(ok), [false, false, false, false, true, true, true]);
 });
 
 test('release workflow: tags the release v<version> from tauri.conf.json, signs only with the secret, and publishes the installer, its .sig and latest.json', () => {

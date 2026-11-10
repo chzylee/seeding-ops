@@ -458,47 +458,21 @@ builds in CI. The server starts a hidden launcher that waits three seconds, then
 with `/P /UPDATE /R` (passive, update mode, restart), and exits at once. Both exes must be closed
 before the installer replaces them.
 
-**Coming from 0.1.0 (one manual install).** 0.1.0 has no button, so a copy installed from 0.1.0
-takes the 0.2.0 installer once, by hand. **Don't just double-click it.** Run by double-click, the
-installer's "older version installed" page has *Uninstall before installing* ticked by default, and
-0.1.0's uninstaller deletes `registry\tiers.csv`. Run it in update mode instead, which skips that
-step (the same mode the button uses):
+**Coming from 0.1.0 (one manual install).** 0.1.0 has no Update button, so a copy installed from
+0.1.0 takes the 0.2.0 installer once, by hand:
 
-1. Download `Seeding-Ops-0.2.0-windows-setup.exe` from the release page into your **Downloads**
-   folder. Every release's installer carries its version in its name; 0.1.0's was plain
-   `Seeding-Ops-windows-setup.exe`, so an old download sitting in Downloads can't be mistaken for the
-   new one.
-2. Close Seeding Ops.
-3. Open **PowerShell** (Start menu, type `PowerShell`, Enter), paste this line, then Enter. Each
-   step must succeed before the next runs; if one fails, nothing is installed:
-   - It finds your Downloads folder (wherever Windows keeps it) and that exact file.
-   - It checks the file really is a Seeding Ops installer, version 0.2.0 or later (its file version).
-   - It copies your tiers table to a **new, dated** file on your Desktop:
-     `seeding-ops-tiers-backup-<date>-<time>.csv`. An earlier backup is never overwritten.
-   - Then it runs the installer in update mode.
+1. Download `Seeding-Ops-0.2.0-windows-setup.exe` from the release page and double-click it. If
+   Windows says "Windows protected your PC", click **More info**, then **Run anyway**.
+2. The installer asks what to do with the version you have. Choose **Do not uninstall**, then
+   **Next**. Your tiers, tournaments and start.gg connection are kept, and the app moves them to its
+   data folder on first launch.
+3. Click through to **Finish**.
 
-   ```
-   $dl=(New-Object -ComObject Shell.Application).NameSpace('shell:Downloads').Self.Path; $exe=Join-Path $dl 'Seeding-Ops-0.2.0-windows-setup.exe'; $vi=(Get-Item -LiteralPath $exe -ErrorAction Stop).VersionInfo; if (-not ($vi -and $vi.ProductName -eq 'Seeding Ops' -and $vi.ProductVersion -match '^(\d+)\.(\d+)' -and ([int]$Matches[1] -ge 1 -or [int]$Matches[2] -ge 2))) { throw "Not a Seeding Ops 0.2.0 or later installer: $exe" }; $bak=Join-Path ([Environment]::GetFolderPath('Desktop')) ('seeding-ops-tiers-backup-' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '.csv'); Copy-Item -LiteralPath "$env:LOCALAPPDATA\Seeding Ops\registry\tiers.csv" -Destination $bak -ErrorAction Stop; if (-not ($bak -and (Test-Path -LiteralPath $bak))) { throw 'The tiers backup was not made; nothing was installed.' }; "Tiers backed up to $bak"; & $exe /P /UPDATE /R
-   ```
-
-   If a later version is what the release page offers, use the line in **that release's notes**: it is
-   this line with that version's file name. If Windows says the publisher is unknown, choose
-   **More info**, then **Run anyway**.
-4. The installer shows a progress bar and opens the app when done. The app moves your tiers,
-   tournaments and key to the data folder by itself. Keep the Desktop backup until you have checked
-   your tiers are there.
-
-If the line stops because there is no tiers table to copy, do **not** double-click the installer: its
-default uninstalls first, which deletes a tiers table kept anywhere else. In the same PowerShell window,
-type `& $exe /P /UPDATE /R` instead; update mode never uninstalls.
-
-If the tiers come back empty anyway (the home page warns when it looks that way), close the app and
-paste this line. It copies the **largest** `seeding-ops-tiers-backup-*.csv` on your Desktop (the one
-with the most rows) to `%LOCALAPPDATA%\net.enpicie.seeding-ops\registry\tiers.csv`:
-
-```
-$b=Get-ChildItem -LiteralPath ([Environment]::GetFolderPath('Desktop')) -Filter 'seeding-ops-tiers-backup-*.csv' -ErrorAction Stop | Sort-Object Length | Select-Object -Last 1; if (-not $b) { throw 'No seeding-ops-tiers-backup-*.csv on the Desktop.' }; Copy-Item -LiteralPath $b.FullName -Destination "$env:LOCALAPPDATA\net.enpicie.seeding-ops\registry\tiers.csv" -ErrorAction Stop; "Restored $($b.Name)"
-```
+Why "Do not uninstall": that page selects *Uninstall before installing* by default (Tauri's installer
+template), and 0.1.0's uninstaller deletes `registry	iers.csv`; .env and out survive either way.
+If the tiers table was removed by mistake, import a tiers file from the home page's Tiers section.
+From 0.2.0 on, the account-bar **Update** button runs the installer in update mode (`/P /UPDATE /R`),
+which never uninstalls.
 
 Why every guard ends in `throw` or `-ErrorAction Stop`: in a pasted PowerShell line, an ordinary error
 stops only its own statement, and the rest of the line still runs. Only a `throw` or a

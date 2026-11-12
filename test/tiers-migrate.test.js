@@ -237,12 +237,16 @@ test('discriminator migration: the reader/writer round-trip keeps the column in 
   const before = parseCsv(fs.readFileSync(tiers, 'utf8'));
   data.updatePlayer(run, '10000', { notes: 'round trip' }, { tiersFile: tiers });
   const text = fs.readFileSync(tiers, 'utf8');
-  assert.deepStrictEqual(rawRows(text).head, C_COLS, 'the writer keeps the column, in place');
+  // Amendment A3: the write also adds the `alias` column (blank), after sheet_tag; every other column in place.
+  const withAlias = [...C_COLS.slice(0, C_COLS.indexOf('sheet_tag') + 1), 'alias', ...C_COLS.slice(C_COLS.indexOf('sheet_tag') + 1)];
+  assert.deepStrictEqual(rawRows(text).head, withAlias, 'the writer keeps the column, in place, and adds alias');
   const after = parseCsv(text);
   assert.strictEqual(after.length, before.length);
+  assert.ok(after.every((x) => x.alias === ''), 'alias is blank on every row');
   const r = after.find((x) => x.player_id === '10000');
   assert.strictEqual(r.discriminator, 'abcd1234', 'the edit writes the discriminator of the player it saved');
   assert.strictEqual(r.notes, 'round trip');
-  // Every other row reads back as before.
-  assert.deepStrictEqual(after.filter((x) => x.player_id !== '10000'), before.filter((x) => x.player_id !== '10000'));
+  // Every other row reads back as before (but for the new, blank alias).
+  const noAlias = ({ alias, ...x }) => x;
+  assert.deepStrictEqual(after.filter((x) => x.player_id !== '10000').map(noAlias), before.filter((x) => x.player_id !== '10000'));
 });

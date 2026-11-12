@@ -629,3 +629,62 @@ body.seed-dragging, body.seed-dragging * { cursor: grabbing !important; user-sel
 .data-notice.warn { background: var(--err-bg); border-color: var(--err); color: var(--err); }
 .data-notice.info { background: var(--warn-bg); border-color: var(--warn-fg); color: var(--warn-fg); }
 .data-notice button { flex: 0 0 auto; height: 24px; padding: 0 8px; border: 1px solid currentColor; border-radius: var(--radius-sm); background: var(--cell); color: inherit; font: inherit; font-size: 12px; }
+
+/* ---- The left nav, on every page (Amendment A3). Fixed to the left edge; the page beside it. Below
+   1200px (the app's window opens at 1440 and goes down to 900) it is an icon rail, so the seeding
+   table keeps its width; each link keeps its name (visually hidden) and its title. ---- */
+:root { --nav-w: 168px; }
+body.has-nav { padding-left: var(--nav-w); }
+.app-nav { position: fixed; top: 0; left: 0; bottom: 0; width: var(--nav-w); z-index: var(--z-bar); display: flex; flex-direction: column; gap: 2px;
+  padding: var(--s-3) var(--s-2); background: var(--head); border-right: 1px solid var(--line-strong); }
+.app-nav .nav-item { display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 10px; border-radius: var(--radius); color: var(--ink-2); font-weight: 550; text-decoration: none; }
+.app-nav .nav-item:hover { background: var(--head-hover); color: var(--fg); text-decoration: none; }
+.app-nav .nav-item[aria-current="page"] { background: var(--accent-weak); color: var(--accent-ink); box-shadow: inset 3px 0 0 var(--accent); }
+.app-nav svg { flex: 0 0 18px; }
+@media (max-width: 1199px) {
+  :root { --nav-w: 52px; }
+  .app-nav { padding: var(--s-3) 6px; }
+  .app-nav .nav-item { justify-content: center; padding: 0; }
+  .app-nav .nav-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+}
+
+/* The update status's green check (Noah, 2026-11-12). */
+#accountBar .update-ok { color: var(--ok); font-weight: 700; font-size: 15px; line-height: 1; }
+#accountBar .update-ok:hover { text-decoration: none; filter: brightness(1.15); }
+
+/* An alias after a tag ("Knight Artorias (Onyxdood)"): Noah's own name for the player. */
+.alias { color: var(--dim); font-weight: 400; }
+
+/* ---- The Tiers view (Amendment A3) ---- */
+body.tiers-view main.wide { max-width: 1200px; }
+body.tiers-view .intro { margin: 0 0 var(--s-3); color: var(--ink-2); }
+.game-tabs-row { display: flex; flex-wrap: wrap; align-items: flex-end; gap: var(--s-3); border-bottom: 1px solid var(--line-strong); margin-bottom: var(--s-3); }
+.game-tabs { display: flex; flex-wrap: wrap; gap: 2px; }
+.game-tabs .game-tab { padding: 6px 12px; border: 1px solid transparent; border-bottom: 0; border-radius: var(--radius) var(--radius) 0 0; color: var(--ink-2); font-weight: 550; margin-bottom: -1px; }
+.game-tabs .game-tab:hover { background: var(--head-hover); text-decoration: none; }
+.game-tabs .game-tab[aria-current="page"] { background: var(--cell); border-color: var(--line-strong); color: var(--accent-ink); }
+.game-more { margin-left: auto; padding-bottom: 6px; font-size: 13px; color: var(--dim); }
+.tier-tools { display: flex; align-items: center; gap: var(--s-2); margin-bottom: var(--s-3); }
+.tier-wrap { overflow: auto; max-height: calc(100vh - 230px); border: 1px solid var(--line); border-radius: var(--radius); background: var(--cell); }
+table.tier-sheet { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+table.tier-sheet th { position: sticky; top: 0; z-index: var(--z-head); background: var(--head); border-bottom: 1px solid var(--line-strong); text-align: left; padding: 0; }
+table.tier-sheet th button.sort { width: 100%; padding: 7px 10px; border: 0; background: none; text-align: left; font-weight: 600; white-space: nowrap; }
+table.tier-sheet th button.sort:hover { background: var(--head-hover); }
+table.tier-sheet td { padding: 5px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+table.tier-sheet tbody tr:hover td { background: var(--row-hover); }
+table.tier-sheet td[data-edit] { cursor: text; }
+table.tier-sheet td[data-edit]:hover { box-shadow: inset 0 0 0 1px var(--line-strong); }
+table.tier-sheet td.tier { width: 5em; text-align: right; }
+table.tier-sheet td.disc { color: var(--dim); font-family: ui-monospace, Consolas, monospace; font-size: 12px; }
+table.tier-sheet td.notes { min-width: 16em; }
+table.tier-sheet td.reviewed { white-space: nowrap; color: var(--dim); }
+table.tier-sheet input.ed { width: 100%; min-width: 4em; font: inherit; padding: 2px 4px; border: 1px solid var(--accent); border-radius: var(--radius-sm); background: var(--cell); color: var(--fg); }
+.import-panel { margin-bottom: var(--s-4); }
+.import-panel .imp-bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); margin-bottom: var(--s-2); }
+.import-panel .imp-bar h2 { font-size: 15px; margin: 0 var(--s-2) 0 0; }
+table.imp-diff { border-collapse: collapse; width: 100%; }
+table.imp-diff th, table.imp-diff td { padding: 4px 8px; border-bottom: 1px solid var(--line); text-align: left; }
+table.imp-diff .cur { background: var(--head); }
+table.imp-diff td.cur.empty { background: repeating-linear-gradient(135deg, var(--head), var(--head) 6px, var(--cell) 6px, var(--cell) 12px); }
+table.imp-diff .inc { background: var(--accent-weak); }
+table.imp-diff td.num { text-align: right; width: 4em; }

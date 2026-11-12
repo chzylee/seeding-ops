@@ -297,7 +297,7 @@ test('a start.gg pull writes the discriminator into tiers rows already linked to
   assert.strictEqual(w.app.jobs.status(T_SLUG).phase, 'done');
 });
 
-test('home page layout (Noah, mid-pass 2026-10-30): "Add a tournament" header, the link field and Add on one row, then "Import from CSV" with its description; no block for live ones, one sentence above the first done tournament', async () => {
+test('home page layout (Noah, mid-pass 2026-10-30; A3 2026-11-12): "Add a tournament" header, the link field and Add on one row, then "Import from CSV" with its description; no block for live ones, and no "marked done automatically" paragraph', async () => {
   const w = setup({ now: Date.parse('2026-11-08T12:00:00Z') });
   const { makePool } = require('../testlib/pool-fixture');
   makePool(w.outRoot, { t: 'a-live', events: [{ slug: 'e', game: { id: '1', name: 'G' }, start_at: '2026-12-01T00:00:00.000Z' }], players: [], startAt: '2026-12-01T00:00:00.000Z' });
@@ -306,21 +306,17 @@ test('home page layout (Noah, mid-pass 2026-10-30): "Add a tournament" header, t
   const html = (await inject(w.app.handler, { url: '/' })).text;
   const at = (s) => { const i = html.indexOf(s); assert.ok(i >= 0, `has ${s}`); return i; };
   const order = [at('<h2 id="addHead">Add a tournament</h2>'), at('<form id="add"'), at('<input id="addUrl"'), at('<button type="submit">Add</button>'), html.indexOf('</form>', at('<button type="submit">Add</button>')),
-    at('<button type="button" id="uploadOpen">Import from CSV…</button>'), at('It builds its own page for one game.'), at('<ul class="events">')]; // Noah's shortened text and the modal button, 2026-10-30
+    at('<button type="button" id="uploadOpen">Import from CSV…</button>'), at('Two columns: name, start.gg discriminator.'), at('<ul class="events">')]; // the modal button and its one line (cut to the format, A3)
   assert.deepStrictEqual([...order].sort((a, b) => a - b), order, 'top to bottom in that order');
   // The link field and Add share the one form (one row); the CSV import's description shows while folded.
   assert.match(html, /<form id="add" class="add-t"><label[^>]*class="sr-only"[^>]*>[^<]*<\/label>\s*<input id="addUrl"[^>]*>\s*<button type="submit">Add<\/button>/);
-  assert.match(html, /<button type="button" id="uploadOpen">Import from CSV…<\/button><span class="dim import-desc">[^<]*two columns: name \+ start\.gg discriminator/i); // Noah's shortened text beside the modal button, 2026-10-30
+  assert.match(html, /<button type="button" id="uploadOpen">Import from CSV…<\/button><span class="dim import-desc">Two columns: name, start\.gg discriminator\.<\/span>/); // A3: the format only
   assert.ok(!/Live tournaments first/.test(html), 'no explanatory block for live ones');
-  const note = at('class="done-note dim"');
-  assert.ok(at('href="/t/a-live"') < note && note < at('href="/t/b-done"'), 'the sentence sits above the first done tournament');
-  assert.strictEqual(html.split('done-note').length, 2, 'once');
-  assert.match(html, /marked done automatically once their last seeded event's date has passed\. Delete one when you no longer need it: right-click it here, or use Delete on its page; both ask first\./);
+  // A3 (Noah, 2026-11-12): the paragraph explaining that tournaments are marked done automatically is gone.
+  assert.ok(at('href="/t/a-live"') < at('href="/t/b-done"'), 'live first, then done');
+  assert.doesNotMatch(html, /done-note|marked done automatically|once their last seeded event/);
   const css = fs.readFileSync(path.join(__dirname, '..', 'app', 'public', 'app.css'), 'utf8');
   assert.match(css, /\.add-section \.add-t input \{ flex: 1 1 auto; min-width: 0; \}/);
-  // With nothing done yet there is no sentence.
-  const fresh = setup();
-  assert.ok(!(await inject(fresh.app.handler, { url: '/' })).text.includes('done-note'));
 });
 
 // The page's summary renderer, taken from app/public/tournament.js as served (it runs in the browser).

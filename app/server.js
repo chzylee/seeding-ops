@@ -100,6 +100,7 @@ const STATIC = {
   'account.js': [path.join(APP_DIR, 'public', 'account.js'), JS],
   'update.js': [path.join(APP_DIR, 'public', 'update.js'), JS],
   'notices.js': [path.join(APP_DIR, 'public', 'notices.js'), JS],
+  'tiers.js': [path.join(APP_DIR, 'public', 'tiers.js'), JS],
 };
 // The upload picker's game logos (config/games.json, copied from find-my-fgc), served as
 // /static/games/<file>: only files the config names, only image types, only under app/public/games.
@@ -158,38 +159,62 @@ function uploadForm() {
     + `<li role="option" class="other" data-id="other" data-name="" data-short="Other (start.gg game id)…" data-img="" aria-selected="false">Other (start.gg game id)…</li><li id="upGameNone" class="none" hidden>No game matches; pick Other and give the id.</li>`;
   const combo = `<span class="game-combo"><input type="hidden" id="upGame" name="game" value="${esc(sel)}"><span id="upGameChip" class="chip"></span><input id="upGameSearch" autocomplete="off" spellcheck="false" placeholder="Type to filter…" role="combobox" aria-expanded="false" aria-controls="upGameList" aria-autocomplete="list"><ul id="upGameList" class="game-list" role="listbox" hidden>${opts}</ul></span>`;
   // Noah, 2026-10-30: "Import from CSV" is a button beside its one-line description; the form is a modal.
-  return `<div class="import-row"><button type="button" id="uploadOpen">Import from CSV…</button><span class="dim import-desc">A CSV of two columns: name + start.gg discriminator (acbd1234). It builds its own page for one game.</span></div><dialog id="uploadModal" class="upload-modal" aria-labelledby="uploadTitle"><div class="modal-head"><h2 id="uploadTitle">Import from CSV</h2></div><form id="upload" class="upload-form" method="dialog"><p class="dim">Two columns, name then start.gg discriminator; a header row is optional. Each row costs one start.gg lookup, then the players' results are pulled as for a tournament.</p><label><span class="lbl">Page name</span><input id="upName" name="name" required autocomplete="off" placeholder="e.g. Mixfest 26 MBAACC"></label><label><span class="lbl">Game</span>${combo}</label><label id="upOtherWrap" hidden><span class="lbl">Game id</span><span><input id="upGameId" inputmode="numeric" pattern="\\d+" autocomplete="off" placeholder="start.gg videogame id"> <input id="upGameName" autocomplete="off" placeholder="name (optional)"></span></label><label><span class="lbl">Date</span><input id="upDate" name="date" type="date" title="Optional: the day the event is played. With a date the page counts as done once it starts; without one it stays live until you archive it."></label><label><span class="lbl">CSV file</span><input id="upFile" name="file" type="file" accept=".csv,text/csv" required></label><div class="modal-actions"><button type="submit">Upload</button><button type="button" id="uploadCancel" class="plain">Cancel</button><span id="upMsg" class="status" role="status" aria-live="polite"></span></div></form></dialog>`;
+  return `<div class="import-row"><button type="button" id="uploadOpen">Import from CSV…</button><span class="dim import-desc">Two columns: name, start.gg discriminator.</span></div><dialog id="uploadModal" class="upload-modal" aria-labelledby="uploadTitle"><div class="modal-head"><h2 id="uploadTitle">Import from CSV</h2></div><form id="upload" class="upload-form" method="dialog"><p class="dim">Two columns: name, then start.gg discriminator. A header row is optional.</p><label><span class="lbl">Page name</span><input id="upName" name="name" required autocomplete="off" placeholder="e.g. Mixfest 26 MBAACC"></label><label><span class="lbl">Game</span>${combo}</label><label id="upOtherWrap" hidden><span class="lbl">Game id</span><span><input id="upGameId" inputmode="numeric" pattern="\\d+" autocomplete="off" placeholder="start.gg videogame id"> <input id="upGameName" autocomplete="off" placeholder="name (optional)"></span></label><label><span class="lbl">Date</span><input id="upDate" name="date" type="date" title="Optional: the day the event is played."></label><label><span class="lbl">CSV file</span><input id="upFile" name="file" type="file" accept=".csv,text/csv" required></label><div class="modal-actions"><button type="submit">Upload</button><button type="button" id="uploadCancel" class="plain">Cancel</button><span id="upMsg" class="status" role="status" aria-live="polite"></span></div></form></dialog>`;
 }
-// Noah, mid-pass 2026-10-30: no block or heading for the live ones; one sentence sits above the first
-// tournament that is no longer live (the list is always live, then done, then archived).
-// Amendment A2.2: share one game's tiers. The game list: games the tiers table has (with how many
-// tiered rows), then the other games the upload picker knows (an import can start a game's tiers).
-// The tier import's request body cap (bytes): app/public/index.js checks a file's encoded size against it.
+// The left nav on every page (Amendment A3; Noah, 2026-11-12): Tournaments and Tiers as separate views,
+// so the main view does one thing at a time. The active item carries aria-current="page". Below a
+// width the CSS shows the icons only (each link keeps its name for screen readers and as its title).
+const NAV_ICONS = {
+  tournaments: '<svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true" focusable="false"><path d="M4 4h12M4 10h12M4 16h12" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/></svg>',
+  tiers: '<svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true" focusable="false"><rect x="3" y="3" width="14" height="3.5" rx="1" fill="currentColor"/><rect x="3" y="8.25" width="10" height="3.5" rx="1" fill="currentColor"/><rect x="3" y="13.5" width="6" height="3.5" rx="1" fill="currentColor"/></svg>',
+};
+const NAV_ITEMS = [['tournaments', '/', 'Tournaments'], ['tiers', '/tiers', 'Tiers']];
+function navHtml(active) {
+  return `<nav id="appNav" class="app-nav" aria-label="Main">${NAV_ITEMS.map(([key, href, label]) => `<a href="${href}" class="nav-item nav-${key}" title="${label}"${key === active ? ' aria-current="page"' : ''}>${NAV_ICONS[key]}<span class="nav-label">${label}</span></a>`).join('')}</nav>`;
+}
+// The tier import's request body cap (bytes): app/public/tiers.js checks a file's encoded size against it.
 const TIERS_BODY_MAX = 2_000_000;
-function tiersSection(tiersFile) {
-  // A tiers table that exists but cannot be read (held open by another program: lib/view/data.js
-  // readTiersText) is said here, never shown as "none yet", and Export / Import are off until it reads.
+// Noah's words for the Tiers view's intro (Amendment A3), verbatim.
+const TIERS_INTRO = ['Tier players from 0-10 for each game. Save tiers to seed future events faster.', 'Tier data is automatically saved as you seed an event.'];
+// The Tiers view (Amendment A3): a tab per game in the tiers table, a sortable sheet of that game's
+// players (tier, alias and notes edited in place: app/public/tiers.js), export and import for the game
+// shown. `game`: ?game=<id>; else the first game in the table; else the first game the upload knows.
+// A tiers table that exists but cannot be read (held open by another program: lib/view/data.js
+// readTiersText) is said here, never shown as empty, and every control is off until it reads.
+function tiersPage(tiersFile, game) {
   let mine = [];
   let readError = null;
   try { mine = share.gamesInTable(tiersFile ? { tiersFile } : {}); } catch (err) { readError = err.message || 'The tiers table could not be read.'; }
-  const seen = new Set(mine.map((g) => g.id));
-  const opts = [...mine.map((g) => ({ id: g.id, name: g.name, label: `${g.name} (${g.tiered} tiered)` })),
-    ...uploadGames().filter((g) => !seen.has(g.id)).map((g) => ({ id: g.id, name: g.name, label: readError ? g.name : `${g.name} (none yet)` }))];
-  const off = readError ? ' disabled' : '';
-  const options = opts.map((g) => `<option value="${esc(g.id)}" data-name="${esc(g.name)}">${esc(g.label)}</option>`).join('');
-  return `<section class="tiers-section" aria-labelledby="tiersHead"><h2 id="tiersHead">Tiers</h2>
-<div class="import-row"><label for="tierGame">Game</label> <select id="tierGame">${options}</select>
-<button type="button" id="tierExport"${off} title="Save this game's tiers as a CSV to send another organizer">Export tiers…</button>
-<button type="button" id="tierImport"${off} title="Read another organizer's tiers file for this game; you review every change before it is applied">Import tiers…</button>
+  const known = uploadGames();
+  const want = /^\d+$/.test(String(game || '')) ? String(game) : null;
+  const current = want || (mine[0] && mine[0].id) || (known[0] && known[0].id) || null;
+  const nameOf = (id) => ((mine.find((g) => g.id === id) || known.find((g) => g.id === id) || {}).name) || `Game ${id}`;
+  // The tabs: the games in the table, plus the one picked from "Another game" while it has no rows yet.
+  const tabs = [...mine.map((g) => g.id), ...(current && !mine.some((g) => g.id === current) ? [current] : [])];
+  const tabHtml = readError ? '' : tabs.map((id) => `<a href="/tiers?game=${encodeURIComponent(id)}" class="game-tab"${id === current ? ' aria-current="page"' : ''}>${esc(nameOf(id))}</a>`).join('');
+  const others = known.filter((g) => !tabs.includes(g.id));
+  const pick = readError || !others.length ? '' : `<label class="game-more">Another game <select id="tierNewGame"><option value="">Choose…</option>${others.map((g) => `<option value="${esc(g.id)}">${esc(g.name)}</option>`).join('')}</select></label>`;
+  const off = readError || !current ? ' disabled' : '';
+  return `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Tiers</title><link rel="stylesheet" href="/static/app.css"><script src="/static/theme.js"></script><script src="/static/busy.js"></script><script src="/static/account.js" defer></script><script src="/static/update.js" defer></script>
+<body class="index tiers-view has-nav">${navHtml('tiers')}<main class="wide"><h1>Tiers</h1>
+<p class="intro">${TIERS_INTRO.map(esc).join('<br>')}</p>
+${readError ? `<p id="tierReadError" class="err" role="alert">${esc(readError)} Reload this page once it can be read.</p>` : ''}
+<div class="game-tabs-row"><nav class="game-tabs" aria-label="Games">${tabHtml}</nav>${pick}</div>
+<div class="tier-tools" data-game="${esc(current || '')}" data-game-name="${esc(current ? nameOf(current) : '')}" id="tierTools">
+<button type="button" id="tierExport"${off}>Export…</button>
+<button type="button" id="tierImport"${off}>Import…</button>
 <input type="file" id="tierFile" accept=".csv,text/csv" hidden data-max-bytes="${TIERS_BODY_MAX}"><span id="tierMsg" class="status" role="status" aria-live="polite"></span></div>
-${readError ? `<p id="tierReadError" class="err" role="alert">${esc(readError)} Export and import are off until it can be read; reload this page then.</p>` : ''}
-<p class="dim import-desc">Tiers are per game. The file carries each player's tier, tags and start.gg ids; your notes, reviews and dates stay here. An import shows new players and conflicts first and changes only this game's tiers.</p>
-<dialog id="tierModal" class="upload-modal tier-modal" aria-labelledby="tierTitle"><div class="modal-head"><h2 id="tierTitle">Import tiers</h2></div>
-<div id="tierReview" class="tier-review"></div>
-<div class="modal-actions"><button type="button" id="tierApply" class="primary">Apply</button><button type="button" id="tierCancel" class="plain">Cancel</button><span id="tierApplyMsg" class="status" role="status" aria-live="polite"></span></div></dialog>
-</section>`;
+<section id="importPanel" class="import-panel" hidden aria-labelledby="impTitle"><div class="imp-bar"><h2 id="impTitle">Import</h2>
+<label class="imp-find">Find <input id="impSearch" type="search" placeholder="tag or alias" autocomplete="off" spellcheck="false"></label>
+<button type="button" id="impApproveSel" disabled>Approve selected</button><button type="button" id="impApproveAll" class="primary">Approve all</button><button type="button" id="impClose" class="plain">Close</button>
+<span id="impMsg" class="status" role="status" aria-live="polite"></span></div>
+<div id="impBody"></div><div id="impNotes"></div></section>
+<p id="tierEmpty" class="dim" hidden></p>
+<div class="tier-wrap"><table id="tierTable" class="tier-sheet"></table></div>
+</main>
+<script src="/static/model.js"></script><script src="/static/render.js"></script><script src="/static/tiers.js"></script></body></html>`;
 }
-const DONE_NOTE = '<li class="done-note dim">Tournaments are marked done automatically once their last seeded event\'s date has passed. Delete one when you no longer need it: right-click it here, or use Delete on its page; both ask first.</li>';
 // The data folder's notices (lib/data-dir.js): a tiers table the old uninstaller probably removed, a
 // move out of the old install folder that failed or was partial, an old copy left behind. Lasting ones
 // have Dismiss (notices.js).
@@ -198,10 +223,9 @@ function noticesHtml(notices) {
   const link = (n) => (n.link && typeof n.link.href === 'string' && /^https:\/\/github\.com\//.test(n.link.href) ? ` <a href="${esc(n.link.href)}" target="_blank" rel="noopener">${esc(n.link.text || n.link.href)}</a>` : '');
   return `<section class="data-notices" aria-label="About your data">${notices.map((n) => `<div class="data-notice ${n.level === 'warn' ? 'warn' : 'info'}" role="${n.level === 'warn' ? 'alert' : 'status'}" data-id="${esc(n.id)}"><span>${esc(n.text)}${link(n)}</span>${n.lasting ?`<button type="button" class="plain" data-dismiss="${esc(n.id)}">Dismiss</button>` : ''}</div>`).join('')}</section>`;
 }
-function indexPage(outRoot, jobs, nowMs, notices = [], tiersFile) {
+function indexPage(outRoot, jobs, nowMs, notices = []) {
   const list = pool.listTournaments(outRoot, nowMs);
-  const firstDone = list.findIndex((x) => x.status !== 'live');
-  const items = list.map((x, i) => {
+  const items = list.map((x) => {
     const st = jobs.status(x.t);
     const name = (x.state.tournament && x.state.tournament.name) || x.t;
     const tabs = pool.tabsOf(x.state, x.current && x.current.meta).map((tab) => tab.game.name);
@@ -210,27 +234,30 @@ function indexPage(outRoot, jobs, nowMs, notices = [], tiersFile) {
       .map(esc).join(' · ');
     const busy = st.running ? ` <span class="busy">${st.resolving ? 'looking up players…' : st.pulling ? 'pulling…' : st.kind === 'archive' ? 'archiving…' : 'fetching W-L…'}</span>` : '';
     const badge = SOURCE_BADGE[x.state.source] || SOURCE_BADGE.startgg;
-    return `${i === firstDone ? DONE_NOTE : ''}<li class="st-${x.status} src-${esc(x.state.source)}" data-t="${esc(x.t)}" data-name="${esc(name)}" title="Right-click for options"><a href="/t/${esc(x.t)}">${esc(name)}</a> ${badge} <span class="pill st-${x.status}">${STATUS_LABEL[x.status]}</span>${busy}<div class="dim">${sub}</div></li>`;
+    return `<li class="st-${x.status} src-${esc(x.state.source)}" data-t="${esc(x.t)}" data-name="${esc(name)}" title="Right-click for options"><a href="/t/${esc(x.t)}">${esc(name)}</a> ${badge} <span class="pill st-${x.status}">${STATUS_LABEL[x.status]}</span>${busy}<div class="dim">${sub}</div></li>`;
   }).join('');
   return `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Seeding tournaments</title><link rel="stylesheet" href="/static/app.css"><script src="/static/theme.js"></script><script src="/static/busy.js"></script><script src="/static/account.js" defer></script><script src="/static/update.js" defer></script>
-<body class="index"><main><h1>Tournaments</h1>${noticesHtml(notices)}
+<body class="index has-nav">${navHtml('tournaments')}<main><h1>Tournaments</h1>${noticesHtml(notices)}
 <section class="add-section" aria-labelledby="addHead"><h2 id="addHead">Add a tournament</h2>
 <form id="add" class="add-t"><label for="addUrl" class="sr-only">start.gg tournament or event link</label>
-<input id="addUrl" name="url" placeholder="start.gg tournament or event link" autocomplete="off" spellcheck="false" required title="Adding makes one request to start.gg for the tournament's events; you pick the singles events to seed on its page.">
+<input id="addUrl" name="url" placeholder="start.gg tournament or event link" autocomplete="off" spellcheck="false" required>
 <button type="submit">Add</button><span id="addMsg" class="status" role="status" aria-live="polite"></span></form>
 ${uploadForm()}
 </section>
-${tiersSection(tiersFile)}
 <ul class="events">${items || '<li class="dim">No tournaments yet. Add one above.</li>'}</ul>
 <footer class="app-version"><span id="appVersion" class="dim">Seeding Ops ${esc(update.currentVersion(ROOT))}</span></footer></main>
-<script src="/static/model.js"></script><script src="/static/render.js"></script><script src="/static/index.js"></script><script src="/static/notices.js"></script></body></html>`;
+<script src="/static/index.js"></script><script src="/static/notices.js"></script></body></html>`;
 }
 
 function notAddedPage(t) {
   return `<!doctype html><html lang="en"><meta charset="utf-8"><title>Not added</title><link rel="stylesheet" href="/static/app.css"><script src="/static/theme.js"></script><script src="/static/busy.js"></script><script src="/static/account.js" defer></script><script src="/static/update.js" defer></script>
-<body class="index"><main><h1>Not added yet</h1><p>There is no data for <code>${esc(t)}</code>. Pull data happens per tournament now.
+<body class="index has-nav">${navHtml('tournaments')}<main><h1>Not added yet</h1><p>There is no data for <code>${esc(t)}</code>. Pull data happens per tournament now.
 <a href="/?add=${encodeURIComponent(t)}">Add the tournament</a> to seed it.</p></main></body></html>`;
+}
+// The tournament page is a static file; the nav goes in where its <body> opens.
+function tournamentPage() {
+  return fs.readFileSync(PAGE, 'utf8').replace('<body class="app">', `<body class="app has-nav">${navHtml('tournaments')}`);
 }
 
 // A same-origin request from the app's own page. Blocks other sites' pages from POSTing to the
@@ -666,7 +693,8 @@ function createApp(opts = {}) {
       const method = req.method;
       const slug = (x) => pool.SLUG_PART.test(x);
 
-      if (p === '/' && method === 'GET') return send(res, 200, indexPage(outRoot, jobs, nowMs(), dataNotices(), tiersFile), 'text/html; charset=utf-8');
+      if (p === '/' && method === 'GET') return send(res, 200, indexPage(outRoot, jobs, nowMs(), dataNotices()), 'text/html; charset=utf-8');
+      if (p === '/tiers' && method === 'GET') return send(res, 200, tiersPage(tiersFile, url.searchParams.get('game')), 'text/html; charset=utf-8');
 
       let m = /^\/static\/((?:games\/)?[a-z0-9._-]+)$/i.exec(p);
       if (m && method === 'GET') {
@@ -679,7 +707,7 @@ function createApp(opts = {}) {
       if (m && method === 'GET') {
         if (!slug(m[1])) return notFound(res);
         if (!pool.readState(pool.tournamentDir(outRoot, m[1]))) return send(res, 404, notAddedPage(m[1]), 'text/html; charset=utf-8');
-        return send(res, 200, fs.readFileSync(PAGE), 'text/html; charset=utf-8');
+        return send(res, 200, tournamentPage(), 'text/html; charset=utf-8');
       }
 
       // Increment 2's event URL: redirect to the tournament page with that event's game selected,
@@ -728,6 +756,23 @@ function createApp(opts = {}) {
         saveToken({ envFile, token });
         tokenCheck.token = token; tokenCheck.at = nowMs(); tokenCheck.result = { ...r, state: 'ok' };
         return json(res, 200, { ok: true, as: r.as, saved: path.basename(envFile), env_wins: false });
+      }
+      // Amendment A3: the Tiers view's rows for one game, and an in-place edit of one row (tier, alias,
+      // notes) through the same write as the seeding table's.
+      if (p === '/api/tiers' && method === 'GET') {
+        const game = url.searchParams.get('game') || '';
+        if (!/^\d+$/.test(game)) throw bad(400, 'Pick a game (its start.gg videogame id).');
+        return json(res, 200, { game: { id: game }, rows: data.tierRows(game, tiersOpt()) });
+      }
+      if (p === '/api/tiers/row') {
+        if (method !== 'POST') return send(res, 405, 'Method not allowed');
+        requireApp(req);
+        const fields = await readBody(req);
+        const game = String(fields.game_id ?? '').trim();
+        if (!/^\d+$/.test(game)) throw bad(400, 'Pick a game (its start.gg videogame id).');
+        const edit = {};
+        for (const f of ['tier', 'alias', 'notes']) if (f in fields) edit[f] = fields[f];
+        return json(res, 200, { row: data.editTierByKey(game, String(fields.key || ''), edit, { now: nowDate(), ...tiersOpt() }) });
       }
       // Amendment A2.2: one game's tiers out (a download) and in (a review, then the rows Noah picked).
       if (p === '/api/tiers/export.csv' && method === 'GET') {

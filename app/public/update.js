@@ -6,12 +6,12 @@
 	Each page asks the app's server once (POST /api/update/check). The server asks GitHub once per
 	launch and caches the answer (app/server.js), so moving between pages never asks again. While it
 	checks the bar shows nothing new. Then:
-	  up to date        "v0.2.0 · You're up to date" (quiet; a click checks again)
+	  up to date        a green "✓", titled and labelled "Up to date · v0.2.0" (quiet; a click checks again)
 	  check failed      "v0.2.0", titled "Couldn't check for updates" (never an error)
-	  newer, installed  "Update available: v0.3.0" + Update (+ What's new): one confirm dialog, then the
+	  newer, installed  "⚠️ Latest: v0.3.0" + Update (+ What's new): one confirm dialog, then the
 	                    server downloads, checks the signature, starts the installer and closes the app;
 	                    the installer reopens it (lib/update.js)
-	  newer, elsewhere  "Update available: v0.3.0" + Download (a checkout, the portable ZIP, no key)
+	  newer, elsewhere  "⚠️ Latest: v0.3.0" + Download (a checkout, the portable ZIP, no key)
 	  checkout          "v0.2.0 (dev)" when nothing newer exists
 	Update is disabled while a pull, schedule pull, archive or push runs (GET /api/update's busy, read
 	every few seconds while an update is on offer); the server refuses then too.
@@ -60,13 +60,15 @@
 		}
 		if (!st.available) {
 			if (st.dev) return setText(cur + ' (dev)');
+			// A green check (Noah, 2026-11-12); its label and hover say what it means and still re-check.
 			text.title = '';
-			text.innerHTML = '<button type="button" class="update-recheck" title="Check for updates again">' + esc(cur) + " · You're up to date</button>";
+			var label = 'Up to date · ' + cur;
+			text.innerHTML = '<button type="button" class="update-recheck update-ok" title="' + esc(label) + '" aria-label="' + esc(label + '. Check for updates again') + '">✓</button>';
 			text.querySelector('.update-recheck').addEventListener('click', recheck);
 			return;
 		}
 		area.classList.toggle('available', true);
-		setText('Update available: ' + v(st.latest));
+		setText('⚠️ Latest: ' + v(st.latest));
 		if (st.releases_page) {
 			link.href = st.releases_page;
 			link.textContent = st.can_install ? "What's new" : 'Download';

@@ -197,7 +197,7 @@ test('update routes: GitHub is asked once per process; every later page reads th
   for (const r of [a, b, c]) assert.deepStrictEqual([r.json().ok, r.json().latest, r.json().available], [true, '0.3.0', true]);
   assert.strictEqual(latestCalls(gh), 1, 'three page loads, one check');
   await post(app, '/api/update/check', { force: true });
-  assert.strictEqual(latestCalls(gh), 2, 'a click on "You\'re up to date" asks again');
+  assert.strictEqual(latestCalls(gh), 2, 'a click on the ✓ asks again');
   // A failed check is not kept (audit, final #1): offline at launch, the next page asks again.
   let n = 0;
   const off = makeApp({ gh: { fetchImpl: async () => { n++; throw new Error('ENOTFOUND github.com'); }, calls: [] } });
@@ -276,7 +276,7 @@ test('update bar: the home page, a tournament page and the not-added page load i
     assert.ok(p.bar.children.includes(p.area), `${name}: the update status is inside #accountBar`);
     assert.ok(p.area.children.includes(p.text) && p.area.children.includes(p.btn));
     assert.deepStrictEqual([p.text.getAttribute('role'), p.text.getAttribute('aria-live'), p.text.getAttribute('aria-atomic')], ['status', 'polite', 'true']);
-    assert.strictEqual(p.text.textContent, "v0.2.0 · You're up to date", name);
+    assert.strictEqual(p.text.textContent, '✓', name);
   }
   // The home page's old Check for updates footer is gone; the plain version label stays.
   assert.doesNotMatch(pages.home.text, /updateCheck|updateInstall|Check for updates/);
@@ -292,19 +292,22 @@ test('update bar: each state\'s exact words', async () => {
   assert.strictEqual(pending.area.hidden, true);
   assert.strictEqual(pending.text.textContent, '');
 
+  // Up to date (Noah, 2026-11-12): a green check, its hover and accessible name the words, still a re-check button.
   let p = await shown(ST({ available: false, latest: '0.2.0' }));
-  assert.strictEqual(p.text.textContent, "v0.2.0 · You're up to date");
+  assert.strictEqual(p.text.textContent, '✓');
+  assert.strictEqual(p.text.innerHTML, '<button type="button" class="update-recheck update-ok" title="Up to date · v0.2.0" aria-label="Up to date · v0.2.0. Check for updates again">✓</button>');
+  assert.doesNotMatch(p.text.innerHTML, /You're up to date/);
   assert.ok(!p.area.classList.contains('available'));
   assert.deepStrictEqual([p.btn.hidden, p.link.hidden], [true, true]);
 
   p = await shown(ST());
-  assert.strictEqual(p.text.textContent, 'Update available: v0.3.0');
+  assert.strictEqual(p.text.textContent, '⚠️ Latest: v0.3.0');
   assert.ok(p.area.classList.contains('available'), 'accent colour');
   assert.deepStrictEqual([p.btn.hidden, p.btn.textContent, p.btn.disabled], [false, 'Update', false]);
   assert.deepStrictEqual([p.link.hidden, p.link.textContent, p.link.href], [false, "What's new", 'https://github.com/x/y/releases/latest']);
 
   p = await shown(ST({ installed: false, can_install: false, reason: 'This copy is not the installed app.' }));
-  assert.strictEqual(p.text.textContent, 'Update available: v0.3.0');
+  assert.strictEqual(p.text.textContent, '⚠️ Latest: v0.3.0');
   assert.strictEqual(p.btn.hidden, true, 'no Update where it cannot install');
   assert.deepStrictEqual([p.link.hidden, p.link.textContent, p.link.href], [false, 'Download', 'https://github.com/x/y/releases/latest']);
 
@@ -333,7 +336,7 @@ test('update bar: a failed check shows only the version, titled, never an error 
   }
 });
 
-test('update bar: one check request per page load, and none from moving around; a click on "You\'re up to date" asks again with force', async () => {
+test('update bar: one check request per page load, and none from moving around; a click on the ✓ asks again with force', async () => {
   const p = barPage({ '/api/update/check': { body: ST({ available: false, latest: '0.2.0' }) } });
   await p.page.flush();
   assert.strictEqual(p.page.timers.length, 0, 'no polling while up to date');

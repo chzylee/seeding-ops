@@ -110,10 +110,8 @@ test('A2.2 apply: per-row picks; "take theirs" changes only the tier (+ decided_
   ]);
   const before = read(tiersFile);
   const p = S.previewImport({ csv, gameId: A.id, tiersFile, fileName: 'theirs.csv' });
-  // Choices: take Charlie (tag) and Alpha, keep my Bravo; add Delta, skip Echo.
-  const choices = { 2: 'theirs', 3: 'theirs', 4: 'mine', 5: 'theirs', 6: 'mine' };
-  const take = M.importTake(p, choices);
-  assert.deepStrictEqual(take.sort(), ['2', '3', '5']);
+  // Approved: Alpha and Charlie (tag), and Delta (no tier here); not Bravo, not Echo.
+  const take = ['2', '3', '5'];
   const res = S.applyImport({ csv, gameId: A.id, fileName: 'theirs.csv', fingerprint: p.fingerprint, take, tiersFile, now: NOW });
   assert.deepStrictEqual([res.added, res.updated, res.kept, res.skipped_new], [0, 3, 1, 1]);
   assert.deepStrictEqual(res.linked_by_tag.map((x) => x.row_tag), ['Charlie'], 'a tag-only match that was applied is reported for review');
@@ -128,20 +126,6 @@ test('A2.2 apply: per-row picks; "take theirs" changes only the tier (+ decided_
   assert.deepStrictEqual([by('4').tier, by('4').last_reviewed_tournament], ['7', 'x'], 'filled the tier on the review-only row, review kept');
   assert.ok(!after.some((r) => r.player_id === '5'), 'Echo was not added');
   assert.strictEqual(after.length, before.length);
-});
-
-test('A2.2 bulk choices: "keep all mine" / "take all theirs" set every conflict; "add all" / "add none" every new row; defaults add new, keep mine', () => {
-  const p = { new: [{ key: '1' }, { key: '2' }], conflicts: [{ key: '3' }, { key: '4' }] };
-  assert.deepStrictEqual(M.importTake(p, {}), ['1', '2'], 'default: new rows added, conflicts kept');
-  assert.deepStrictEqual(M.importTake(p, M.importBulk(p, {}, 'conflicts', 'theirs')).sort(), ['1', '2', '3', '4']);
-  assert.deepStrictEqual(M.importTake(p, M.importBulk(p, { 3: 'theirs' }, 'conflicts', 'mine')), ['1', '2']);
-  assert.deepStrictEqual(M.importTake(p, M.importBulk(p, {}, 'new', 'mine')), []);
-  const first = M.importBulk(p, {}, 'new', 'mine');
-  const c = M.importBulk(p, first, 'conflicts', 'theirs');
-  assert.deepStrictEqual(M.importTake(p, c), ['3', '4'], 'one section\'s bulk choice keeps the other section\'s');
-  assert.deepStrictEqual(first, { 1: 'mine', 2: 'mine' }, 'importBulk returns a new object; the one given is not changed');
-  // A per-row pick after a bulk one wins for that row.
-  assert.deepStrictEqual(M.importTake(p, { ...c, 4: 'mine' }), ['3']);
 });
 
 test('A2.2 a file for another game, a file that is not a tiers file, a stale review, and keys that cannot be applied are refused', () => {
@@ -191,7 +175,7 @@ test('A2.2 provenance: an imported tier\'s grey hover names the import, not the 
   assert.strictEqual(R.recencyTitle({ tier: 5, source: 'sheet import' }, ctx), 'Never reviewed (tier from the sheet import)');
 });
 
-test('A2.2 routes: export download, preview, apply; X-Seeding-App on the POSTs; the home page has the Tiers controls', async () => {
+test('A2.2 routes: export download, preview, apply; X-Seeding-App on the POSTs; the Tiers view has the controls (A3: moved off the home page)', async () => {
   const { dir, tiersFile } = mine();
   const app = createApp({ outRoot: path.join(dir, 'out'), tiersFile, getToken: () => 'T', fetchImpl: async () => { throw new Error('no start.gg request expected'); } });
   let r = await inject(app.handler, { url: `/api/tiers/export.csv?game=${A.id}` });
@@ -213,11 +197,10 @@ test('A2.2 routes: export download, preview, apply; X-Seeding-App on the POSTs; 
   r = await post('/api/tiers/import/apply', { game_id: A.id, csv, fingerprint: p.fingerprint, take: ['3'] });
   assert.strictEqual(r.status, 409, 'the same review again is stale: the table changed');
   const home = (await inject(app.handler, { url: '/' })).text;
-  for (const id of ['tierGame', 'tierExport', 'tierImport', 'tierModal']) assert.match(home, new RegExp(`id="${id}"`));
-  assert.match(home, new RegExp(`<option value="${A.id}"[^>]*>MBAACC \\(4 tiered\\)`), 'three of mine plus the one just imported');
-  // The review renders new players and conflicts side by side, with the bulk buttons.
-  const html = R.importReview(S.previewImport({ csv: theirs([[A.id, A.name, '1', '', 'Alpha', '', '10'], [A.id, A.name, '6', '', 'New', '', '2']]), gameId: A.id, tiersFile }), {});
-  for (const s of ['Keep all mine', 'Take all theirs', 'Add all', 'Add none', 'Your tier', 'Their tier']) assert.ok(html.includes(s), s);
+  for (const id of ['tierGame', 'tierExport', 'tierImport', 'tierModal']) assert.doesNotMatch(home, new RegExp(`id="${id}"`), 'no tiers controls on the home page');
+  const view = (await inject(app.handler, { url: `/tiers?game=${A.id}` })).text;
+  for (const id of ['tierExport', 'tierImport', 'tierFile', 'importPanel', 'impSearch', 'impApproveSel', 'impApproveAll']) assert.match(view, new RegExp(`id="${id}"`));
+  assert.match(view, new RegExp(`<a href="/tiers\\?game=${A.id}" class="game-tab" aria-current="page">MBAACC</a>`));
 });
 
 // ---- Build D pass 2 ------------------------------------------------------------------------------
@@ -231,8 +214,8 @@ test('finding 4: a file row with only a tag finds a player already linked by id 
   assert.deepStrictEqual(p.conflicts.map((x) => [x.tag, x.by, x.mine, x.theirs]), [['Alpha', 'tag', 9, 10]], 'shown as a conflict with his tier, matched by tag');
   assert.deepStrictEqual(p.new.map((x) => x.tag), ['Nobody'], 'only a player with no row here is new');
   assert.strictEqual(p.counts.same, 1, 'Bravo (linked, tier 5) is the same');
-  // The default picks: new rows added, conflicts kept. No row for Alpha is added.
-  const res = S.applyImport({ csv, gameId: A.id, fingerprint: p.fingerprint, take: M.importTake(p, {}), tiersFile, now: NOW });
+  // Approving the new player only (A3: nothing is applied unless approved). No row for Alpha is added.
+  const res = S.applyImport({ csv, gameId: A.id, fingerprint: p.fingerprint, take: p.new.map((x) => x.key), tiersFile, now: NOW });
   assert.deepStrictEqual([res.added, res.updated], [1, 0]);
   const after = read(tiersFile);
   assert.strictEqual(after.filter((r) => r.game_id === A.id && /alpha/i.test(r.startgg_tag + r.sheet_tag)).length, 1, 'still one Alpha row');
@@ -270,11 +253,13 @@ test('finding 2 (with main\'s readTiersText): a tiers table that cannot be read 
   assert.throws(() => S.previewImport({ csv: theirs([[A.id, A.name, '1', '', 'Alpha', '', '10']]), gameId: A.id, tiersFile }), (e) => e.status === 503 && /could not be read/.test(e.message));
   assert.throws(() => S.exportTiers(A.id, { tiersFile }), (e) => e.status === 503);
   const app = createApp({ outRoot: path.join(dir, 'out'), tiersFile, getToken: () => 'T', fetchImpl: async () => { throw new Error('no start.gg request expected'); } });
-  const home = (await inject(app.handler, { url: '/' })).text;
-  assert.match(home, /id="tierReadError"[^>]*>The tiers table could not be read/);
-  assert.doesNotMatch(home, /\(none yet\)/, 'no game is shown as having no tiers');
-  assert.match(home, /id="tierExport" disabled/);
-  assert.match(home, /id="tierImport" disabled/);
+  const view = (await inject(app.handler, { url: '/tiers' })).text;
+  assert.match(view, /id="tierReadError"[^>]*>The tiers table could not be read/);
+  assert.doesNotMatch(view, /class="game-tab"/, 'no game is shown as having no tiers');
+  assert.match(view, /id="tierExport" disabled/);
+  assert.match(view, /id="tierImport" disabled/);
+  const rows = await inject(app.handler, { url: `/api/tiers?game=${A.id}` });
+  assert.strictEqual(rows.status, 503, 'the view\'s rows: 503, never an empty table');
   const r = await inject(app.handler, { url: '/api/tiers/import/preview', method: 'POST', headers: { 'X-Seeding-App': '1' }, body: JSON.stringify({ game_id: A.id, csv: theirs([[A.id, A.name, '1', '', 'Alpha', '', '10']]) }) });
   assert.strictEqual(r.status, 503);
   assert.match(r.json().error, /could not be read/);
@@ -283,7 +268,7 @@ test('finding 2 (with main\'s readTiersText): a tiers table that cannot be read 
 test('finding 8: the import\'s request cap is the server\'s for these routes (2 MB, sent to the page), and a file past the old 200 KB cap goes through', async () => {
   const { dir, tiersFile } = mine();
   const app = createApp({ outRoot: path.join(dir, 'out'), tiersFile, getToken: () => 'T', fetchImpl: async () => { throw new Error('no start.gg request expected'); } });
-  assert.match((await inject(app.handler, { url: '/' })).text, /id="tierFile"[^>]*data-max-bytes="2000000"/);
+  assert.match((await inject(app.handler, { url: '/tiers' })).text, /id="tierFile"[^>]*data-max-bytes="2000000"/);
   // ~4,000 rows of quote-heavy tags: well over 200 KB once JSON-escaped.
   const lines = Array.from({ length: 4000 }, (_, i) => [A.id, A.name, String(100000 + i), '', `"Q" "${i}" "tag"`, '', '3']);
   const csv = theirs(lines);

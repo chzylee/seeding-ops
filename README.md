@@ -85,7 +85,9 @@ start.gg player).
 of that game's players: **Player** (the start.gg tag), **start.gg discriminator**, **Alias**, **Tier**,
 **Notes**, **Last reviewed**. Click any header to sort by it; click it again to reverse. Click a Tier,
 Alias or Notes cell (or press Enter on it) to edit it in place: Enter or leaving the cell saves, Esc
-cancels. Every save goes to the same `registry/tiers.csv` the seeding table writes, with the same
+cancels; in Notes, Shift+Enter is a new line and line breaks are kept. Leaving a cell unchanged saves
+nothing. A game with two rows for one player (one start.gg id, or one tag and no id) can't edit them
+here; the message names the rows to fix in `tiers.csv`. Every save goes to the same `registry/tiers.csv` the seeding table writes, with the same
 rule (a tier is a whole number 0 to 20; a changed tier stamps `decided_on`). Tiers you set while
 seeding are saved the moment you set them, as before; the Tiers view shows them on its next load.
 *Another game* opens a tab for a game you have no tiers for yet (to import into it).
@@ -96,7 +98,8 @@ Tiers view and a tournament's seeding table) it shows the alias after it: *Knigh
 The alias is display only: it never matches a player to a tiers row (matching stays start.gg id, then
 discriminator, then tag), sorting by Player sorts by the tag, and it is not in the tiers export (like
 your notes). It lives in the `alias` column of `registry/tiers.csv`; a file from before 0.3.0 has no
-such column and reads as it is, and the first save adds the column, blank, keeping every row.
+such column and reads as it is, and the first save adds the column, blank and last (after every
+other column, so nothing reading the file by column position moves), keeping every row.
 
 **Share tiers with another organizer.** In the Tiers view, for the game tab you are on.
 **Export…** saves that game's tiers as a CSV: each tiered player's tier, tags, start.gg player id and
@@ -104,8 +107,9 @@ discriminator. Your alias, notes, review dates and tournaments, `decided_on`, `s
 sheet import's region / placements / notes are **not** in it. **Import…** reads such a file (or
 anyone's `tiers.csv`) for that game:
 
-- **A game with no tiers yet** takes the file as it is, with no review, and says how many players
-  were added.
+- **A game with no rows at all yet** takes the file as it is, with no review, and says how many
+  players were added and what was skipped (unreadable, repeated, without a tier, other games). A game
+  that has rows, even without tiers, gets the diff, so no file row is matched to one of yours unseen.
 - **Otherwise you see a diff:** one row per player whose tier in the file differs from yours, your
   current player and tier on the left, the file's on the right (a player new to you has an empty left
   side). Players whose tier is the same are not listed; the count is. **Approve** on a row applies

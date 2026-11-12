@@ -237,9 +237,8 @@ test('discriminator migration: the reader/writer round-trip keeps the column in 
   const before = parseCsv(fs.readFileSync(tiers, 'utf8'));
   data.updatePlayer(run, '10000', { notes: 'round trip' }, { tiersFile: tiers });
   const text = fs.readFileSync(tiers, 'utf8');
-  // Amendment A3: the write also adds the `alias` column (blank), after sheet_tag; every other column in place.
-  const withAlias = [...C_COLS.slice(0, C_COLS.indexOf('sheet_tag') + 1), 'alias', ...C_COLS.slice(C_COLS.indexOf('sheet_tag') + 1)];
-  assert.deepStrictEqual(rawRows(text).head, withAlias, 'the writer keeps the column, in place, and adds alias');
+  // Amendment A3: the write also appends the `alias` column (blank) LAST; every other column in place.
+  assert.deepStrictEqual(rawRows(text).head, [...C_COLS, 'alias'], 'the writer keeps the column, in place, and appends alias');
   const after = parseCsv(text);
   assert.strictEqual(after.length, before.length);
   assert.ok(after.every((x) => x.alias === ''), 'alias is blank on every row');

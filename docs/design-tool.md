@@ -701,23 +701,29 @@ Tests: `test/tiers-view.test.js`, plus the updated `test/update-app.test.js` and
   `writeTierTable` (temp + rename; a non-ENOENT read error throws, 503) and the same edit rule as the
   seeding table (`applyEdit`, shared with `updatePlayer`: a changed tier stamps `decided_on`, every edit
   sets `source` "app"). A row is addressed by a key, not a row number: `p:<player_id>`, else
-  `d:<discriminator>`, else `t:<tag>`; two unlinked rows with one tag refuse the edit (409). Seeding's
-  saves are unchanged; there is one store.
+  `d:<discriminator>`, else `t:<tag>`; two rows sharing a key (one player id twice in a game, one
+  discriminator, or one tag with no id) refuse the edit (409, naming the rows): never a guess.
+  Notes edit in a textarea (Shift+Enter a new line), kept exactly as typed. An edit that changes
+  nothing is not sent, and the server writes nothing for one either, so `source` (the sheet or
+  import provenance) is only replaced by a real edit (auditor repair pass). Seeding's saves are
+  unchanged; there is one store.
 - **Tier range.** The spec says "0-10, the same as seeding's"; seeding's check is 0..20, and the real
   table holds one 11. The build keeps the one rule (`data.checkTier`, 0..20, shared by seeding, the
   Tiers view and the import) and Noah's intro text as written. Narrowing to 0..10 is one constant
   (`MAX_TIER`) once Noah rules on the 11 (open item).
-- **Alias.** A new `alias` column (after `sheet_tag`), blank by default, never filled from start.gg. A
-  file without it reads unchanged; the first write adds it blank and drops no row (the writer already
+- **Alias.** A new `alias` column, always the LAST column (after any unknown column too, so nothing
+  reading tiers.csv by position moves), blank by default, never filled from start.gg. A file without it
+  reads unchanged; the first write appends it blank and drops no row (the writer already
   carried unknown columns and wrote every known one). Display: "Tag (Alias)" in the Tiers view and the
   seeding table (`readNotes` gives `tier_alias`; named apart from an uploaded list's `alias`, A1.3,
   which is a player field and still matches as before). The alias takes no part in matching (the
   index reads only ids, `startgg_tag` and `sheet_tag`), sorting by Player sorts by the tag (the cell's
   `data-v`), and it is **private**: in `PRIVATE_COLS`, never exported (Noah's default, kept).
 - **Import** (in the Tiers view, for the current tab; export moves there too). The A2.2 engine
-  (`lib/tiers-share.js`) is unchanged but for two read-only fields (`tiered_here`, `mine_alias`).
-  A game with no tiered row here: every new row is applied at once, no review, and the page says how
-  many players were added. Otherwise a diff: one row per `new` or `conflicts` item, current (tag with
+  (`lib/tiers-share.js`) is unchanged but for read-only fields (`rows_here`, `tiered_here`,
+  `mine_alias`). A game with no row here at all: every new row is applied at once, no review, and the
+  page says how many players were added and what was skipped. A game with rows but no tier goes
+  through the diff: a file row can match one of those rows (by tag too), and that link is shown first. Otherwise a diff: one row per `new` or `conflicts` item, current (tag with
   alias, tier) left and incoming right, a new player's left side empty; `same` is a count;
   ambiguous, repeated, unreadable and other-game rows are listed below as before and never offered.
   Approve one row, the ticked rows, or **every row listed** (the search applied; the button carries the

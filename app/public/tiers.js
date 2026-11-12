@@ -6,8 +6,8 @@
 //             the cell saves, Esc cancels. Each save is POST /api/tiers/row: the same registry/tiers.csv,
 //             the same atomic write and the same rule as an edit while seeding (lib/view/data.js)
 //   export    this game's tiers as a shareable file (GET /api/tiers/export.csv)
-//   import    a file for this game: when the game has no tier yet it is taken as it is, with no
-//             review; otherwise a diff, one row per player whose tier would change (current left,
+//   import    a file for this game: when the game has no row here at all it is taken as it is, with
+//             no review (the message says what was skipped); otherwise a diff, one row per player whose tier would change (current left,
 //             incoming right), approved one row, a selection, or every row listed (the search
 //             applied). Each approval is the A2.2 apply (lib/tiers-share.js): the fingerprint, the
 //             ambiguous-match rules and the game-scoped write all hold.
@@ -80,16 +80,23 @@
     if (!row || !['tier', 'alias', 'notes'].includes(field)) return;
     const old = field === 'tier' ? (row.tier == null ? '' : String(row.tier)) : String(row[field] || '');
     const label = `${field === 'tier' ? 'Tier' : field === 'alias' ? 'Alias' : 'Notes'} for ${row.tag}`;
-    td.innerHTML = field === 'tier'
-      ? '<input class="ed" type="number" min="0" step="1" inputmode="numeric">'
-      : `<input class="ed" type="text"${field === 'alias' ? ' maxlength="60"' : ''}>`;
-    const input = td.querySelector('input.ed');
+    // Notes are multi-line (the seeding editor's and the sheet import's line breaks are kept): a
+    // textarea, where Shift+Enter is a new line, as in the seeding table's editor.
+    td.innerHTML = field === 'tier' ? '<input class="ed" type="number" min="0" step="1" inputmode="numeric">'
+      : field === 'notes' ? '<textarea class="ed" rows="3"></textarea>'
+        : '<input class="ed" type="text" maxlength="60">';
+    const input = td.querySelector('.ed');
     input.setAttribute('aria-label', label);
     input.value = old;
     editing = { key, field, old, input };
     // The keys stop here: Enter bubbling on to the table would open the editor again on the old cell.
     input.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); commit(); } else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); cancel(); }
+      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); cancel(); return; }
+      if (e.key !== 'Enter') return;
+      e.stopPropagation();
+      if (field === 'notes' && e.shiftKey) return;   // a new line
+      e.preventDefault();
+      commit();
     });
     input.addEventListener('blur', () => { commit(); });
     input.focus();
@@ -106,12 +113,20 @@
     const e = editing;
     if (!e) return null;
     editing = null;
-    const value = String(e.input.value ?? '').trim();
-    if (value === e.old) { draw(); refocus(e); return null; }
+    // Notes are compared and sent exactly as typed (a textarea reports line breaks as \n, so only
+    // that is evened out for the comparison); tier and alias are trimmed, as the server stores them.
+    // Nothing changed: nothing is sent, so a click in and out never rewrites a row or its source.
+    const raw = String(e.input.value ?? '');
+    const value = e.field === 'notes' ? raw : raw.trim();
+    const lf = (s) => String(s).replace(/\r\n?/g, '\n');
+    if (lf(value) === lf(e.old)) { draw(); refocus(e); return null; }
     say('Saving…');
     const r = await postJson('/api/tiers/row', { game_id: game, key: e.key, [e.field]: value });
     if (!r.ok) { say(r.body.error || 'Not saved.', true); draw(); refocus(e); return r; }
-    rows = rows.map((x) => (x.key === e.key && r.body.row ? r.body.row : x));
+    // Keys are unique among the rows the server lets you edit (a shared key is a 409), so exactly one
+    // row is replaced.
+    const at = rows.findIndex((x) => x.key === e.key);
+    if (at >= 0 && r.body.row) rows = [...rows.slice(0, at), r.body.row, ...rows.slice(at + 1)];
     draw();
     refocus(e);
     say('Saved.');
@@ -200,15 +215,24 @@
     impSay(`Approved ${plural(take.length, 'player')}: ${s.added} added, ${s.updated} changed.${s.linked_by_tag.length ? ` Matched by tag only, now carrying the file's ids: ${s.linked_by_tag.map((x) => x.row_tag).join(', ')}.` : ''}`);
     return r;
   }
-  // A game with no tier yet: the file is its tiers, taken at once.
+  // What the file had that was not taken (lib/tiers-share.js previewImport counts), for the direct
+  // import's message: "Skipped: 1 unreadable, 2 repeated, …" or ''.
+  function skipped(p) {
+    const c = p.counts;
+    const parts = [[c.malformed, 'unreadable'], [c.ambiguous, 'ambiguous'], [c.duplicates, 'repeated'], [c.no_tier, 'without a tier'], [c.other_games, 'for other games']]
+      .filter(([n]) => n).map(([n, what]) => `${n} ${what}`);
+    return parts.length ? ` Skipped: ${parts.join(', ')}.` : '';
+  }
+  // A game with no row here at all: the file is its tiers, taken at once (no row of Noah's can be
+  // matched, so nothing is linked or changed without him seeing it).
   async function importDirect() {
     const take = diffRows().map((r) => r.key);
-    if (!take.length) { say(`Nothing to import: the file has no ${review.game.name} players with a tier that can be added.`, true); return null; }
+    if (!take.length) { say(`Nothing to import: the file has no ${review.game.name} players with a tier that can be added.${skipped(review)}`, true); return null; }
     say('Importing…');
     const r = await apply(take);
     if (!r.ok) { say(r.body.error || 'Not imported.', true); return r; }
     await load();
-    say(`${plural(r.body.added + r.body.updated, 'player')} added to ${review.game.name}.`);
+    say(`${plural(r.body.added + r.body.updated, 'player')} added to ${review.game.name}.${skipped(review)}`);
     review = null; upload = null;
     return r;
   }
@@ -228,7 +252,7 @@
     if (bytes + 16 * csv.split('\n').length + 1000 > max) { say(`That file is too large to import (${Math.round(bytes / 1024)} KB as sent; the limit is ${Math.round(max / 1024)} KB).`, true); return null; }
     upload = { csv, file_name: file.name };
     if (!await preview()) return null;
-    if (!review.tiered_here) return importDirect();
+    if (!review.rows_here) return importDirect();
     say('');
     openPanel();
     return review;

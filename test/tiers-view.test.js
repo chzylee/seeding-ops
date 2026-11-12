@@ -66,11 +66,15 @@ async function tiersPage(w, game) {
     td.closest = (sel) => (sel === 'tr' ? tr : sel === 'td[data-edit]' ? td : null);
     return td;
   };
-  // Opens the editor on a cell, types `value`, and presses Enter. -> the save's promise.
-  const edit = async (key, field, value) => {
+  // Opens the editor on a cell (as the page fills it: the stored value), types `value` (unless
+  // undefined), and presses Enter. -> the editor.
+  const open = (key, field) => {
     const td = cell(key, field);
     $('tierTable').dispatch('click', { target: { closest: (sel) => (sel === 'td[data-edit]' ? td : null) } });
-    const input = td.querySelector('input.ed');
+    return { td, input: td.querySelector('.ed') };
+  };
+  const edit = async (key, field, value) => {
+    const { td, input } = open(key, field);
     input.value = value;
     let stopped = false;
     await Promise.all(input.dispatch('keydown', { key: 'Enter', stopPropagation() { stopped = true; } }).results);
@@ -86,7 +90,7 @@ async function tiersPage(w, game) {
     await page.flush(6);
   };
   const diffKeys = () => [...$('impBody').innerHTML.matchAll(/<tr data-key="([^"]+)"/g)].map((m) => m[1]);
-  return { html, page, $, order, sortBy, edit, importFile, diffKeys };
+  return { html, page, $, order, sortBy, open, edit, importFile, diffKeys };
 }
 
 // ---- The nav --------------------------------------------------------------------------------------
@@ -274,9 +278,10 @@ test('A3 import: a game with no saved tiers takes the file directly, with no rev
   const w = world(mineRows());
   const C = { id: '1386' };   // a game the app knows, with no rows here
   const p = await tiersPage(w, C.id);
-  await p.importFile(theirs([[C.id, 'SF6', '11', '', 'Ryu', '', '8'], [C.id, 'SF6', '12', '', 'Ken', '', '6'], [C.id, 'SF6', '13', '', 'Chun', '', '']]));
+  await p.importFile(theirs([[C.id, 'SF6', '11', '', 'Ryu', '', '8'], [C.id, 'SF6', '12', '', 'Ken', '', '6'], [C.id, 'SF6', '13', '', 'Chun', '', ''],
+    [C.id, 'SF6', '11', '', 'Ryu again', '', '3'], [C.id, 'SF6', 'x1', '', 'Bad', '', '4'], [B.id, B.name, '1', '', 'Elsewhere', '', '4']]));
   assert.strictEqual(p.$('importPanel').hidden, true, 'no review');
-  assert.strictEqual(p.$('tierMsg').textContent, `2 players added to ${p.$('tierTools').dataset.gameName}.`);
+  assert.strictEqual(p.$('tierMsg').textContent, `2 players added to ${p.$('tierTools').dataset.gameName}. Skipped: 1 unreadable, 1 repeated, 1 without a tier, 1 for other games.`, 'says what was not taken');
   const rows = read(w.tiersFile).filter((r) => r.game_id === C.id);
   assert.deepStrictEqual(rows.map((r) => [r.player_id, r.startgg_tag, r.tier, r.source]), [['11', 'Ryu', '8', 'import 2026-11-12 from theirs.csv'], ['12', 'Ken', '6', 'import 2026-11-12 from theirs.csv']]);
   assert.deepStrictEqual(p.order(), ['p:11', 'p:12'], 'the sheet shows them');
@@ -377,4 +382,82 @@ test('A3 import: the A2.2 safety holds in the diff: a change since the list was 
   assert.strictEqual(fs.readFileSync(w.tiersFile, 'utf8'), before, 'nothing written over the newer tiers');
   assert.match(p.$('impMsg').textContent, /^Your tiers changed since this list was made; here it is again\./);
   assert.match(p.$('impBody').innerHTML, /<td class="cur num"><b>7<\/b><\/td>/, 'the fresh list shows the current tier');
+});
+
+// ---- Repair pass (auditor, 2026-11-12) ----------------------------------------------------------
+
+test('A3 repair 1: a multi-line note: clicking in and out writes nothing (row, line breaks and source kept); editing it keeps its line breaks; Shift+Enter is a new line', async () => {
+  const note = 'line one\r\nline two\r\n  indented three';
+  const w = world([row(A, { player_id: '7', startgg_tag: 'Multi', tier: '4', notes: note, source: 'sheet import 2026-10-15 (All Players/Seeds)' }), row(A, { player_id: '8', startgg_tag: 'Other', tier: '2', alias: 'Al', source: 'sheet import' })]);
+  const before = fs.readFileSync(w.tiersFile, 'utf8');
+  const p = await tiersPage(w, A.id);
+  // Focus, then blur, with the value as the page put it in the editor (a textarea).
+  let ed = p.open('p:7', 'notes');
+  assert.strictEqual(ed.td.innerHTML, '<textarea class="ed" rows="3"></textarea>', 'notes edit in a textarea');
+  assert.strictEqual(ed.input.value, note, 'the stored note, exactly');
+  ed.input.value = note.replace(/\r\n/g, '\n');   // a browser's textarea reports line breaks as \n
+  await Promise.all(ed.input.dispatch('blur').results);
+  await p.page.flush(6);
+  // The alias and tier editors too: in and out, nothing sent.
+  for (const [k, f] of [['p:8', 'alias'], ['p:8', 'tier']]) { ed = p.open(k, f); await Promise.all(ed.input.dispatch('blur').results); await p.page.flush(6); }
+  assert.strictEqual(fs.readFileSync(w.tiersFile, 'utf8'), before, 'nothing written');
+  assert.ok(!p.page.requests.some((r) => r.url === '/api/tiers/row'), 'nothing sent');
+  // The server's own guard: the same value back writes nothing either.
+  data.editTierByKey(A.id, 'p:7', { notes: note.replace(/\r\n/g, '\n') }, { tiersFile: w.tiersFile, now: NOW });
+  data.editTierByKey(A.id, 'p:8', { alias: ' Al ', tier: '2' }, { tiersFile: w.tiersFile, now: NOW });
+  assert.strictEqual(fs.readFileSync(w.tiersFile, 'utf8'), before, 'a no-op edit writes nothing; source stays the sheet import');
+  // Shift+Enter: a new line, not a save.
+  ed = p.open('p:7', 'notes');
+  const shift = ed.input.dispatch('keydown', { key: 'Enter', shiftKey: true });
+  assert.strictEqual(shift.defaultPrevented, false, 'the textarea takes the line break');
+  assert.ok(!p.page.requests.some((r) => r.url === '/api/tiers/row'));
+  // A real edit keeps every line break and the leading spaces.
+  ed.input.value = 'line one\nline two (edited)\n  indented three';
+  await Promise.all(ed.input.dispatch('keydown', { key: 'Enter', stopPropagation() {} }).results);
+  await p.page.flush(6);
+  const saved = read(w.tiersFile).find((r) => r.player_id === '7');
+  assert.strictEqual(saved.notes, 'line one\nline two (edited)\n  indented three');
+  assert.strictEqual(saved.source, 'app', 'a real edit is an app edit, as while seeding');
+  assert.strictEqual(read(w.tiersFile).find((r) => r.player_id === '8').source, 'sheet import', 'the other row untouched');
+});
+
+test('A3 repair 2: two rows with one player id in a game are never edited by guess: 409 naming both, nothing written; the page keeps both rows as they are', async () => {
+  const w = world([row(A, { player_id: '5', startgg_tag: 'Alice', tier: '9' }), row(A, { player_id: '5', startgg_tag: 'Alice2', tier: '3' }), row(A, { player_id: '6', startgg_tag: 'Bob', tier: '1' })]);
+  const before = fs.readFileSync(w.tiersFile, 'utf8');
+  assert.throws(() => data.editTierByKey(A.id, 'p:5', { tier: 4 }, { tiersFile: w.tiersFile, now: NOW }),
+    (e) => e.status === 409 && /2 rows in this game have start\.gg player id 5: "Alice" \(tier 9\), "Alice2" \(tier 3\)/.test(e.message));
+  const p = await tiersPage(w, A.id);
+  await p.edit('p:5', 'tier', '4');
+  assert.match(p.$('tierMsg').textContent, /^2 rows in this game have start\.gg player id 5/);
+  assert.strictEqual(fs.readFileSync(w.tiersFile, 'utf8'), before, 'neither Alice changed');
+  assert.match(p.$('tierTable').innerHTML, /<b>Alice<\/b>[\s\S]*<b>9<\/b>[\s\S]*<b>Alice2<\/b>|<b>Alice2<\/b>[\s\S]*<b>3<\/b>/);
+  assert.strictEqual((p.$('tierTable').innerHTML.match(/<b>Alice<\/b>/g) || []).length, 1, 'still one Alice and one Alice2 on the page');
+  assert.strictEqual((p.$('tierTable').innerHTML.match(/<b>Alice2<\/b>/g) || []).length, 1);
+  // Two rows with one discriminator (no id): the same.
+  const w2 = world([row(A, { discriminator: 'abcd0005', startgg_tag: 'X', tier: '1' }), row(A, { discriminator: 'abcd0005', startgg_tag: 'Y', tier: '2' })]);
+  assert.throws(() => data.editTierByKey(A.id, 'd:abcd0005', { notes: 'n' }, { tiersFile: w2.tiersFile }), (e) => e.status === 409 && /discriminator abcd0005/.test(e.message));
+  // A unique row next to them still edits normally.
+  await p.edit('p:6', 'tier', '2');
+  assert.strictEqual(read(w.tiersFile).find((r) => r.player_id === '6').tier, '2');
+});
+
+test('A3 repair 3: a game with rows but no tier goes through the diff, so a tag-only link to one of Noah\'s rows is shown before anything is written', async () => {
+  const w = world([row(A, { sheet_tag: 'Charlie', notes: 'my note', source: 'sheet import' })]);   // a row, no tier, no id
+  const before = fs.readFileSync(w.tiersFile, 'utf8');
+  const p = await tiersPage(w, A.id);
+  await p.importFile(theirs([[A.id, A.name, '77', '', 'Charlie', '', '6'], [A.id, A.name, '78', '', 'Newbie', '', '2']]));
+  assert.strictEqual(p.$('importPanel').hidden, false, 'the diff, not a direct import');
+  assert.strictEqual(fs.readFileSync(w.tiersFile, 'utf8'), before, 'nothing written yet');
+  assert.match(p.$('impBody').innerHTML, /<tr data-key="2">[^]*?<td class="cur">Charlie<\/td>[^]*?<span class="tag flag"[^>]*>check<\/span>/, 'the tag-only match is shown against Noah\'s row and flagged');
+});
+
+test('A3 repair 4: alias is the LAST column: an old file keeps every column where it was (unknown ones too) and gets alias appended', () => {
+  const extra = [...OLD_COLS, 'my_formula_col'];
+  const w = world([{ ...row(A, { player_id: '1', startgg_tag: 'K', tier: '9' }), my_formula_col: '=A1' }], { cols: extra });
+  data.editTierByKey(A.id, 'p:1', { alias: 'Kay' }, { tiersFile: w.tiersFile, now: NOW });
+  const head = fs.readFileSync(w.tiersFile, 'utf8').replace(/^\ufeff/, '').split('\r\n')[0].split(',').map((c) => c.replace(/"/g, ''));
+  assert.deepStrictEqual(head, [...extra, 'alias'], 'every column in its old place; alias appended');
+  const r = read(w.tiersFile)[0];
+  assert.deepStrictEqual([r.alias, r.my_formula_col, r.tier], ['Kay', '=A1', '9']);
+  assert.strictEqual(data.TIER_COLS[data.TIER_COLS.length - 1], 'alias');
 });

@@ -6,6 +6,8 @@
 //   node app/server.js [--port 8765] [--out <folder>] [--open]
 // Pages:
 //   GET  /                      tournaments: live first, then done, then archived; add a tournament
+//   GET  /tiers[?game=<id>]     the Tiers view (Amendment A3): a tab per game, the game's sheet, export / import
+//   (every page has the left nav: Tournaments, Tiers)
 //   GET  /t/<t>                 the tournament page (?tab=<game id> | schedule)
 //   GET  /e/<t>/<e>             redirects to /t/<t>?tab=<that event's game> when out/<t>/ exists, else
 //                               404 with a link to add the tournament (old run folders are not read)
@@ -45,6 +47,8 @@
 //                                             numbered from the seed order the page sends (else the saved one)
 //   POST /api/t/<t>/push/<e>/post             { fingerprint, confirm: true, seeding? } the seeding post: the
 //                                             order the page sends is saved, then posted (A2.3)
+//   GET  /api/tiers?game=<id>                 the Tiers view's rows for one game (lib/view/data.js tierRows)
+//   POST /api/tiers/row                       { game_id, key, tier? | alias? | notes? } an in-place edit (A3)
 //   GET  /api/tiers/export.csv?game=<id>      one game's tiers as a shareable file (Amendment A2.2)
 //   POST /api/tiers/import/preview            { game_id, csv, file_name? } the import's review (read-only)
 //   POST /api/tiers/import/apply              { game_id, csv, file_name?, fingerprint, take: [row key] }

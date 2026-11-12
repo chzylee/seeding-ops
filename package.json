@@ -1,6 +1,6 @@
 {
   "name": "seeding-ops",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "description": "Seeding ops for FGC tournaments: pull two years of start.gg results for every registrant, tier players, and seed from one local page.",
   "type": "commonjs",

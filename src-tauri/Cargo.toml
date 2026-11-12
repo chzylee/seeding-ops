@@ -1,6 +1,6 @@
 [package]
 name = "seeding-ops"
-version = "0.2.0"
+version = "0.3.0"
 description = "Seeding ops for FGC tournaments: pull start.gg results, tier players, seed from one page"
 authors = ["enpicie"]
 edition = "2021"

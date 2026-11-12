@@ -22,8 +22,11 @@ works at once. The same screen comes back if start.gg ever rejects the saved tok
 can't be reached (offline, rate limited), the bar at the top turns amber and says so, with a Retry;
 it doesn't ask for a new key. (See *Setup* below for the file itself.)
 
+**Two views.** A nav on the left of every page switches between **Tournaments** (the home page: your
+tournaments and *Add a tournament*) and **Tiers** (below). In a narrow window it shrinks to icons.
+
 **Add a tournament.** The home page lists your tournaments: live ones first, then done, then
-archived (a short line above the first done one says done is automatic once the last seeded event's date has passed). Paste a start.gg tournament link, or any of its event links, into *Add a tournament*. The
+archived (a tournament is done once its last seeded event's date has passed). Paste a start.gg tournament link, or any of its event links, into *Add a tournament*. The
 app asks start.gg once for the tournament's events and opens the tournament's page. Each tournament
 on the home page carries a small badge saying where it came from: **start.gg** (blue) for one added
 by link, **upload** (violet) for a CSV list (below). Tournaments added before the badges existed,
@@ -78,20 +81,47 @@ neither id. Ids get written in by a ✓ or an edit on the row, by an upload (abo
 a row already linked by `player_id` gets that player's discriminator (in every game: it is the same
 start.gg player).
 
-**Share tiers with another organizer.** The home page's **Tiers** section has a game picker.
-**Export tiers…** saves that game's tiers as a CSV: each tiered player's tier, tags, start.gg player
-id and discriminator. Your notes, review dates and tournaments, `decided_on`, `source` and the sheet
-import's region / placements / notes are **not** in it. **Import tiers…** reads such a file (or anyone's
-`tiers.csv`) for the picked game and shows a review before anything changes: **new players** (no tier
-of yours; each with an Add box, plus *Add all* / *Add none*) and **conflicts** (your tier and theirs
-side by side; *Mine* / *Theirs* per row, plus *Keep all mine* / *Take all theirs*). Players are matched
-by start.gg id, then discriminator, then tag. **Apply** writes only the rows you picked, only in that
-game; their notes and reviews stay yours, and each changed row's `source` says
-`import <date> from <file>`, which the grey "never reviewed" hover shows. A file row with only a tag
-that matches a player you already have (linked or not) is shown against your row, never added again. Rows for other games in the file are
-counted and ignored; a file with none for the picked game is refused, naming the games it has. A row
-matched by tag only that you take is listed afterwards for you to check. If your tiers change between
-the review and Apply, the review is shown again.
+**The Tiers view** (`/tiers`, the nav's *Tiers*). A tab per game in your tiers table, and a sheet
+of that game's players: **Player** (the start.gg tag), **start.gg discriminator**, **Alias**, **Tier**,
+**Notes**, **Last reviewed**. Click any header to sort by it; click it again to reverse. Click a Tier,
+Alias or Notes cell (or press Enter on it) to edit it in place: Enter or leaving the cell saves, Esc
+cancels. Every save goes to the same `registry/tiers.csv` the seeding table writes, with the same
+rule (a tier is a whole number 0 to 20; a changed tier stamps `decided_on`). Tiers you set while
+seeding are saved the moment you set them, as before; the Tiers view shows them on its next load.
+*Another game* opens a tab for a game you have no tiers for yet (to import into it).
+
+**Alias.** Your own name for a player, blank until you give one (it is never read from start.gg).
+Players change tags often; the alias helps you track who they are. Wherever a sheet shows a tag (the
+Tiers view and a tournament's seeding table) it shows the alias after it: *Knight Artorias (Onyxdood)*.
+The alias is display only: it never matches a player to a tiers row (matching stays start.gg id, then
+discriminator, then tag), sorting by Player sorts by the tag, and it is not in the tiers export (like
+your notes). It lives in the `alias` column of `registry/tiers.csv`; a file from before 0.3.0 has no
+such column and reads as it is, and the first save adds the column, blank, keeping every row.
+
+**Share tiers with another organizer.** In the Tiers view, for the game tab you are on.
+**Export…** saves that game's tiers as a CSV: each tiered player's tier, tags, start.gg player id and
+discriminator. Your alias, notes, review dates and tournaments, `decided_on`, `source` and the
+sheet import's region / placements / notes are **not** in it. **Import…** reads such a file (or
+anyone's `tiers.csv`) for that game:
+
+- **A game with no tiers yet** takes the file as it is, with no review, and says how many players
+  were added.
+- **Otherwise you see a diff:** one row per player whose tier in the file differs from yours, your
+  current player and tier on the left, the file's on the right (a player new to you has an empty left
+  side). Players whose tier is the same are not listed; the count is. **Approve** on a row applies
+  that row; tick several and **Approve selected**; or **Approve all** for every row listed. **Find**
+  narrows the list by tag or alias, so *Approve all* with an empty search overwrites everything, and
+  with a search approves just the players found. Nothing changes until you approve it.
+
+Players are matched by start.gg id, then discriminator, then tag. An approval writes only those
+rows, only in that game; their notes, alias and reviews stay yours, and each changed row's `source`
+says `import <date> from <file>`, which the grey "never reviewed" hover shows. A file row with only a
+tag that matches a player you already have (linked or not) is shown against your row, never added
+again; one tag that matches two of your players is never offered. Rows for other games in the file
+are counted and ignored; a file with none for the game is refused, naming the games it has. A row
+matched by tag only is marked *check*; approving it writes the file's ids into your row, and it is
+named afterwards. If your tiers change between the list and an approval, nothing is written and the
+list is shown again.
 
 **Tick the events to seed, then Pull.** On a new tournament's page, *Seeded events* lists its
 singles events (teams events are shown greyed out: they can't be seeded). Tick the ones you're
@@ -443,8 +473,9 @@ lost the tiers table, and any reinstall put the empty table back over yours.
 ### Updates
 
 Install once; after that the app checks for updates by itself each time it opens (once per launch,
-quietly) and says what it found in the bar at the top of every page, beside your profile: "v0.2.0 ·
-You're up to date", or "Update available: v0.3.0" with an **Update** button. Update asks once, then
+quietly) and says what it found in the bar at the top of every page, beside your profile: a green
+**✓** when it is up to date (hover it for "Up to date · v0.3.0"; click it to check again), or
+"⚠️ Latest: v0.4.0" with an **Update** button. Update asks once, then
 downloads the installer, checks its signature, closes, installs, and reopens. Your tiers, tournaments
 and start.gg connection are kept (they live in the data folder above). If the check fails (offline,
 GitHub down) the bar just shows the version. Update waits while a pull, schedule pull, archive or push
@@ -470,7 +501,7 @@ before the installer replaces them.
 
 Why "Do not uninstall": that page selects *Uninstall before installing* by default (Tauri's installer
 template), and 0.1.0's uninstaller deletes `registry	iers.csv`; .env and out survive either way.
-If the tiers table was removed by mistake, import a tiers file from the home page's Tiers section.
+If the tiers table was removed by mistake, import a tiers file in the Tiers view.
 From 0.2.0 on, the account-bar **Update** button runs the installer in update mode (`/P /UPDATE /R`),
 which never uninstalls.
 
@@ -570,7 +601,8 @@ increment 3, [`docs/design-tool.md`](docs/design-tool.md)):
   dry-run table. Also shared by Node and the browser, so the app and `views/major-table.js` show
   the same cells.
 - `lib/view/data.js`: a tab of a tournament pool → the page's JSON; the Sheets and seeds exports;
-  the tier/notes and ✓ review writes to `registry/tiers.csv`.
+  the tier/notes and ✓ review writes to `registry/tiers.csv`, and the Tiers view's rows and in-place
+  edits (`tierRows`, `editTierByKey`: the same edit rule and atomic write).
 - `lib/view/export.js`: the Google Sheets CSV.
 - `lib/view/majors.js`: reads `config/majors.json`, the per-game majors lists.
 - `lib/wl.js`: W-L (sets) for result rows through `lib/startgg`'s client, cached in
@@ -591,7 +623,9 @@ increment 3, [`docs/design-tool.md`](docs/design-tool.md)):
 - `app/server.js` (`npm start`, `app.cmd`): the local server; `app/jobs.js` the pull, W-L, schedule
   and archive jobs; `app/queue.js` the one request queue; `app/limit-fetch.js` its ceiling;
   `app/public/` the pages (plain HTML/CSS/JS, no build): `tournament.html` with `tournament.js`
-  (header, tabs, picker, lifecycle), `app.js` (a game's tab), `schedule.js` (the Schedule tab).
+  (header, tabs, picker, lifecycle), `app.js` (a game's tab), `schedule.js` (the Schedule tab),
+  `tiers.js` (the Tiers view: sheet, edits, export, import diff). The server renders the left nav into
+  every page.
 - `lib/data-dir.js`: where the data lives (beside the code, or an installed copy's per-user data
   folder) and the one-time move out of an older install folder. `app/app-main.js` runs it before
   the server loads; the server reads `SEEDING_DATA`.

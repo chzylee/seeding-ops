@@ -72,7 +72,10 @@ async function tiersPage(w, game) {
     $('tierTable').dispatch('click', { target: { closest: (sel) => (sel === 'td[data-edit]' ? td : null) } });
     const input = td.querySelector('input.ed');
     input.value = value;
-    await Promise.all(input.dispatch('keydown', { key: 'Enter' }).results);
+    let stopped = false;
+    await Promise.all(input.dispatch('keydown', { key: 'Enter', stopPropagation() { stopped = true; } }).results);
+    // Enter must not bubble to the table, where it would open the editor again on the old cell.
+    assert.ok(stopped, 'Enter stops at the editor');
     await page.flush(6);
     return { td, input };
   };

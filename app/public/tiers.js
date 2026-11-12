@@ -67,7 +67,7 @@
     if (td && !editing) startEdit(td);
   });
   table.addEventListener('keydown', (ev) => {
-    if (editing) return;
+    if (editing || (ev.target && ev.target.tagName === 'INPUT')) return;
     const td = cellOf(ev);
     if (td && (ev.key === 'Enter' || ev.key === 'F2')) { ev.preventDefault(); startEdit(td); }
   });
@@ -87,25 +87,33 @@
     input.setAttribute('aria-label', label);
     input.value = old;
     editing = { key, field, old, input };
+    // The keys stop here: Enter bubbling on to the table would open the editor again on the old cell.
     input.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') { e.preventDefault(); commit(); } else if (e.key === 'Escape') { e.preventDefault(); cancel(); }
+      if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); commit(); } else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); cancel(); }
     });
     input.addEventListener('blur', () => { commit(); });
     input.focus();
     input.select();
   }
-  function cancel() { editing = null; draw(); }
+  // After a save or a cancel the sheet is redrawn; focus goes back to the cell that was edited.
+  const refocus = (e) => {
+    const q = (s) => String(s).replace(/["\\]/g, '\\$&');
+    const td = table.querySelector(`tr[data-key="${q(e.key)}"] td[data-edit="${q(e.field)}"]`);
+    if (td && td.focus) td.focus();
+  };
+  function cancel() { const e = editing; editing = null; draw(); if (e) refocus(e); }
   async function commit() {
     const e = editing;
     if (!e) return null;
     editing = null;
     const value = String(e.input.value ?? '').trim();
-    if (value === e.old) { draw(); return null; }
+    if (value === e.old) { draw(); refocus(e); return null; }
     say('Saving…');
     const r = await postJson('/api/tiers/row', { game_id: game, key: e.key, [e.field]: value });
-    if (!r.ok) { say(r.body.error || 'Not saved.', true); draw(); return r; }
+    if (!r.ok) { say(r.body.error || 'Not saved.', true); draw(); refocus(e); return r; }
     rows = rows.map((x) => (x.key === e.key && r.body.row ? r.body.row : x));
     draw();
+    refocus(e);
     say('Saved.');
     return r;
   }

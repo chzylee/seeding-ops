@@ -679,3 +679,57 @@ Decisions:
   Moving while the table is sorted by another column first returns it to seed order; *Sort by seed*
   and the Seed header (ascending) do the same. When a tab has several events, *Seeds for* picks which
   event the column numbers (remembered per browser).
+
+## Amendment A3 — Two views, the Tiers sheet, the player alias, an import you approve (Noah, 2026-11-12; 0.3.0)
+
+Noah's spec, relayed by the orchestrating session; binding over the sections above where they differ.
+Tests: `test/tiers-view.test.js`, plus the updated `test/update-app.test.js` and `test/upload.test.js`.
+
+- **Left nav on every page** (home, tournament, not-added, Tiers): **Tournaments** (`/`) and **Tiers**
+  (`/tiers`), the active one `aria-current="page"`. Rendered by the server (`app/server.js` `navHtml`;
+  the static tournament page gets it where its `<body>` opens). Below 1200 px wide (the window opens at
+  1440 and goes down to 900) it is an icon rail: each link keeps its name, visually hidden, and its
+  title. The home page's Tiers section moves to the Tiers view; the home page is the tournaments only.
+- **The Tiers view.** Intro, Noah's words verbatim: *"Tier players from 0-10 for each game. Save tiers to
+  seed future events faster. / Tier data is automatically saved as you seed an event."* A tab per game in
+  `registry/tiers.csv` (links, `?game=<id>`), plus *Another game* for a known game with no rows yet.
+  Columns: Player (the start.gg tag, `startgg_tag` else `sheet_tag`), start.gg discriminator, Alias,
+  Tier, Notes, Last reviewed (`last_reviewed_on`, the tournament on hover): the seeding table's own
+  identity and review fields, nothing else. Every header sorts, ascending then descending, with
+  `aria-sort`; blanks sort last either way; ties fall to the tag. Tier, Alias and Notes edit in place
+  (`POST /api/tiers/row`), through `lib/view/data.js` `editTierByKey`: the same `readTierTable` /
+  `writeTierTable` (temp + rename; a non-ENOENT read error throws, 503) and the same edit rule as the
+  seeding table (`applyEdit`, shared with `updatePlayer`: a changed tier stamps `decided_on`, every edit
+  sets `source` "app"). A row is addressed by a key, not a row number: `p:<player_id>`, else
+  `d:<discriminator>`, else `t:<tag>`; two unlinked rows with one tag refuse the edit (409). Seeding's
+  saves are unchanged; there is one store.
+- **Tier range.** The spec says "0-10, the same as seeding's"; seeding's check is 0..20, and the real
+  table holds one 11. The build keeps the one rule (`data.checkTier`, 0..20, shared by seeding, the
+  Tiers view and the import) and Noah's intro text as written. Narrowing to 0..10 is one constant
+  (`MAX_TIER`) once Noah rules on the 11 (open item).
+- **Alias.** A new `alias` column (after `sheet_tag`), blank by default, never filled from start.gg. A
+  file without it reads unchanged; the first write adds it blank and drops no row (the writer already
+  carried unknown columns and wrote every known one). Display: "Tag (Alias)" in the Tiers view and the
+  seeding table (`readNotes` gives `tier_alias`; named apart from an uploaded list's `alias`, A1.3,
+  which is a player field and still matches as before). The alias takes no part in matching (the
+  index reads only ids, `startgg_tag` and `sheet_tag`), sorting by Player sorts by the tag (the cell's
+  `data-v`), and it is **private**: in `PRIVATE_COLS`, never exported (Noah's default, kept).
+- **Import** (in the Tiers view, for the current tab; export moves there too). The A2.2 engine
+  (`lib/tiers-share.js`) is unchanged but for two read-only fields (`tiered_here`, `mine_alias`).
+  A game with no tiered row here: every new row is applied at once, no review, and the page says how
+  many players were added. Otherwise a diff: one row per `new` or `conflicts` item, current (tag with
+  alias, tier) left and incoming right, a new player's left side empty; `same` is a count;
+  ambiguous, repeated, unreadable and other-game rows are listed below as before and never offered.
+  Approve one row, the ticked rows, or **every row listed** (the search applied; the button carries the
+  count). Search matches either side's tag and the alias. Each approval is one `applyImport` with the
+  review's fingerprint, then the list is re-read; a change since then is the 409 and the fresh list.
+  Nothing is applied unless approved (A2.2's defaults, add new and keep mine, are gone with its
+  per-section bulk buttons, `importTake` / `importBulk` / `importReview`).
+- **Update status** (`app/public/update.js`): up to date is a green ✓ button, title and accessible name
+  "Up to date · v<current>", a click checks again; a newer release reads "⚠️ Latest: v<version>" with
+  Update. The rest of the flow is as built.
+- **Copy cut** (inner workings, Noah: "users don't need the inner workings of the data"): the home
+  page's "marked done automatically…" paragraph; the Add field's hover about one start.gg request; the
+  CSV import's "It builds its own page for one game" and "Each row costs one start.gg lookup…"; the
+  date field's hover about when a page counts as done; the Tiers section's paragraph on what the file
+  carries; the delete confirmation's folder paths.

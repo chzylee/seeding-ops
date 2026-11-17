@@ -140,7 +140,7 @@
 		link = el('a', 'updateLink', 'update-link');
 		link.target = '_blank'; link.rel = 'noopener'; link.hidden = true;
 		area.appendChild(text); area.appendChild(btn); area.appendChild(retry); area.appendChild(link);
-		bar.appendChild(area);
+		bar.insertBefore(area, bar.querySelector('.theme-switch'));   // the theme switch stays last, at the right
 
 		dlg = el('dialog', 'updateDialog', 'account-dialog');
 		dlg.setAttribute('aria-labelledby', 'updateDialogTitle');

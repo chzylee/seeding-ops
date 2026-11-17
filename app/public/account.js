@@ -55,6 +55,8 @@
 		bar.id = 'accountBar';
 		bar.innerHTML = '<span class="who"></span><button type="button" class="retry" hidden title="Ask start.gg again">Retry</button><button type="button" class="change" title="Use a different start.gg account: paste another personal API token">Change…</button>';
 		document.body.insertBefore(bar, document.body.firstChild);
+		var sw = document.querySelector('.theme-switch');   // made by theme.js before the bar existed
+		if (sw) bar.appendChild(sw);
 		dlg = document.createElement('dialog');
 		dlg.id = 'accountDialog';
 		dlg.className = 'account-dialog';

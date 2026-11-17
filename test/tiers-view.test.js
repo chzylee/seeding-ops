@@ -39,10 +39,10 @@ function world(rows, { cols = data.TIER_COLS } = {}) {
   return { dir, tiersFile, app, outRoot: path.join(dir, 'out') };
 }
 const mineRows = () => [
-  row(A, { player_id: '1', discriminator: 'aaaa0001', startgg_tag: 'Knight Artorias', sheet_tag: 'Knight Artorias', alias: 'Onyxdood', tier: '9', notes: 'n1', last_reviewed_on: '2026-10-16', last_reviewed_tournament: 'eclipse' }),
+  row(A, { player_id: '1', discriminator: 'aaaa0001', startgg_tag: 'Knight Artorias', sheet_tag: 'Knight Artorias', alias: 'Onyxdood', sheet_region: 'NY', tier: '9', notes: 'n1', last_reviewed_on: '2026-10-16', last_reviewed_tournament: 'eclipse' }),
   row(A, { player_id: '2', startgg_tag: 'bravo', tier: '5', notes: 'keep me' }),
   row(A, { sheet_tag: 'Charlie', tier: '3', source: 'sheet import', alias: 'Zed' }),
-  row(A, { player_id: '4', discriminator: 'dddd0004', startgg_tag: 'Delta', notes: 'a note', last_reviewed_on: '2026-11-01', last_reviewed_tournament: 'x' }),
+  row(A, { player_id: '4', discriminator: 'dddd0004', startgg_tag: 'Delta', sheet_region: 'CA', notes: 'a note', last_reviewed_on: '2026-11-01', last_reviewed_tournament: 'x' }),
   row(B, { player_id: '1', startgg_tag: 'Knight Artorias', tier: '2' }),
 ];
 const theirs = (lines) => '﻿"game_id","game_name","player_id","discriminator","startgg_tag","sheet_tag","tier"\r\n' + lines.map((l) => l.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\r\n') + '\r\n';
@@ -152,11 +152,12 @@ test('A3 Tiers view: every column sorts both ways from its header, with aria-sor
   const w = world(mineRows());
   const p = await tiersPage(w, A.id);
   assert.deepStrictEqual(p.order(), ['p:1', 'p:2', 't:charlie', 'p:4'], 'opens by tier, highest first; no tier last');
-  assert.match(p.$('tierTable').innerHTML, /<th data-col="tier" aria-sort="descending">/);
+  assert.match(p.$('tierTable').innerHTML, /<th data-col="tier" class="col-tier" aria-sort="descending">/);
   const expect = {
-    tag: [['p:2', 't:charlie', 'p:4', 'p:1'], ['p:1', 'p:4', 't:charlie', 'p:2']],          // bravo, Charlie, Delta, Knight (not Onyxdood / Zed)
     discriminator: [['p:1', 'p:4', 'p:2', 't:charlie'], ['p:4', 'p:1', 'p:2', 't:charlie']],  // blanks last both ways (ties by tag)
+    tag: [['p:2', 't:charlie', 'p:4', 'p:1'], ['p:1', 'p:4', 't:charlie', 'p:2']],          // bravo, Charlie, Delta, Knight (not Onyxdood / Zed)
     alias: [['p:1', 't:charlie', 'p:2', 'p:4'], ['t:charlie', 'p:1', 'p:2', 'p:4']],
+    region: [['p:4', 'p:1', 'p:2', 't:charlie'], ['p:1', 'p:4', 'p:2', 't:charlie']],         // CA, NY, then blanks
     tier: [['t:charlie', 'p:2', 'p:1', 'p:4'], ['p:1', 'p:2', 't:charlie', 'p:4']],
     notes: [['p:4', 'p:2', 'p:1', 't:charlie'], ['p:1', 'p:2', 'p:4', 't:charlie']],
     last_reviewed_on: [['p:1', 'p:4', 'p:2', 't:charlie'], ['p:4', 'p:1', 'p:2', 't:charlie']],
@@ -166,11 +167,11 @@ test('A3 Tiers view: every column sorts both ways from its header, with aria-sor
     if (col === 'tier') { p.sortBy('tag'); }   // tier is the current sort: start it fresh
     p.sortBy(col);
     assert.deepStrictEqual(p.order(), asc, `${col} ascending`);
-    assert.match(p.$('tierTable').innerHTML, new RegExp(`<th data-col="${col}" aria-sort="ascending">`));
+    assert.match(p.$('tierTable').innerHTML, new RegExp(`<th data-col="${col}" class="col-${col}" aria-sort="ascending">`));
     assert.strictEqual((p.$('tierTable').innerHTML.match(/aria-sort=/g) || []).length, 1, 'one sorted column');
     p.sortBy(col);
     assert.deepStrictEqual(p.order(), desc, `${col} descending`);
-    assert.match(p.$('tierTable').innerHTML, new RegExp(`<th data-col="${col}" aria-sort="descending">`));
+    assert.match(p.$('tierTable').innerHTML, new RegExp(`<th data-col="${col}" class="col-${col}" aria-sort="descending">`));
   }
 });
 

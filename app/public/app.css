@@ -635,7 +635,7 @@ body.seed-dragging, body.seed-dragging * { cursor: grabbing !important; user-sel
    table keeps its width; each link keeps its name (visually hidden) and its title. ---- */
 :root { --nav-w: 168px; }
 body.has-nav { padding-left: var(--nav-w); }
-.app-nav { position: fixed; top: 0; left: 0; bottom: 0; width: var(--nav-w); z-index: var(--z-bar); display: flex; flex-direction: column; gap: 2px;
+.app-nav { position: fixed; top: var(--bar-h); left: 0; bottom: 0; width: var(--nav-w); z-index: var(--z-bar); display: flex; flex-direction: column; gap: 2px;
   padding: var(--s-3) var(--s-2); background: var(--head); border-right: 1px solid var(--line-strong); }
 .app-nav .nav-item { display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 10px; border-radius: var(--radius); color: var(--ink-2); font-weight: 550; text-decoration: none; }
 .app-nav .nav-item:hover { background: var(--head-hover); color: var(--fg); text-decoration: none; }
@@ -675,7 +675,10 @@ table.tier-sheet tbody tr:hover td { background: var(--row-hover); }
 table.tier-sheet td[data-edit] { cursor: text; }
 table.tier-sheet td[data-edit]:hover { box-shadow: inset 0 0 0 1px var(--line-strong); }
 table.tier-sheet td.tier { width: 5em; text-align: right; }
-table.tier-sheet td.disc { color: var(--dim); font-family: ui-monospace, Consolas, monospace; font-size: 12px; }
+table.tier-sheet td.disc { width: 1%; white-space: nowrap; color: var(--dim); font-family: ui-monospace, Consolas, monospace; font-size: 11px; }
+/* Noah (2026-11-17): Player and Alias the same width. */
+table.tier-sheet th.col-tag, table.tier-sheet th.col-alias { width: 18%; }
+table.tier-sheet td.region { width: 1%; white-space: nowrap; }
 table.tier-sheet td.notes { min-width: 16em; }
 table.tier-sheet td.reviewed { white-space: nowrap; color: var(--dim); }
 table.tier-sheet input.ed { width: 100%; min-width: 4em; font: inherit; padding: 2px 4px; border: 1px solid var(--accent); border-radius: var(--radius-sm); background: var(--cell); color: var(--fg); }
@@ -688,3 +691,12 @@ table.imp-diff .cur { background: var(--head); }
 table.imp-diff td.cur.empty { background: repeating-linear-gradient(135deg, var(--head), var(--head) 6px, var(--cell) 6px, var(--cell) 12px); }
 table.imp-diff .inc { background: var(--accent-weak); }
 table.imp-diff td.num { text-align: right; width: 4em; }
+
+/* Noah (2026-11-17): the account bar runs the full width across the top, the nav sits under it, and
+   the theme switch lives inside the bar (theme.js / account.js put it there). */
+:root { --bar-h: 36px; }
+#accountBar { position: relative; z-index: calc(var(--z-bar) + 1); flex: 0 0 auto; }
+body.has-nav #accountBar { margin-left: calc(-1 * var(--nav-w)); }
+#accountBar .theme-switch { position: static; margin-left: auto; flex: 0 0 auto; }
+/* The tournament page: "Tournaments" sits above the title, not beside it. */
+#top .back-row { display: block; margin-bottom: 2px; }

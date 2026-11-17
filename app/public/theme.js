@@ -53,7 +53,8 @@
 				apply(next);
 				update(sw);
 			});
-			document.body.appendChild(sw);
+			var host = document.getElementById('accountBar');   // inside the top bar when the page has one
+			(host || document.body).appendChild(sw);
 		}
 		update(sw);
 	}

@@ -76,7 +76,7 @@ test('A2.2 review: new players and conflicts side by side, matched by id, then d
     [A.id, A.name, '', '', 'Team | Charlie', '', '6'],    // conflict by tag (mine 3, unlinked); the prefix is stripped
     [A.id, A.name, '4', '', 'Delta', '', '7'],           // new: my row has a review and no tier
     [A.id, A.name, '5', 'eeee0005', 'Echo', '', '8'],    // new: no row here
-    [A.id, A.name, '', '', 'Ghost', '', '11'],           // new by tag only (no id, no row)
+    [A.id, A.name, '', '', 'Ghost', '', '6'],           // new by tag only (no id, no row)
     [A.id, A.name, '7', '', 'Golf', '', 'high'],          // malformed tier
     [A.id, A.name, 'x9', '', 'Hotel', '', '4'],           // malformed player id
     [A.id, A.name, '', 'nope', 'India', '', '4'],         // malformed discriminator
@@ -87,7 +87,7 @@ test('A2.2 review: new players and conflicts side by side, matched by id, then d
   ]);
   const p = S.previewImport({ csv, gameId: A.id, tiersFile, fileName: 'theirs.csv' });
   assert.deepStrictEqual(p.conflicts.map((x) => [x.tag, x.by, x.mine, x.theirs]), [['Alpha', 'player_id', 9, 10], ['Team | Charlie', 'tag', 3, 6]]);
-  assert.deepStrictEqual(p.new.map((x) => [x.tag, x.has_row, x.theirs]), [['Delta', true, 7], ['Echo', false, 8], ['Ghost', false, 11]]);
+  assert.deepStrictEqual(p.new.map((x) => [x.tag, x.has_row, x.theirs]), [['Delta', true, 7], ['Echo', false, 8], ['Ghost', false, 6]]);
   assert.strictEqual(p.counts.same, 1);
   assert.deepStrictEqual(p.duplicates.map((d) => [d.line, d.kept_line]), [[3, 2]]);
   assert.deepStrictEqual(p.malformed.map((m) => m.line), [9, 10, 11, 12]);

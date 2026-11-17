@@ -153,13 +153,13 @@ test('updatePlayer: a player with no tiers row at all gets a new one created, li
   assert.strictEqual(result.tier, 2);
 });
 
-test('updatePlayer: tier must be a whole number 0-20 — non-integer and out-of-range both -> 400, and nothing is written', () => {
+test('updatePlayer: tier must be a whole number 0-10 — non-integer and out-of-range both -> 400, and nothing is written', () => {
   const outRoot = tmpDir('seeding-tiers-validate-');
   const tiersFile = path.join(outRoot, 'registry', 'tiers.csv');
   const dir = makeRun(outRoot, { players: [player(404, 'Tagless')] });
   seedTiers(tiersFile, []);
 
-  for (const bad of ['abc', 3.5, -1, 21, '7.2']) {
+  for (const bad of ['abc', 3.5, -1, 11, '7.2']) {
     assert.throws(() => data.updatePlayer(dir, '404', { tier: bad }, { tiersFile }),
       (err) => err.status === 400, `tier ${JSON.stringify(bad)} should 400`);
   }
@@ -169,8 +169,8 @@ test('updatePlayer: tier must be a whole number 0-20 — non-integer and out-of-
   // A valid edit afterward still works (the earlier failures didn't corrupt anything).
   const ok = data.updatePlayer(dir, '404', { tier: 0 }, { tiersFile });
   assert.strictEqual(ok.tier, 0);
-  const okHigh = data.updatePlayer(dir, '404', { tier: 20 }, { tiersFile });
-  assert.strictEqual(okHigh.tier, 20);
+  const okHigh = data.updatePlayer(dir, '404', { tier: 10 }, { tiersFile });
+  assert.strictEqual(okHigh.tier, 10);
 });
 
 test('updatePlayer: decided_on is stamped only when the tier value actually changes', () => {

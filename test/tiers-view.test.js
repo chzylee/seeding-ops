@@ -193,9 +193,9 @@ test('A3 Tiers view: tier, alias and notes edited in place each write registry/t
   assert.strictEqual(read(w.tiersFile).length, mineRows().length);
   // The seeding rule: a whole number in range, else a 400 and nothing written.
   const before = fs.readFileSync(w.tiersFile, 'utf8');
-  for (const bad of ['21', '2.5', 'x']) {
+  for (const bad of ['11', '2.5', 'x']) {
     await p.edit('p:2', 'tier', bad);
-    assert.match(p.$('tierMsg').textContent, /^Tier must be a whole number from 0 to 20\./, bad);
+    assert.match(p.$('tierMsg').textContent, /^Tier must be a whole number from 0 to 10\./, bad);
     assert.ok(p.$('tierMsg').classList.contains('err'));
   }
   assert.strictEqual(fs.readFileSync(w.tiersFile, 'utf8'), before);

@@ -88,7 +88,7 @@ Alias or Notes cell (or press Enter on it) to edit it in place: Enter or leaving
 cancels; in Notes, Shift+Enter is a new line and line breaks are kept. Leaving a cell unchanged saves
 nothing. A game with two rows for one player (one start.gg id, or one tag and no id) can't edit them
 here; the message names the rows to fix in `tiers.csv`. Every save goes to the same `registry/tiers.csv` the seeding table writes, with the same
-rule (a tier is a whole number 0 to 20; a changed tier stamps `decided_on`). Tiers you set while
+rule (a tier is a whole number 0 to 10; a changed tier stamps `decided_on`). Tiers you set while
 seeding are saved the moment you set them, as before; the Tiers view shows them on its next load.
 *Another game* opens a tab for a game you have no tiers for yet (to import into it).
 

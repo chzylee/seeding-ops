@@ -707,10 +707,10 @@ Tests: `test/tiers-view.test.js`, plus the updated `test/update-app.test.js` and
   nothing is not sent, and the server writes nothing for one either, so `source` (the sheet or
   import provenance) is only replaced by a real edit (auditor repair pass). Seeding's saves are
   unchanged; there is one store.
-- **Tier range.** The spec says "0-10, the same as seeding's"; seeding's check is 0..20, and the real
-  table holds one 11. The build keeps the one rule (`data.checkTier`, 0..20, shared by seeding, the
-  Tiers view and the import) and Noah's intro text as written. Narrowing to 0..10 is one constant
-  (`MAX_TIER`) once Noah rules on the 11 (open item).
+- **Tier range.** 0..10 (Noah, 2026-11-17: "0-10 because that's what start.gg supports"). One rule,
+  `data.checkTier` (`MAX_TIER = 10`), shared by seeding, the Tiers view and the import. A stored value
+  above 10 (the real table had one 11) still reads and shows; it can't be saved again until it is
+  set within 0..10.
 - **Alias.** A new `alias` column, always the LAST column (after any unknown column too, so nothing
   reading tiers.csv by position moves), blank by default, never filled from start.gg. A file without it
   reads unchanged; the first write appends it blank and drops no row (the writer already

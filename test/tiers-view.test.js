@@ -113,6 +113,11 @@ test('A3 nav: the home page, a tournament page, the not-added page and the Tiers
     assert.deepStrictEqual(links.filter((l) => l.current).map((l) => l.key), [active], `${name}: aria-current on ${active} only`);
   }
   assert.match(pages.tournament[0], /id="tabs"/, 'the real tournament page');
+  // Back (Noah, 2026-11-17): in the nav on a tournament page, after Tiers; not in the page header; not on the views.
+  const navOf = (h) => /<nav id="appNav"[^>]*>([\s\S]*?)<\/nav>/.exec(h)[1];
+  assert.match(navOf(pages.tournament[0]), /nav-tiers[\s\S]*<a href="\/" class="nav-item nav-back" title="Back to all tournaments">[\s\S]*?<span class="nav-label">Back<\/span><\/a>$/);
+  for (const name of ['home', 'notAdded', 'tiers']) assert.doesNotMatch(navOf(pages[name][0]), /nav-back/, name);
+  assert.doesNotMatch(pages.tournament[0].replace(/<nav id="appNav"[\s\S]*?<\/nav>/, ''), /class="back/, 'no Back link left in the header');
   // The Tiers view is its own page: the home page no longer carries the tiers controls.
   assert.doesNotMatch(pages.home[0], /id="tierExport"|id="tierImport"|class="tiers-section"/);
   // The narrow window: the CSS turns the nav into an icon rail, its names kept for screen readers.

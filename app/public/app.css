@@ -698,5 +698,5 @@ table.imp-diff td.num { text-align: right; width: 4em; }
 #accountBar { position: relative; z-index: calc(var(--z-bar) + 1); flex: 0 0 auto; }
 body.has-nav #accountBar { margin-left: calc(-1 * var(--nav-w)); }
 #accountBar .theme-switch { position: static; margin-left: auto; flex: 0 0 auto; }
-/* The tournament page: "Tournaments" sits above the title, not beside it. */
-#top .back-row { display: block; margin-bottom: 2px; }
+/* Back (a tournament page): in the nav, a little below the items, not pinned to the bottom. */
+.app-nav .nav-back { margin-top: var(--s-4); color: var(--dim); }

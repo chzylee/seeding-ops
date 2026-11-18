@@ -173,8 +173,13 @@ const NAV_ICONS = {
   tiers: '<svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true" focusable="false"><rect x="3" y="3" width="14" height="3.5" rx="1" fill="currentColor"/><rect x="3" y="8.25" width="10" height="3.5" rx="1" fill="currentColor"/><rect x="3" y="13.5" width="6" height="3.5" rx="1" fill="currentColor"/></svg>',
 };
 const NAV_ITEMS = [['tournaments', '/', 'Tournaments'], ['tiers', '/tiers', 'Tiers']];
-function navHtml(active) {
-  return `<nav id="appNav" class="app-nav" aria-label="Main">${NAV_ITEMS.map(([key, href, label]) => `<a href="${href}" class="nav-item nav-${key}" title="${label}"${key === active ? ' aria-current="page"' : ''}>${NAV_ICONS[key]}<span class="nav-label">${label}</span></a>`).join('')}</nav>`;
+// back: a page inside a view (a tournament) gets a Back link in the nav, a little below the items and
+// never pinned to the bottom (Noah, 2026-11-17: "slightly spaced so it's easily within sight").
+const BACK_ICON = '<svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true" focusable="false"><path d="M12 4l-6 6 6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>';
+function navHtml(active, { back } = {}) {
+  const items = NAV_ITEMS.map(([key, href, label]) => `<a href="${href}" class="nav-item nav-${key}" title="${label}"${key === active ? ' aria-current="page"' : ''}>${NAV_ICONS[key]}<span class="nav-label">${label}</span></a>`).join('');
+  const backLink = back ? `<a href="${esc(back.href)}" class="nav-item nav-back" title="${esc(back.title)}">${BACK_ICON}<span class="nav-label">Back</span></a>` : '';
+  return `<nav id="appNav" class="app-nav" aria-label="Main">${items}${backLink}</nav>`;
 }
 // The tier import's request body cap (bytes): app/public/tiers.js checks a file's encoded size against it.
 const TIERS_BODY_MAX = 2_000_000;
@@ -261,7 +266,7 @@ function notAddedPage(t) {
 }
 // The tournament page is a static file; the nav goes in where its <body> opens.
 function tournamentPage() {
-  return fs.readFileSync(PAGE, 'utf8').replace('<body class="app">', `<body class="app has-nav">${navHtml('tournaments')}`);
+  return fs.readFileSync(PAGE, 'utf8').replace('<body class="app">', `<body class="app has-nav">${navHtml('tournaments', { back: { href: '/', title: 'Back to all tournaments' } })}`);
 }
 
 // A same-origin request from the app's own page. Blocks other sites' pages from POSTing to the

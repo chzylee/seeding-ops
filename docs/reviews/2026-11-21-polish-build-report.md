@@ -177,8 +177,8 @@ None by anyone else during the window. Changes of my own beyond what the contrac
    about a third higher than before. The event facts sit beside the title, and Archive standings and
    Delete are still separate buttons at the right.
 2. On the same page, look at the Tier column. Each coloured tier has a small mark after the number
-   (✓ green, ? grey), and the line to the right of the game tabs explains the marks. Skeleton shows
-   **11 !** in red.
+   (✓ green, ? grey), and the line to the right of the game tabs explains the marks. Skeleton's cell
+   reads **11 ! ?**: the "!" is red (above 10), and the "?" means never reviewed.
 3. Hover over Skeleton's tier. The tooltip starts "Above 10: start.gg supports tiers 0-10…" and still
    gives the review text.
 4. Press **Tab** once after the page loads. A blue "Skip to table" appears top left. Press **Enter**:
@@ -199,7 +199,33 @@ None by anyone else during the window. Changes of my own beyond what the contrac
     Import… now look like the app's other buttons in dark mode.
 12. On the home page in dark mode, the start.gg badge is blue with **dark** text, and the link field
     is dark with a visible border.
-13. On a tournament's **Schedule** tab, press Conflicts first. If any player has a clash, the row says
-    **Clash** or **Side clash** next to the tag.
+13. Eclipse has no schedule clashes today, so there is nothing to see there. The **Clash** / **Side
+    clash** tag only shows on an event whose Schedule tab has clashes, after you press Conflicts first.
+    Until then, the proof is the test `A4 UX-08 / UX-02: the Schedule tab, run…`.
 14. With Windows "Show animations" off, the loading bar and spinners stand still, and switching the
     theme snaps instead of fading.
+
+## 14. Repair round (the one the contract allows; auditor record `docs/reviews/2026-11-21-polish-audit.md`)
+
+- **R1. Done.**
+  - Each `TIER_MARKS` entry now carries its colour (green, amber, grey, light blue).
+  - A new `tierHelpText()` (`lib/view/render.js`) builds the help line from that same map: each
+    colour with its mark and meaning, once, then the red "!" and "no colour and no mark".
+  - `tournament.js:132` uses it, and the placeholder text in `tournament.html:57` is gone.
+  - The CLI view's sentence (`tierLegendText`) is unchanged.
+  - Shown by the new test `A4 repair R1…`.
+  - Shown live on `/t/eclipse-1st-cour`: in `#readHelp .about-body`, "Tier marks:" appears 0 times. The
+    line reads: "Tier colours and marks: Green with ✓: reviewed at this tournament. Amber with ◷: last
+    reviewed over 6 months ago. Grey with ?: never reviewed. Light blue with ≈: matched by tag only. A
+    red ! beside the number: the stored tier is above 10 (start.gg supports 0-10; set it within 0-10
+    to save). No colour and no mark: reviewed within the last 6 months."
+  - Dev server stopped afterwards.
+- **R2. Done.**
+  - Checklist step 2 now says Skeleton reads "11 ! ?" with a red "!".
+  - Step 13 now says Eclipse has no clashes, and that the test is the proof until an event has them.
+- **Not touched** (the auditor's ruling items go to Noah): UX-04 at 1024 px and the out-of-scope
+  proposals.
+- **Tests:** `npm test` 423/423.
+- **`registry/tiers.csv`:** unchanged. SHA-1 `28a6fd48108ce1a81654e22cb843954ed957beb7`; SHA-256
+  `a8bbc695c49fed8b605f1295cad95c2659b326bd2b5ccedbb490aa4db21a0be6`.
+- **Commit:** the auditor's record is committed as-is together with these repairs.

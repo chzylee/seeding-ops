@@ -129,7 +129,7 @@
       if (window.SeedRender) {
         $('tierLegend').innerHTML = window.SeedRender.tierLegend();
         $('tierLegend').hidden = false;
-        $('legendText').textContent = window.SeedRender.tierLegendText();
+        $('legendText').textContent = window.SeedRender.tierHelpText();
       }
       $('readHelp').hidden = false;
       const eventInfo = Object.fromEntries(info.events.map((e) => [e.slug, { name: e.name }]));

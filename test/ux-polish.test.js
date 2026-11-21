@@ -410,3 +410,16 @@ test('A4 UX-08 / UX-02: the Schedule tab, run: with Conflicts first a clash row 
   assert.strictEqual((head.match(/aria-sort=/g) || []).length, 1);
   assert.match(head, /<th data-key="player" class="player" aria-sort="ascending">/);
 });
+
+test('A4 repair R1: "How to read this" says what each colour and mark means, once, from the same map', () => {
+  const help = R.tierHelpText();
+  assert.doesNotMatch(help, /Tier marks:/, 'no stutter after the bold label');
+  for (const s of Object.values(R.TIER_MARKS)) {
+    const line = `${s.colour[0].toUpperCase()}${s.colour.slice(1)} with ${s.mark}: ${s.words}.`;
+    assert.strictEqual(help.split(line).length, 2, `once: ${line}`);
+  }
+  assert.match(help, /A red ! beside the number: the stored tier is above 10 \(start\.gg supports 0-10; set it within 0-10 to save\)\./);
+  assert.match(help, /No colour and no mark: reviewed within the last 6 months\.$/);
+  assert.match(src('app/public/tournament.html'), /<p><b>Tier colours and marks:<\/b> <span id="legendText"><\/span><\/p>/);
+  assert.match(src('app/public/tournament.js'), /\$\('legendText'\)\.textContent = window\.SeedRender\.tierHelpText\(\);/);
+});

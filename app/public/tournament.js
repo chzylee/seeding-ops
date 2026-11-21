@@ -27,6 +27,18 @@
 
   const isUpload = () => !!info && info.source === 'upload';
 
+  // The skip link (Amendment A4, UX-19): "Skip to table" moves focus into the open tab's table: the
+  // seeding table's first sort button, else the block view's, else the schedule's first player link.
+  const skip = document.querySelector('a.skip-link');
+  if (skip) skip.addEventListener('click', (ev) => {
+    const shown = (el) => !!el && el.getClientRects().length > 0;
+    const to = ['#summary thead button.sort', '#sched2 thead button.sort', '#sched tbody a']
+      .map((sel) => document.querySelector(sel)).find(shown);
+    if (!to) return;
+    ev.preventDefault();
+    to.focus();
+  });
+
   function jobText(st) {
     if (!st) return '';
     if (st.running && st.resolving) return `Looking up players on start.gg… ${st.message || ''}`;
@@ -112,6 +124,14 @@
       $('seedBar').hidden = false;
       $('exportCsv').hidden = false;   // the export lives beside Refresh data; it needs a game tab's table
       $('pane').hidden = false;
+      // The tier legend beside the table and the help's tier line (Amendment A4, UX-01 / UX-21): both
+      // drawn from lib/view/render.js's one map of tier marks.
+      if (window.SeedRender) {
+        $('tierLegend').innerHTML = window.SeedRender.tierLegend();
+        $('tierLegend').hidden = false;
+        $('legendText').textContent = window.SeedRender.tierLegendText();
+      }
+      $('readHelp').hidden = false;
       const eventInfo = Object.fromEntries(info.events.map((e) => [e.slug, { name: e.name }]));
       window.SEED_TAB = { t: T, game: tab.game, events: tab.events, eventInfo };
       loadScript('/static/app.js');

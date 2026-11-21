@@ -139,7 +139,8 @@ test('A3 Tiers view: a tab per game in the tiers table, the current one marked; 
   // The page shows the picked game's rows only.
   const p = await tiersPage(w, B.id);
   assert.deepStrictEqual(p.order(), ['p:1']);
-  assert.match(p.$('tierTable').innerHTML, /<td class="tier num" tabindex="0" data-edit="tier"><b>2<\/b><\/td>/);
+  // Amendment A4 (UX-03): the sheet is one tab stop (here the first row's Alias), so Tier is -1, and named.
+  assert.match(p.$('tierTable').innerHTML, /<td class="tier num" tabindex="-1" data-edit="tier" aria-label="Tier for Knight Artorias, 2"><b>2<\/b><\/td>/);
   // Another game (one the app knows, with no rows yet): its own tab, empty, Import on.
   const other = (/<option value="(\d+)">([^<]+)<\/option>/.exec(html.slice(html.indexOf('id="tierNewGame"'))) || []);
   assert.ok(other[1], 'Another game lists the games not in the table');
@@ -399,7 +400,8 @@ test('A3 repair 1: a multi-line note: clicking in and out writes nothing (row, l
   const p = await tiersPage(w, A.id);
   // Focus, then blur, with the value as the page put it in the editor (a textarea).
   let ed = p.open('p:7', 'notes');
-  assert.strictEqual(ed.td.innerHTML, '<textarea class="ed" rows="3"></textarea>', 'notes edit in a textarea');
+  // Amendment A4 (UX-14): the seeding editor's hint under the textarea.
+  assert.strictEqual(ed.td.innerHTML, '<textarea class="ed" rows="3"></textarea><div class="ed-hint">Enter saves · Shift+Enter new line · Esc cancels</div>', 'notes edit in a textarea');
   assert.strictEqual(ed.input.value, note, 'the stored note, exactly');
   ed.input.value = note.replace(/\r\n/g, '\n');   // a browser's textarea reports line breaks as \n
   await Promise.all(ed.input.dispatch('blur').results);

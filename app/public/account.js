@@ -54,7 +54,9 @@
 		bar = document.createElement('div');
 		bar.id = 'accountBar';
 		bar.innerHTML = '<span class="who"></span><button type="button" class="retry" hidden title="Ask start.gg again">Retry</button><button type="button" class="change" title="Use a different start.gg account: paste another personal API token">Change…</button>';
-		document.body.insertBefore(bar, document.body.firstChild);
+		// After the skip link when the page has one (Amendment A4, UX-19): it stays the first Tab stop.
+		var skip = document.querySelector('a.skip-link');
+		document.body.insertBefore(bar, skip ? skip.nextSibling : document.body.firstChild);
 		var sw = document.querySelector('.theme-switch');   // made by theme.js before the bar existed
 		if (sw) bar.appendChild(sw);
 		dlg = document.createElement('dialog');

@@ -181,6 +181,10 @@ function navHtml(active, { back } = {}) {
   const backLink = back ? `<a href="${esc(back.href)}" class="nav-item nav-back" title="${esc(back.title)}">${BACK_ICON}<span class="nav-label">Back</span></a>` : '';
   return `<nav id="appNav" class="app-nav" aria-label="Main">${items}${backLink}</nav>`;
 }
+// The skip link (Amendment A4, UX-19): the first thing Tab reaches on a page with a table; it shows on
+// focus and moves focus into the table (app/public/tournament.js, app/public/tiers.js). It comes before
+// the nav, and account.js puts the account bar after it.
+const skipLink = (href) => `<a class="skip-link" href="${href}">Skip to table</a>`;
 // The tier import's request body cap (bytes): app/public/tiers.js checks a file's encoded size against it.
 const TIERS_BODY_MAX = 2_000_000;
 // Noah's words for the Tiers view's intro (Amendment A3), verbatim.
@@ -206,9 +210,9 @@ function tiersPage(tiersFile, game) {
   const off = readError || !current ? ' disabled' : '';
   return `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Tiers</title><link rel="stylesheet" href="/static/app.css"><script src="/static/theme.js"></script><script src="/static/busy.js"></script><script src="/static/account.js" defer></script><script src="/static/update.js" defer></script>
-<body class="index tiers-view has-nav">${navHtml('tiers')}<main class="wide"><h1>Tiers</h1>
+<body class="index tiers-view has-nav">${skipLink('#tierTable')}${navHtml('tiers')}<main class="wide"><h1>Tiers</h1>
 <p class="intro">${TIERS_INTRO.map(esc).join('<br>')}</p>
-${readError ? `<p id="tierReadError" class="err" role="alert">${esc(readError)} Reload this page once it can be read.</p>` : ''}
+${readError ? `<p id="tierReadError" class="err data-notice warn" role="alert">${esc(readError)} Reload this page once it can be read.</p>` : ''}
 <div class="game-tabs-row"><nav class="game-tabs" aria-label="Games">${tabHtml}</nav>${pick}</div>
 <div class="tier-tools" data-game="${esc(current || '')}" data-game-name="${esc(current ? nameOf(current) : '')}" id="tierTools">
 <button type="button" id="tierExport"${off}>Export…</button>
@@ -230,7 +234,7 @@ ${readError ? `<p id="tierReadError" class="err" role="alert">${esc(readError)} 
 function noticesHtml(notices) {
   if (!notices.length) return '';
   const link = (n) => (n.link && typeof n.link.href === 'string' && /^https:\/\/github\.com\//.test(n.link.href) ? ` <a href="${esc(n.link.href)}" target="_blank" rel="noopener">${esc(n.link.text || n.link.href)}</a>` : '');
-  return `<section class="data-notices" aria-label="About your data">${notices.map((n) => `<div class="data-notice ${n.level === 'warn' ? 'warn' : 'info'}" role="${n.level === 'warn' ? 'alert' : 'status'}" data-id="${esc(n.id)}"><span>${esc(n.text)}${link(n)}</span>${n.lasting ?`<button type="button" class="plain" data-dismiss="${esc(n.id)}">Dismiss</button>` : ''}</div>`).join('')}</section>`;
+  return `<section class="data-notices" aria-label="About your data">${notices.map((n) => `<div class="data-notice ${n.level === 'warn' ? 'warn' : 'info'}" role="${n.level === 'warn' ? 'alert' : 'status'}" data-id="${esc(n.id)}"><span>${esc(n.text)}${link(n)}</span>${n.lasting ?`<button type="button" class="plain" data-dismiss="${esc(n.id)}">Dismiss</button><span class="notice-msg" role="status" aria-live="polite"></span>` : ''}</div>`).join('')}</section>`;
 }
 function indexPage(outRoot, jobs, nowMs, notices = []) {
   const list = pool.listTournaments(outRoot, nowMs);
@@ -266,7 +270,7 @@ function notAddedPage(t) {
 }
 // The tournament page is a static file; the nav goes in where its <body> opens.
 function tournamentPage() {
-  return fs.readFileSync(PAGE, 'utf8').replace('<body class="app">', `<body class="app has-nav">${navHtml('tournaments', { back: { href: '/', title: 'Back to all tournaments' } })}`);
+  return fs.readFileSync(PAGE, 'utf8').replace('<body class="app">', `<body class="app has-nav">${skipLink('#pane')}${navHtml('tournaments', { back: { href: '/', title: 'Back to all tournaments' } })}`);
 }
 
 // A same-origin request from the app's own page. Blocks other sites' pages from POSTing to the

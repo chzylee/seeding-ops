@@ -1,4 +1,5 @@
-/* app/public/app.css — the seeding app. Light only, like increment 1's view.
+/* app/public/app.css — the seeding app, light and dark (light tokens in :root here; the dark ones near
+   the end of this file, applied by theme.js or the OS setting).
    A dense data tool: calm neutrals, one blue accent for actions and selection, tabular numerals,
    a 4 px spacing scale and a named z-index scale. Selectors the JS relies on (.frozen, .frozen-edge,
    .last-pin, tbody.pinned/.main, .cmp-sum-wrap, .chip*, .editor*, td.editing/.saving/.saved/.save-failed,
@@ -6,6 +7,7 @@
 :root {
   --bg: #f6f7f9; --fg: #1b1d21; --ink-2: #3f434a; --dim: #656a73;          /* --dim: 5.6:1 on white, 4.9:1 on --head */
   --line: #e1e3e7; --line-strong: #c6cbd3;
+  --ctl-line: #80858e;   /* A4 (UX-22): text inputs, selects, textareas only: 3.31:1 on --head, 3.46 on --bg, 3.71 on --cell */
   --head: #f1f2f5; --head-hover: #e7e9ee; --cell: #fff; --row-hover: #f2f6fc;
   --pin: #fff7d9; --pin-hover: #fdefc2; --pin-edge: #c9a227;
   --accent: #2459a6; --accent-ink: #1b4482; --accent-weak: #e8eef8; --accent-weak-2: #d9e4f5;
@@ -17,11 +19,12 @@
   --z-cell: 1; --z-pinned: 2; --z-head: 3; --z-pinned-frozen: 4; --z-head-frozen: 5; --z-bar: 6; --z-editing: 30; --z-popover: 40;
   --ease: cubic-bezier(.22, 1, .36, 1);
   /* theme-dependent accents; the dark block at the end of this file overrides them */
+  --pin-rest-filter: grayscale(1);   /* A4 (UX-09): the 📌 at rest, grey; the dark theme lightens it to keep 3:1 */
   --on-accent: #fff; --tag-bg: #eceef8; --tag-fg: #3f4566; --both-hover: #dde8f8; --flash: #fff1a8;
   --ok: #2e8b57; --reviewed-row: #e3f4e8; --reviewed-row-hover: #d3edda;
   --rec-here-bg: #bfe3c9; --rec-here-fg: #14532d; --rec-never-bg: #e6e8ec;
   --tag-only-bg: #cfe2ff; --tag-only-fg: #12357a; /* A1.2 tag-only match (light blue) */
-  --src-startgg-bg: #3f80ff; --src-startgg-fg: #fff; --src-upload-bg: #ece4f7; --src-upload-fg: #4b2a7a; /* A1.4 source badges */
+  --src-startgg-bg: #3f80ff; --src-startgg-fg: #0b0d11; --src-upload-bg: #ece4f7; --src-upload-fg: #4b2a7a; /* A1.4 source badges */
   --clash-bg: #fde4e4; --clash-hover: #fbd5d5; --clash-side-bg: #feead6; --clash-side-hover: #fddcbd; --clash-line: #e3a3a3; --clash-fg: #7a1d1d;
   --ev0-bg: #e3ecfa; --ev0-fg: #183d73; --ev1-bg: #fde8d7; --ev1-fg: #6b3410; --ev2-bg: #e6f2e1; --ev2-fg: #24502a;
   --ev3-bg: #f1e4f6; --ev3-fg: #55276a; --ev4-bg: #eceef1; --ev4-fg: #33363c; --ev5-bg: #fdf3c8; --ev5-fg: #5a4600;
@@ -50,8 +53,10 @@ ul.events a { font-weight: 600; }
 
 /* ---- App layout: header, table pane, optional compare panel (lower half) ---- */
 body.app { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
-header#top { flex: none; padding: 10px var(--s-4) 10px; background: var(--cell); border-bottom: 1px solid var(--line-strong); }
-.titlebar { display: flex; align-items: baseline; gap: var(--s-3); min-width: 0; }
+header#top { flex: none; padding: 6px var(--s-4) 8px; background: var(--cell); border-bottom: 1px solid var(--line-strong); }
+.titlebar { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: var(--s-3); row-gap: 1px; min-width: 0; }
+/* A4 (UX-04): the event facts on the title's line; they wrap under it when the window is narrow. */
+.titlebar .sub { margin-top: 0; flex: 1 1 24em; min-width: 0; }
 .back { font-size: 13px; white-space: nowrap; color: var(--dim); }
 .back:hover { color: var(--accent); }
 h1 { font-size: 18px; font-weight: 650; margin: 0; letter-spacing: -0.005em; line-height: 1.3; }
@@ -59,7 +64,9 @@ h1 { font-size: 18px; font-weight: 650; margin: 0; letter-spacing: -0.005em; lin
 .sub { display: flex; flex-wrap: wrap; column-gap: var(--s-4); row-gap: 1px; color: var(--dim); font-size: 13px; margin-top: 2px; font-variant-numeric: tabular-nums; }
 
 /* Toolbar: controls in groups (actions · view · export). Groups wrap as units on narrow windows. */
-.bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2) var(--s-4); margin-top: 10px; }
+.bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2) var(--s-4); margin-top: 6px; }
+.bar details.about { margin-top: 0; }   /* A4 (UX-04): a closed disclosure is one control high, like its row */
+#readHelp[open] { order: 1; }   /* A4: opened, the help takes its own row under the bar's controls (the Lifecycle buttons stay in place) */
 .bar .group { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); }
 .bar .group.right { margin-left: auto; }
 .bar button, .bar a.button, .cmp-bar button {
@@ -84,7 +91,8 @@ h1 { font-size: 18px; font-weight: 650; margin: 0; letter-spacing: -0.005em; lin
 .freeze-ctl select { max-width: 17em; padding-right: 4px; cursor: pointer; }
 .freeze-ctl select:hover, .jump-ctl input:hover { border-color: var(--split); }
 .jump-ctl input { width: 150px; }
-.jump-ctl input:focus, .freeze-ctl select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-weak-2); }
+/* A4 (UX-23): these show the global 2 px :focus-visible outline, like every other control. */
+.jump-ctl input:focus, .freeze-ctl select:focus { border-color: var(--accent); }
 .needs-ctl { cursor: pointer; gap: 5px; }
 input[type="checkbox"] { accent-color: var(--accent); width: 14px; height: 14px; margin: 0; cursor: pointer; }
 .status { font-size: 13px; color: var(--ink-2); font-variant-numeric: tabular-nums; }
@@ -127,12 +135,15 @@ table.res td.each { min-width: 240px; }
 table.res td.each .line { white-space: nowrap; }
 table.res tbody tr:hover td { background: var(--row-hover); }
 table.sortable th { cursor: pointer; user-select: none; }
+/* A4 (UX-02): a sortable header's label is a button (Tab reaches it; Enter or Space sorts). It looks like the label. */
+th > button.sort { border: 0; background: none; padding: 0; margin: 0; font: inherit; color: inherit; letter-spacing: inherit; text-align: inherit; cursor: pointer; border-radius: var(--radius-sm); }
+#summary thead th > button.sort, table.sched thead th > button.sort { white-space: nowrap; }
 table.sortable th:hover { background: var(--head-hover); }
 table.sortable th[data-dir="1"]::after { content: " ▲"; font-size: 9px; color: var(--accent); }
 table.sortable th[data-dir="-1"]::after { content: " ▼"; font-size: 9px; color: var(--accent); }
 
 /* ---- Summary: sticky header row, sticky player column, pinned rows frozen under the header ---- */
-table.summary { margin: var(--s-2) var(--s-4) 0; }
+table.summary { margin: var(--s-1) var(--s-4) 0; }   /* A4 (UX-04): 4 px under the header, was 8 */
 table.summary td.seed { font-size: 18px; font-weight: 700; text-align: center; }
 table.summary thead th { position: sticky; top: 0; z-index: var(--z-head); padding-top: 8px; padding-bottom: 7px; }
 table.summary th.who { left: 0; z-index: var(--z-head-frozen); }
@@ -158,12 +169,12 @@ table.summary .frozen-edge { box-shadow: inset -2px 0 0 var(--line-strong); }
 /* ❄ sits at the header's right edge (the header is already positioned), so a sorted header reads "Tier ▲". */
 #summary thead th[data-col]:not([data-col="player"]) { padding-right: 26px; }
 button.freeze { position: absolute; right: 5px; bottom: 6px; width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center;
-  border: 0; border-radius: var(--radius-sm); background: none; padding: 0; font-size: 12px; line-height: 1; color: var(--dim); opacity: .35;
+  border: 0; border-radius: var(--radius-sm); background: none; padding: 0; font-size: 12px; line-height: 1; color: var(--dim); opacity: .8;
   transition: opacity 120ms var(--ease), background-color 120ms var(--ease); }
 th:hover button.freeze, button.freeze:focus-visible { opacity: .85; }
 button.freeze:hover { background: var(--accent-weak-2); color: var(--accent-ink); }
 button.freeze[aria-pressed="true"] { opacity: 1; color: var(--accent); background: var(--accent-weak); }
-button.pin { border: 0; background: none; padding: 1px 3px; margin: -1px 2px 0 0; border-radius: var(--radius-sm); font-size: 13px; line-height: 1; opacity: .3; filter: grayscale(1);
+button.pin { border: 0; background: none; padding: 1px 3px; margin: -1px 2px 0 0; border-radius: var(--radius-sm); font-size: 13px; line-height: 1; opacity: .8; filter: var(--pin-rest-filter);
   transition: opacity 120ms var(--ease); }
 tr:hover button.pin, button.pin:focus-visible { opacity: .9; filter: none; }
 button.pin:hover { background: rgba(201, 162, 39, .22); }
@@ -232,7 +243,7 @@ td[data-edit]:focus { outline: 2px solid var(--accent); outline-offset: -2px; }
 td.editing { overflow: visible; z-index: var(--z-editing); }
 td.editing:not(.frozen) { position: relative; }
 .editor { position: absolute; left: 0; top: 0; z-index: var(--z-popover); background: var(--cell); border: 1px solid var(--accent); border-radius: var(--radius);
-  box-shadow: 0 8px 24px rgba(20, 30, 50, .16); padding: 10px; display: grid; gap: var(--s-2); min-width: 280px; text-align: left; font-size: 13px; cursor: auto; }
+  box-shadow: 0 2px 8px rgba(20, 30, 50, .16); padding: 10px; display: grid; gap: var(--s-2); min-width: 280px; text-align: left; font-size: 13px; cursor: auto; }
 .editor.flip { left: auto; right: 0; }
 .editor label { display: grid; grid-template-columns: 56px 1fr; align-items: center; gap: 6px; font-weight: 600; color: var(--ink-2); }
 .editor input, .editor textarea { font: inherit; font-weight: 400; color: var(--fg); padding: 5px 7px; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); width: 100%; box-sizing: border-box; }
@@ -272,6 +283,8 @@ table.summary td.notes .note-text { display: -webkit-box; -webkit-line-clamp: 3;
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; scroll-behavior: auto !important; }
   td.saved, #summary tbody tr.flash td { animation: none; }
+  /* A4 (UX-11): the loading bar, the spinners and the home page's "pulling…" chips stand still. */
+  #busyBar, .spinner, .busy::before { animation: none !important; }
 }
 
 /* "Show team" off: the Team column is hidden in the table and the compare panel */
@@ -303,6 +316,10 @@ td.seeded.saving button.seed-btn { opacity: .5; }
    color (lib/view/render.js tierCellClass). Hover says so; a ✓ or an edit links it and the color goes. */
 #summary td.tier.match-tag, table.summary td.tier.match-tag { background: var(--tag-only-bg); color: var(--tag-only-fg); }
 .editor-tier { min-width: 160px; }
+/* A4 (UX-01): the mark beside the tier says its state without colour (lib/view/render.js TIER_MARKS);
+   it takes the cell's text colour, so it has the digit's contrast. '!' = above the maximum (ruling A2). */
+.tier-mark { display: inline-block; margin-left: 3px; font-size: 11px; font-weight: 700; line-height: 1; vertical-align: 1px; }
+.tier-mark.over { color: var(--err); }
 
 /* ---- Schedule tab (T3; moved from conflicts/public/schedule.html) ---- */
 #schedulePanel { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
@@ -364,8 +381,15 @@ table.sched tbody tr.clash-side:hover td { background: var(--clash-side-hover); 
 .pill.st-archived { background: var(--rec-never-bg); color: var(--ink-2); }
 ul.events li.st-archived { opacity: .8; }
 nav.tabs { display: flex; flex-wrap: wrap; gap: 2px; margin-top: var(--s-2); border-bottom: 1px solid var(--line-strong); }
+/* A4: the game tabs and the tier legend share one row (the legend at its right; it wraps under when narrow). */
+.tabs-row { display: flex; flex-wrap: wrap; align-items: flex-end; column-gap: var(--s-2); margin-top: 6px; border-bottom: 1px solid var(--line-strong); }
+.tabs-row nav.tabs { margin-top: 0; border-bottom: 0; }
+.tier-legend { margin: 0 0 0 auto; padding: 0 0 5px; font-size: 11.5px; color: var(--ink-2); line-height: 1.4; }
+.tier-legend .lg-head { font-weight: 600; }
+.tier-legend .lg-item { white-space: nowrap; margin-left: 5px; }
+.tier-legend .tier-mark { margin-left: 0; }
 nav.tabs[hidden] { display: none; }
-nav.tabs a { padding: 6px var(--s-3); border: 1px solid transparent; border-bottom: 0; border-radius: var(--radius) var(--radius) 0 0; color: var(--ink-2); font-weight: 600; font-size: 13px; }
+nav.tabs a { padding: 5px 10px; border: 1px solid transparent; border-bottom: 0; border-radius: var(--radius) var(--radius) 0 0; color: var(--ink-2); font-weight: 600; font-size: 13px; }
 nav.tabs a:hover { background: var(--accent-weak); text-decoration: none; }
 nav.tabs a.on { border-color: var(--line-strong); background: var(--bg); color: var(--accent-ink); margin-bottom: -1px; }
 .picker { display: grid; gap: 4px; margin: var(--s-2) 0; }
@@ -390,18 +414,19 @@ table.push-diff tr.crosses td { background: var(--warn-bg); }
 :root[data-theme="dark"] {
     color-scheme: dark;
     --bg: #15171b; --fg: #e7e9ee; --ink-2: #c3c7cf; --dim: #9aa0ab;
-    --line: #2a2e35; --line-strong: #3b414b;
+    --line: #2a2e35; --line-strong: #3b414b; --ctl-line: #6b7280;
     --head: #1c1f24; --head-hover: #262a31; --cell: #1a1d22; --row-hover: #1f2733;
     --pin: #3a3417; --pin-hover: #4a4220; --pin-edge: #c9a227;
     --accent: #6ea0ea; --accent-ink: #9dbdf2; --accent-weak: #1f2b3f; --accent-weak-2: #27385a;
     --split: #3f5a86; --both: #1e2a3c;
     --warn-bg: #4a3410; --warn-fg: #f3c77a;
     --ok-bg: #17351f; --err: #ff8a8c; --err-bg: #4a1c1c;
+    --pin-rest-filter: grayscale(1) brightness(1.8);
     --on-accent: #0b0d11; --tag-bg: #2a2f45; --tag-fg: #c5cbee; --both-hover: #273b5e; --flash: #5a4d12;
     --ok: #4caf7a; --reviewed-row: #16301f; --reviewed-row-hover: #1c3b27;
     --rec-here-bg: #1f5a34; --rec-here-fg: #c7f0d4; --rec-never-bg: #2a2e35;
     --tag-only-bg: #18406e; --tag-only-fg: #d3e5ff;
-    --src-startgg-bg: #3f80ff; --src-startgg-fg: #fff; --src-upload-bg: #3a2a52; --src-upload-fg: #dccbf5;
+    --src-startgg-bg: #3f80ff; --src-startgg-fg: #0b0d11; --src-upload-bg: #3a2a52; --src-upload-fg: #dccbf5;
     --clash-bg: #4a1f1f; --clash-hover: #5a2626; --clash-side-bg: #4a2f14; --clash-side-hover: #5a3a1a; --clash-line: #8a4b4b; --clash-fg: #f3b3b3;
     --ev0-bg: #1e2f4d; --ev0-fg: #b9d0f5; --ev1-bg: #4a2c17; --ev1-fg: #f5c9a6; --ev2-bg: #1f3a24; --ev2-fg: #bfe6c5;
     --ev3-bg: #3a2347; --ev3-fg: #e1c2ee; --ev4-bg: #2a2e35; --ev4-fg: #d5d8de; --ev5-bg: #4a3e0f; --ev5-fg: #f1dd8a;
@@ -410,18 +435,19 @@ table.push-diff tr.crosses td { background: var(--warn-bg); }
   :root:not([data-theme="light"]) {
     color-scheme: dark;
     --bg: #15171b; --fg: #e7e9ee; --ink-2: #c3c7cf; --dim: #9aa0ab;
-    --line: #2a2e35; --line-strong: #3b414b;
+    --line: #2a2e35; --line-strong: #3b414b; --ctl-line: #6b7280;
     --head: #1c1f24; --head-hover: #262a31; --cell: #1a1d22; --row-hover: #1f2733;
     --pin: #3a3417; --pin-hover: #4a4220; --pin-edge: #c9a227;
     --accent: #6ea0ea; --accent-ink: #9dbdf2; --accent-weak: #1f2b3f; --accent-weak-2: #27385a;
     --split: #3f5a86; --both: #1e2a3c;
     --warn-bg: #4a3410; --warn-fg: #f3c77a;
     --ok-bg: #17351f; --err: #ff8a8c; --err-bg: #4a1c1c;
+    --pin-rest-filter: grayscale(1) brightness(1.8);
     --on-accent: #0b0d11; --tag-bg: #2a2f45; --tag-fg: #c5cbee; --both-hover: #273b5e; --flash: #5a4d12;
     --ok: #4caf7a; --reviewed-row: #16301f; --reviewed-row-hover: #1c3b27;
     --rec-here-bg: #1f5a34; --rec-here-fg: #c7f0d4; --rec-never-bg: #2a2e35;
     --tag-only-bg: #18406e; --tag-only-fg: #d3e5ff;
-    --src-startgg-bg: #3f80ff; --src-startgg-fg: #fff; --src-upload-bg: #3a2a52; --src-upload-fg: #dccbf5;
+    --src-startgg-bg: #3f80ff; --src-startgg-fg: #0b0d11; --src-upload-bg: #3a2a52; --src-upload-fg: #dccbf5;
     --clash-bg: #4a1f1f; --clash-hover: #5a2626; --clash-side-bg: #4a2f14; --clash-side-hover: #5a3a1a; --clash-line: #8a4b4b; --clash-fg: #f3b3b3;
     --ev0-bg: #1e2f4d; --ev0-fg: #b9d0f5; --ev1-bg: #4a2c17; --ev1-fg: #f5c9a6; --ev2-bg: #1f3a24; --ev2-fg: #bfe6c5;
     --ev3-bg: #3a2347; --ev3-fg: #e1c2ee; --ev4-bg: #2a2e35; --ev4-fg: #d5d8de; --ev5-bg: #4a3e0f; --ev5-fg: #f1dd8a;
@@ -441,8 +467,11 @@ table.push-diff tr.crosses td { background: var(--warn-bg); }
 .theme-switch[aria-checked="false"] .icon.sun, .theme-switch[aria-checked="true"] .icon.moon { color: var(--accent-ink); }
 
 /* Cross-fade on a theme change: theme.js sets html.theme-fade for the duration of the switch. */
-html.theme-fade, html.theme-fade *, html.theme-fade *::before, html.theme-fade *::after {
-  transition: background-color .3s ease, color .3s ease, border-color .3s ease, fill .3s ease, stroke .3s ease !important; }
+/* A4 (UX-11): only when motion is welcome; under reduced motion the theme simply switches. */
+@media (prefers-reduced-motion: no-preference) {
+  html.theme-fade, html.theme-fade *, html.theme-fade *::before, html.theme-fade *::after {
+    transition: background-color .3s ease, color .3s ease, border-color .3s ease, fill .3s ease, stroke .3s ease !important; }
+}
 
 /* ---- Build C (Amendment A1.3, A1.4): source badges, the upload form, an uploaded list's page ---- */
 /* Source badges on the home page: start.gg in start.gg's blue, upload in a muted violet. Tokens per theme. */
@@ -478,7 +507,7 @@ ul.events li.done-note:hover { border: 0; }
 
 /* Right-click menu on the tournaments list (index.js): one item, Delete, which asks before deleting. */
 .ctx-menu { position: fixed; z-index: var(--z-popover); min-width: 200px; padding: 4px; background: var(--cell); color: var(--fg);
-  border: 1px solid var(--line-strong); border-radius: var(--radius); box-shadow: 0 6px 24px rgba(0, 0, 0, .18); }
+  border: 1px solid var(--line-strong); border-radius: var(--radius); box-shadow: 0 2px 8px rgba(0, 0, 0, .18); }
 .ctx-menu button { display: block; width: 100%; text-align: left; padding: 7px 10px; border: 0; border-radius: var(--radius-sm); background: none; font-size: 13px; }
 .ctx-menu button:hover, .ctx-menu button:focus-visible { background: var(--row-hover); outline: none; }
 .ctx-menu button.danger { color: var(--err); }
@@ -489,7 +518,7 @@ ul.events li.done-note:hover { border: 0; }
 #uploadOpen:hover { border-color: var(--accent); }
 .add-section .import-row { display: flex; align-items: center; gap: var(--s-3); margin: var(--s-2) 0 0; }
 .add-section .import-row .import-desc { margin: 0; }
-dialog.upload-modal { width: min(560px, calc(100vw - 32px)); padding: 0; border: 1px solid var(--line-strong); border-radius: var(--radius); background: var(--cell); color: var(--fg); box-shadow: 0 12px 40px rgba(0, 0, 0, .28); }
+dialog.upload-modal { width: min(560px, calc(100vw - 32px)); padding: 0; border: 1px solid var(--line-strong); border-radius: var(--radius); background: var(--cell); color: var(--fg); box-shadow: 0 4px 8px rgba(0, 0, 0, .24); }
 dialog.upload-modal::backdrop { background: rgba(0, 0, 0, .45); }
 dialog.upload-modal .modal-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--s-3); padding: var(--s-3) var(--s-4) 0; }
 dialog.upload-modal h2 { margin: 0; font-size: 15px; }
@@ -506,7 +535,7 @@ dialog.upload-modal .upload-form button.plain { background: var(--cell); color: 
 .game-combo .chip img { width: 22px; height: 22px; object-fit: contain; border-radius: 3px; background: #fff; }
 .game-combo input { flex: 1 1 auto; min-width: 0; }
 .game-combo ul.game-list { position: absolute; left: 28px; right: 0; top: calc(var(--ctl-h) + 3px); z-index: var(--z-popover); margin: 0; padding: 4px; list-style: none; max-height: 240px; overflow: auto;
-  background: var(--cell); border: 1px solid var(--line-strong); border-radius: var(--radius); box-shadow: 0 6px 24px rgba(0, 0, 0, .18); }
+  background: var(--cell); border: 1px solid var(--line-strong); border-radius: var(--radius); box-shadow: 0 2px 8px rgba(0, 0, 0, .18); }
 .game-combo ul.game-list[hidden] { display: none; }
 .game-combo ul.game-list li { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border-radius: var(--radius-sm); cursor: pointer; font-size: 13px; line-height: 1.3; }
 .game-combo ul.game-list li img { width: 20px; height: 20px; flex: 0 0 20px; object-fit: contain; border-radius: 3px; background: #fff; }
@@ -523,15 +552,17 @@ dialog.upload-modal .upload-form button.plain { background: var(--cell); color: 
 #busyBar[hidden] { display: none; }
 @keyframes busy-slide { 0% { transform: translateX(-100%) scaleX(.4); } 50% { transform: translateX(20%) scaleX(.6); } 100% { transform: translateX(100%) scaleX(.4); } }
 #busyPill { position: fixed; right: 12px; bottom: 12px; z-index: var(--z-popover); display: inline-flex; align-items: center; gap: 8px; max-width: min(420px, calc(100vw - 24px));
-  padding: 6px 12px 6px 10px; border: 1px solid var(--line-strong); border-radius: 999px; background: var(--cell); color: var(--fg); font-size: 12.5px; box-shadow: 0 6px 24px rgba(0, 0, 0, .18); pointer-events: none; }
+  padding: 6px 12px 6px 10px; border: 1px solid var(--line-strong); border-radius: 999px; background: var(--cell); color: var(--fg); font-size: 12.5px; box-shadow: 0 2px 8px rgba(0, 0, 0, .18); pointer-events: none; }
 #busyPill[hidden] { display: none; }
 #busyPill .label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .spinner { display: inline-block; width: 14px; height: 14px; flex: 0 0 14px; border-radius: 50%; border: 2px solid var(--line-strong); border-top-color: var(--accent); animation: spin .8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 /* The home page's server-rendered "pulling…" chips get a spinner too. */
 .busy::before { content: ''; display: inline-block; width: 9px; height: 9px; margin-right: 5px; vertical-align: -1px; border-radius: 50%; border: 2px solid var(--warn-fg); border-top-color: transparent; opacity: .8; animation: spin .8s linear infinite; }
-/* While something is in flight, submit buttons that were disabled by the page read as waiting. */
-button:disabled { opacity: .6; cursor: progress; }
+/* A disabled button is simply off; only while a request or job runs (busy.js sets html.is-busy) does it
+   read as waiting (A4, UX-31). */
+button:disabled { opacity: .6; cursor: default; }
+html.is-busy button:disabled { cursor: progress; }
 
 /* The whole tournament row opens it (index.js): it reads as clickable. */
 ul.events li[data-t] { cursor: pointer; }
@@ -540,7 +571,7 @@ ul.events li[data-t]:focus-visible { outline: 2px solid var(--accent); outline-o
 
 /* ---- Export to CSV: a small progress card at the bottom right that goes away by itself (app.js) ---- */
 .mini-modal { position: fixed; right: 12px; bottom: 52px; z-index: var(--z-popover); width: min(360px, calc(100vw - 24px)); padding: 10px 12px; background: var(--cell); color: var(--fg);
-  border: 1px solid var(--line-strong); border-radius: var(--radius); box-shadow: 0 6px 24px rgba(0, 0, 0, .18); font-size: 13px; }
+  border: 1px solid var(--line-strong); border-radius: var(--radius); box-shadow: 0 2px 8px rgba(0, 0, 0, .18); font-size: 13px; }
 .mini-modal[hidden] { display: none; }
 .mini-modal .mini-head { display: flex; align-items: center; gap: 8px; font-weight: 600; }
 .mini-modal .mini-bar { height: 5px; margin: 8px 0 6px; border-radius: 999px; background: var(--line); overflow: hidden; }
@@ -562,7 +593,7 @@ ul.events li[data-t]:focus-visible { outline: 2px solid var(--accent); outline-o
 #accountBar .change { height: 24px; padding: 0 8px; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background: var(--cell); color: var(--ink-2); font: inherit; font-size: 12px; }
 #accountBar .change:hover { border-color: var(--accent); color: var(--accent-ink); }
 .theme-switch { top: 5px; }   /* sits inside the account bar's height */
-dialog.account-dialog { width: min(480px, calc(100vw - 32px)); padding: 0; border: 1px solid var(--line-strong); border-radius: var(--radius); background: var(--cell); color: var(--fg); box-shadow: 0 12px 40px rgba(0, 0, 0, .28); }
+dialog.account-dialog { width: min(480px, calc(100vw - 32px)); padding: 0; border: 1px solid var(--line-strong); border-radius: var(--radius); background: var(--cell); color: var(--fg); box-shadow: 0 4px 8px rgba(0, 0, 0, .24); }
 dialog.account-dialog::backdrop { background: rgba(0, 0, 0, .45); }
 dialog.account-dialog .account-form { display: grid; gap: var(--s-2); padding: var(--s-3) var(--s-4) var(--s-4); margin: 0; }
 dialog.account-dialog h2 { margin: 0; font-size: 15px; }
@@ -574,6 +605,7 @@ dialog.account-dialog .actions button.plain { background: var(--cell); color: va
 /* Not signed in: the bar turns red (account.js sets .off). */
 #accountBar.off { background: var(--err-bg); border-bottom-color: var(--err); color: var(--err); }
 #accountBar.off .name { color: var(--err); }
+#accountBar.off .prefix, #accountBar.warn .prefix { color: inherit; }   /* A4 (UX-28): the bar's own text colour */
 #accountBar.off .change { border-color: var(--err); color: var(--err); background: var(--cell); }
 /* Amendment A2.2: share one game's tiers (the home page's Tiers section and the import's review). */
 .tiers-section { margin: var(--s-4) 0; }
@@ -597,8 +629,8 @@ body.seed-dragging, body.seed-dragging * { cursor: grabbing !important; user-sel
 #summary tr.drop-before > td { box-shadow: inset 0 3px 0 var(--accent); }
 #summary tr.drop-after > td { box-shadow: inset 0 -3px 0 var(--accent); }
 .seed-ctl { gap: var(--s-2); }
-.seed-mode { font-size: 12px; padding: 2px 8px; border-radius: 10px; border: 1px solid var(--line-strong); background: var(--bg); white-space: nowrap; }
-.seed-mode.arranged { background: var(--accent-weak); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
+.seed-mode { font-size: 12px; color: var(--ink-2); white-space: nowrap; }   /* A4 (UX-36): status text, not a button */
+.seed-mode.arranged { color: var(--accent-ink); font-weight: 600; }
 .seed-live { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .push-mode { margin: 0 0 var(--s-2); padding: 6px 10px; border-radius: var(--radius); border: 1px solid var(--line-strong); }
 .push-mode.arranged { background: var(--accent-weak); border-color: var(--accent); }
@@ -700,3 +732,32 @@ body.has-nav #accountBar { margin-left: calc(-1 * var(--nav-w)); }
 #accountBar .theme-switch { position: static; margin-left: auto; flex: 0 0 auto; }
 /* Back (a tournament page): in the nav, a little below the items, not pinned to the bottom. */
 .app-nav .nav-back { margin-top: var(--s-4); color: var(--dim); }
+
+/* ---- Amendment A4 (UX polish, 2026-11-21) ---- */
+/* UX-22: text inputs, selects and textareas take the control border (--ctl-line, >= 3:1 on every surface);
+   --line-strong stays for dividers and buttons. */
+.freeze-ctl select, .jump-ctl input, .add-t input, .upload-form input:not([type=file]), .upload-form select,
+dialog.account-dialog input, .editor input, .editor textarea, .s-bar select, .s-bar input, .game-more select,
+#impSearch, .tiers-section select { border-color: var(--ctl-line); }
+/* UX-06: the home page's link field and the Tiers view's Export / Import and "Another game" take the app's styles. */
+.add-t input { background: var(--cell); color: var(--fg); }
+.tier-tools button { display: inline-flex; align-items: center; height: var(--ctl-h); padding: 0 var(--s-3); font: inherit; font-size: 13px; font-weight: 500;
+  border: 1px solid var(--line-strong); border-radius: var(--radius); background: var(--cell); color: var(--fg); }
+.tier-tools button:hover:not(:disabled) { background: var(--accent-weak); border-color: var(--split); }
+.game-more select { height: var(--ctl-h); padding: 0 var(--s-2); font: inherit; font-size: 13px; border: 1px solid var(--ctl-line); border-radius: var(--radius); background: var(--cell); color: var(--fg); }
+/* UX-03 / UX-14: the sheet's focused cell, and the editor's hint under its input. */
+table.tier-sheet td[data-edit]:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+table.tier-sheet td .ed-hint { margin-top: 2px; color: var(--dim); font-size: 11.5px; font-weight: 400; white-space: nowrap; }
+/* UX-08: a clash says so in words (Schedule, Conflicts first). */
+.clash-tag { display: inline-block; margin-left: 6px; padding: 0 5px; font-size: 11px; font-weight: 600; line-height: 16px; border: 1px solid currentColor;
+  border-radius: var(--radius-sm); background: var(--cell); color: var(--clash-fg); }
+.clash-tag.side { color: var(--warn-fg); }
+/* UX-19: "Skip to table", the first Tab stop: off screen until focused. */
+.skip-link { position: absolute; left: 8px; top: -60px; z-index: calc(var(--z-popover) + 1); padding: 6px 12px; border-radius: var(--radius);
+  background: var(--accent); color: var(--on-accent); font-weight: 600; }
+.skip-link:focus { top: 6px; text-decoration: none; }
+/* UX-20: the Tiers view's read error looks like the other error notices. */
+#tierReadError { margin: 0 0 var(--s-3); }
+/* UX-30: a failed Dismiss says so beside the button. */
+.data-notice .notice-msg:empty { display: none; }
+.data-notice .notice-msg { flex: 0 0 auto; font-weight: 600; }

@@ -258,7 +258,7 @@
   // header, ascending, IS the seed order: sortSummary sets sortedBy back to null for it.)
   function ensureSeedOrder() {
     if (!sortedBy) return;
-    for (const h of thead.rows[0].cells) delete h.dataset.dir;
+    markSorted(thead.rows[0], null);
     sortedBy = null;
     refreshSeeds();
   }
@@ -402,8 +402,7 @@
   document.addEventListener('keydown', (ev) => { if (drag && ev.key === 'Escape') endDrag(false); });
   $('seedSort').addEventListener('click', () => {
     const th = thead.querySelector('th[data-col="seed"]');
-    for (const h of thead.rows[0].cells) delete h.dataset.dir;
-    if (th) th.dataset.dir = '1';
+    markSorted(thead.rows[0], th, 1);
     sortedBy = null;
     refreshSeeds();
   });
@@ -478,7 +477,8 @@
   }
   // "Freeze: first N columns" — through Player at the least.
   function fillFreeze() {
-    const keys = colKeys(), names = [...thead.rows[0].cells].map((th) => th.childNodes[0].textContent.trim());
+    // A header's name is its label's first text (a series header's "(n of N)" is not part of it).
+    const keys = colKeys(), names = [...thead.rows[0].cells].map((th) => (th.querySelector('button.sort') || th).childNodes[0].textContent.trim());
     const p = keys.indexOf('player');
     const opts = [];
     for (let n = p + 1; n <= Math.min(keys.length - 1, p + 6); n++) {
@@ -610,6 +610,14 @@
   }
 
   // ---- Sorting (any table.sortable, including ones rendered later) ------------------------------
+  // One sorted header per table (Amendment A4, UX-02): it carries the arrow (data-dir) and aria-sort;
+  // every other header in the row carries neither. th null: no header is sorted (the seed order).
+  function markSorted(row, th, dir) {
+    for (const h of (row && row.cells) || []) { delete h.dataset.dir; h.removeAttribute('aria-sort'); }
+    if (!th) return;
+    th.dataset.dir = String(dir);
+    th.setAttribute('aria-sort', dir > 0 ? 'ascending' : 'descending');
+  }
   document.addEventListener('click', (ev) => {
     const seedBtn = ev.target.closest('button.seed-btn');
     if (seedBtn) { toggleReviewed(seedBtn.closest('tr').dataset.pid); return; }
@@ -625,7 +633,7 @@
     if (!th) return;
     const t = th.closest('table'), tb = t.tBodies[0], i = th.cellIndex;
     const dir = th.dataset.dir === '1' ? -1 : 1;
-    th.dataset.dir = String(dir);
+    markSorted(th.parentElement, th, dir);
     const rows = [...tb.rows];
     rows.sort((a, b) => {
       const x = a.cells[i], y = b.cells[i];
@@ -1020,8 +1028,7 @@
     const i = th.cellIndex;
     const first = key === 'tier' ? -1 : 1;
     const dir = th.dataset.dir ? -Number(th.dataset.dir) : first;
-    for (const h of thead.rows[0].cells) delete h.dataset.dir;
-    th.dataset.dir = String(dir);
+    markSorted(thead.rows[0], th, dir);
     // A2.3: Seed ascending is the seed order itself (the order rows move in when dragged).
     if (key === 'seed' && dir === 1) { sortedBy = null; refreshSeeds(); return; }
     sortedBy = { key, dir };
@@ -1047,7 +1054,8 @@
     const box = document.createElement('div');
     box.className = `editor editor-${kind}`;
     if (kind === 'tier') {
-      box.innerHTML = '<label>Tier <input class="ed-tier" type="number" min="0" max="20" step="1"></label>'
+      // The bounds are the server's rule (lib/view/model.js MIN_TIER / MAX_TIER: one source, A4-6).
+      box.innerHTML = `<label>Tier <input class="ed-tier" type="number" min="${M.MIN_TIER}" max="${M.MAX_TIER}" step="1"></label>`
         + '<div class="ed-hint">Enter saves · Esc cancels</div>';
       box.querySelector('.ed-tier').value = Number.isFinite(n.tier) ? n.tier : '';
     } else {

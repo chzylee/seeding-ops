@@ -6,7 +6,7 @@
 	itself instead of a spinner that never resolves.
 -->
 <!doctype html>
-<html>
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <title>Seeding Ops</title>
@@ -22,6 +22,7 @@
 	       background: #3b82f6; animation: pulse 1.2s infinite ease-in-out; }
 	.dot:nth-child(2) { animation-delay: .15s } .dot:nth-child(3) { animation-delay: .3s }
 	@keyframes pulse { 0%, 80%, 100% { opacity: .25 } 40% { opacity: 1 } }
+	@media (prefers-reduced-motion: reduce) { .dot { animation: none; opacity: .6 } }
 	.fail { display: none; }
 	.fail code { display: block; margin-top: 14px; padding: 10px 12px; text-align: left;
 	             background: #1a1e25; border: 1px solid var(--line); border-radius: 6px;

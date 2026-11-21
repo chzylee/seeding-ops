@@ -78,7 +78,7 @@ table.summary .who{position:sticky;left:0;background:#fff;z-index:1;min-width:12
 table.summary th.who{background:#f0f0f0}
 table.res td.num{white-space:nowrap;text-align:right}table.res td.date{color:#888;white-space:nowrap}
 table.res td.each{min-width:240px}table.res td.each .line{white-space:nowrap}
-table.sortable th{cursor:pointer}table.sortable th:hover{background:#e6e6e6}
+table.sortable th{cursor:pointer}table.sortable th:hover{background:#e6e6e6}th button.sort{border:0;background:none;padding:0;margin:0;font:inherit;color:inherit;text-align:inherit;cursor:pointer}.tier-mark{margin-left:2px;font-size:11px;font-weight:700}
 .dim{color:#888}a{color:#2459a6;text-decoration:none}
 table.summary tr.reviewed-row>td{background:#e3f4e8}table.summary td.tier{text-align:center}
 table.summary td.tier.rec-here{background:#bfe3c9;color:#14532d}table.summary td.tier.rec-old{background:#fdebcc;color:#6e4300}table.summary td.tier.rec-never{background:#e6e8ec}table.summary td.tier.match-tag{background:#cfe2ff;color:#12357a}
@@ -89,7 +89,7 @@ details{margin-top:8px}summary{cursor:pointer;color:#2459a6}
 <div class="sub">${esc(meta.game && meta.game.name)} · ${meta.registrant_count} registrants · results from ${meta.window.start.slice(0, 10)} to ${meta.window.end.slice(0, 10)}.
 Placement is out of the event's entrants. W-L counts sets won and lost at that event, with DQs excluded.
 Major columns (config/majors.json) show this game's main event at each major, one result per year.
-Seed and notes are suggestions. Tier color: green reviewed at this tournament, amber reviewed over 6 months ago, grey never reviewed; hover a tier for when and where. Click a column header in a player's table to sort it.</div>
+Seed and notes are suggestions. Tier color: green reviewed at this tournament, amber reviewed over 6 months ago, grey never reviewed; hover a tier for when and where. ${esc(R.tierLegendText())} Click a column header in a player's table to sort it.</div>
 <div class="wrap"><table class="summary"><thead>${R.summaryHeadRow(ctx)}</thead><tbody>
 ${summary}
 </tbody></table></div>

@@ -39,11 +39,16 @@ function filteredRows(d) {
     && (!q || p.tag.toLowerCase().includes(q) || (p.prefix || '').toLowerCase().includes(q)));
 }
 
+// The block view's headers sort (opts.sort): each label is a sort button and the sorted one carries
+// aria-sort, the pattern every sortable table uses (lib/view/render.js sortButton; Amendment A4, UX-02).
+const R = window.SeedRender;
 function headHtml(cols, opts = {}) {
   // opts.sort: { key, dir } marks the sorted column; opts.counts: Map(colKey -> players in it).
-  const arrow = (key) => (opts.sort && opts.sort.key === key ? (opts.sort.dir > 0 ? ' ▲' : ' ▼') : '');
+  const on = (key) => !!(opts.sort && opts.sort.key === key);
+  const arrow = (key) => (on(key) ? (opts.sort.dir > 0 ? ' ▲' : ' ▼') : '');
   const count = (key) => (opts.counts && key !== 'player' ?` <span class="cnt">(${opts.counts.get(key) || 0})</span>` : '');
-  const th = (key, label, sub, cls = '') => `<th data-key="${esc(key)}"${cls ? ` class="${cls}"` : ''}>${label}${count(key)}${arrow(key)}${sub ? `<span class="t">${sub}</span>` : ''}</th>`;
+  const label = (key, text) => (opts.sort ? R.sortButton(`${text}${count(key)}${arrow(key)}`) : `${text}${count(key)}${arrow(key)}`);
+  const th = (key, text, sub, cls = '') => `<th data-key="${esc(key)}"${cls ? ` class="${cls}"` : ''}${on(key) ? R.ariaSort(opts.sort.dir) : ''}>${label(key, text)}${sub ? `<span class="t">${sub}</span>` : ''}</th>`;
   return '<tr>' + th('player', 'Player', '', 'player') + cols.map((c) =>
     c.key === 'none' ? th(c.key, 'No time set', '')
       : c.key === 'side' ? th(c.key, 'Side games', 'no time on start.gg')
@@ -67,8 +72,11 @@ function rowHtml(p, cols, ctx) {
   const who = (p.prefix ? `<span class="pre">${esc(p.prefix)} | </span>` : '') + esc(p.tag);
   const link = p.userSlug ? `<a href="https://www.start.gg/${esc(p.userSlug)}" target="_blank" rel="noopener">${who}</a>` : who;
   const cls = clashFirst && p.conflict ? (p.conflict === 'main' ? ' class="clash"' : ' class="clash-side"') : '';
+  // The clash in words, not colour only (Amendment A4, UX-08): part of the row's text.
+  const tag = clashFirst && p.conflict ? (p.conflict === 'main' ? ' <span class="clash-tag" title="Two main-event pools at the same time">Clash</span>'
+    : ' <span class="clash-tag side" title="The only clash is with a side game">Side clash</span>') : '';
   const n = `${nEv} event${nEv === 1 ? '' : 's'}${nSideEv ? ` + ${nSideEv} side` : ''}`;
-  return `<tr${cls}><td class="player">${link}<span class="n">${n}</span></td>${cells}</tr>`;
+  return `<tr${cls}><td class="player">${link}${tag}<span class="n">${n}</span></td>${cells}</tr>`;
 }
 
 // Block view sort. Player: by tag. A block column: everyone with something in that block first,
@@ -218,6 +226,10 @@ $('sched2').tHead.addEventListener('click', (ev) => {
   lowerSort = lowerSort.key === key ? { key, dir: -lowerSort.dir } : { key, dir: 1 };
   store.set('lowerSort', lowerSort);
   render();
+  // The header row was redrawn: focus goes back to the sorted column's button.
+  const again = [...$('sched2').tHead.querySelectorAll('th[data-key]')].find((h) => h.dataset.key === key);
+  const b = again && again.querySelector('button.sort');
+  if (b) b.focus();
 });
 $('clashToggle').addEventListener('click', () => {
   clashFirst = !clashFirst;

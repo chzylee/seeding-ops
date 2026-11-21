@@ -12,6 +12,13 @@
 		b.disabled = true;
 		return fetch('/api/notices/dismiss', { method: 'POST', headers: { 'X-Seeding-App': '1', 'Content-Type': 'application/json' }, body: JSON.stringify({ id: b.getAttribute('data-dismiss') }) })
 			.then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); var n = b.closest('.data-notice'); if (n) n.remove(); })
-			.catch(function () { b.disabled = false; });
+			// Nothing is lost silently (PRODUCT.md principle 4; Amendment A4, UX-30): a failed Dismiss says so
+			// in the notice's live region, and the button works again.
+			.catch(function () {
+				b.disabled = false;
+				var n = b.closest('.data-notice');
+				var m = n && n.querySelector('.notice-msg');
+				if (m) m.textContent = 'Couldn’t dismiss. Try again.';
+			});
 	});
 })();

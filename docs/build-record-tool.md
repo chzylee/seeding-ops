@@ -3804,3 +3804,12 @@ Suite after the merge, before any repair: 368/368 (commit b0b8a94).
 - Parked: none; the tree is committed and green.
 - Needs attention: (1) the visual checklist, the desktop app included; (2) Assumption 1 (tier-mode posts
   are not stored as an arrangement); (3) Assumption 4 (ambiguous tag matches in imports).
+
+## Amendment A4 — UX polish pass (2026-11-21, branch `polish/ux-review`)
+
+Built by the Lead engineer seat (persona v0.4.0) against the Chief of staff's delegated rulings and
+contract, `docs/reviews/2026-11-21-rulings-and-polish-contract.md`. The full record (per-finding
+status, measurements, tests, terms as understood, interpretation ledger, commits, the
+`registry/tiers.csv` checksums, findings outside scope, and Noah's review checklist) is the build
+report: `docs/reviews/2026-11-21-polish-build-report.md`. Design-doc changes: Amendment A4 in
+`docs/design-tool.md`. Local commits only; nothing pushed or merged.

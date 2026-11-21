@@ -739,3 +739,63 @@ Tests: `test/tiers-view.test.js`, plus the updated `test/update-app.test.js` and
   CSV import's "It builds its own page for one game" and "Each row costs one start.gg lookup…"; the
   date field's hover about when a page counts as done; the Tiers section's paragraph on what the file
   carries; the delete confirmation's folder paths.
+
+## Amendment A4 — UX polish (rulings 2026-11-21, delegated)
+
+Noah delegated the rulings on the 2026-11-20 UX review to the Chief of staff and the engineering team
+(*"have chief of staff and engineering team make the decisions for me. i'll review from their
+product"*). The rulings, the scope and the acceptance criteria are in
+`docs/reviews/2026-11-21-rulings-and-polish-contract.md`; the build and what was measured are in
+`docs/reviews/2026-11-21-polish-build-report.md`. Every ruling there can be changed by Noah. This
+amendment records what the build changed in this doc's terms. (The "A4-3" and "A4-6" labels under Open
+questions are older item numbers, not this amendment.)
+
+- **Rulings A1–A5** (contract §1): UX-03 took the open top-5 slot (UX-14 rides along in part: the shared
+  hint and one tier maximum; which gesture opens an editor is deferred to Noah); the stored tier 11 is
+  flagged, never fixed (A2); the lifecycle controls stay as separate buttons on the page header (A3; no
+  menu, no relabel); the start.gg badge keeps start.gg's blue with dark text (A4); the audit stands
+  beside the owner's review as the record (A5).
+- **Display rule 9, extended.** Tier recency is a colour **and a mark beside the number** (no hover
+  needed): ✓ reviewed at this tournament · ◷ last reviewed over 6 months ago · ? never reviewed ·
+  ≈ matched by tag only (A1.2); reviewed within 6 months has no colour and no mark, as before. The
+  cell's accessible name says the state in words ("6, never reviewed"); the hover title (date and
+  tournament) stays. A legend sits on the tabs' row of a game tab, and "How to read this" carries the
+  same line. One map (`lib/view/render.js` `TIER_MARKS`) feeds the marks, the words and the legend; a
+  test pins that the legend lists every state a cell can take. The mark is not part of the value:
+  sorting and the CSV export are unchanged.
+- **Above the maximum (beside A3's Tier range).** A stored tier above `MAX_TIER` keeps reading and
+  showing (A3) and now carries a "!" mark and the words "above 10: start.gg supports 0-10; set it within
+  0-10 to save", on the Tiers sheet and in the seeding table. Flagged, never changed; the push is
+  unaffected (`lib/push.js` sends seed numbers only). `MIN_TIER` / `MAX_TIER` are now defined once, in
+  `lib/view/model.js` (the file the server and the page share): `data.checkTier`, the import, both
+  browser editors' `min`/`max` and the flag all read them (standing rule A4-6).
+- **Badge text (beside A1.4).** The start.gg badge keeps start.gg's blue `#3f80ff`; its text is
+  `#0b0d11` in both themes (5.32:1; white was 3.66:1).
+- **The Tiers sheet's keyboard model (beside A3).** The editable cells (Alias, Tier, Notes) are one
+  tab stop (a roving tabindex: the first row's Alias until you move): ↑ ↓ ← → move between them,
+  Home / End to the row's first / last, Ctrl+Home / End to the first / last row; Enter or F2 opens the
+  editor, Esc closes it with focus back on the cell, Tab leaves the sheet. Every editable cell is named
+  ("Alias for Skeleton, empty"). The header sort buttons are unchanged. The sheet's editor shows the
+  seeding editor's hint ("Enter saves · Esc cancels"; Notes add "Shift+Enter new line"). The open
+  gesture (single click here, double click in the seeding table) is unchanged and is Noah's call.
+- **Sortable headers.** Every sortable table (the seeding table, a player's result tables, the compare
+  panel's shared-events table, the schedule's block view, the Tiers sheet) has its header labels as
+  buttons (Tab, Enter or Space sorts) and `aria-sort` on the sorted one only (`render.js`
+  `sortButton` / `ariaSort`). Notes does not sort, as before. A2.3 holds: moving a seed while sorted by
+  another column returns the table to seed order (and clears the sorted header).
+- **Tournament page header.** Same controls, same groups, tighter: the event facts sit on the title's
+  line, the tier legend on the tabs' row, "How to read this" beside "Seeded events" (it opens onto its
+  own row). Every lifecycle control is still its own button on the header (A3 ruling). A "Skip to
+  table" link is the first Tab stop on a tournament page and on `/tiers`.
+- **Lifecycle note.** The Lifecycle section's **Mark done** control has been labelled **Archive** on
+  screen since 2026-10-30 (Noah's word, commit `42771e5`), recorded here and not changed; the clash
+  with "Archive standings" is Noah's to resolve (UX-12, deferred).
+- **Smaller changes** (contract §3.1 part 2): Schedule clash rows say "Clash" / "Side clash" in words;
+  reduced motion stops the busy bar, spinners and "pulling…" chips and skips the theme cross-fade (the
+  desktop shell's dots too); "How to read this" explains the tier marks, the Seeded ✓ and Freeze;
+  freeze ❄ and pin 📌 rest at ≥ 3:1; Freeze and Jump to use the global focus outline; floating layers
+  blur at most 8 px; "Seeds: tier order" is plain status text; the Tiers read error is styled as an
+  error notice; the compare box says "up to 3"; a disabled button shows the default cursor except
+  while a request runs; a failed Dismiss says "Couldn't dismiss. Try again."; the shell page has
+  `lang="en"`. Text inputs, selects and textareas take a new `--ctl-line` border (≥ 3:1 on every
+  surface); `--line-strong` stays for dividers.

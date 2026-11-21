@@ -55,7 +55,7 @@ your own list), open *Import from CSV* under the link field in *Add a tournament
   (a lookup that failed instead is flagged *lookup failed* with the reason, and Refresh asks again),
   with no results and no ✓ or tier edit (there is no id to save them against). Tiers, ✓, notes,
   majors, compare and both exports work as on any tab. The page reads as **done** from the start of
-  the date you gave; Mark done and Delete work as usual. **Refresh** pulls the same players' results
+  the date you gave; **Archive** (the Mark done control) and Delete work as usual. **Refresh** pulls the same players' results
   again, and looks up again any row whose lookup failed (it does not re-read the file; upload a new
   list as a new page for that).
 - **What's missing compared with a start.gg tournament:** no event picker, no **Push to start.gg**
@@ -91,6 +91,15 @@ here; the message names the rows to fix in `tiers.csv`. Every save goes to the s
 rule (a tier is a whole number 0 to 10; a changed tier stamps `decided_on`). Tiers you set while
 seeding are saved the moment you set them, as before; the Tiers view shows them on its next load.
 *Another game* opens a tab for a game you have no tiers for yet (to import into it).
+
+**The Tiers view from the keyboard.** The sheet is one Tab stop: Tab lands on one cell (the first
+row's Alias, then wherever you last were), and the arrow keys move between the Alias, Tier and Notes
+cells (Home / End: the row's first / last; Ctrl+Home / End: the first / last row). Enter or F2 opens
+the editor, which shows the same hint as the seeding table's ("Enter saves · Esc cancels"); Esc puts
+you back on the cell, and Tab leaves the sheet. A screen reader hears each cell by name, for example
+"Alias for Skeleton, empty". The column headers are buttons: Tab to one and press Enter to sort. A
+stored tier above 10 (from before tiers were 0-10) shows a red **!** and says "above 10: start.gg
+supports 0-10; set it within 0-10 to save": it is kept as it is until you change it.
 
 **Alias.** Your own name for a player, blank until you give one (it is never read from start.gg).
 Players change tags often; the alias helps you track who they are. Wherever a sheet shows a tag (the
@@ -161,6 +170,10 @@ never changes, and a **browser reload** shows the newest data. Old event links
 - **Everything the app sends to start.gg goes through one queue**, one request at a time: pulls,
   W-L, the schedule, the push. To leave room for something else using the same token, set
   `SEED_APP_MAX_PER_MIN` (default 75 per rolling 60 s).
+- **Sort from the keyboard.** Every column header you can click to sort is also a button: Tab to it
+  and press Enter or Space (the seeding table, a player's tables, the compare panel's events, the
+  schedule's block view). The first Tab on the page shows **Skip to table**, which jumps to the
+  table's first header.
 - **📌 Pin** (on each row) freezes that row under the header so you can scroll and compare against
   it. Pin as many as you like; click again to unpin.
 - **Freeze** columns so they stay put when you scroll sideways: the *Freeze* menu picks how many
@@ -187,8 +200,11 @@ never changes, and a **browser reload** shows the newest data. Old event links
   registry/tiers.csv` shows the old pair until you commit). On a review from an earlier day the
   click does nothing, and the status line says why. Clicking the Seeded header groups reviewed and
   unreviewed rows.
-- **Tier colors** show how recently you reviewed each player: green = reviewed at this tournament,
-  no color = within the last 6 months, amber = longer ago, grey = never reviewed. Hover a tier for
+- **Tier colors and marks** show how recently you reviewed each player: green and **✓** = reviewed
+  at this tournament, no color and no mark = within the last 6 months, amber and **◷** = longer ago,
+  grey and **?** = never reviewed (a light blue **≈** is the tag-only match below; a red **!** is a
+  stored tier above 10). The legend sits to the right of the game tabs and in *How to read this*; a
+  screen reader hears the state with the number ("6, never reviewed"). Hover a tier for
   the date and the tournament of the last review; a grey tier that came from the sheet import says so.
   **Light blue** = the tier comes from a row matched **by tag only** (it has no start.gg id yet, so
   the app is inferring that it's this player). It takes the place of the recency color; the hover
@@ -243,7 +259,7 @@ untiered last) until you arrange it, then your arranged order. One sequence 1..N
   tested against a fake start.gg only; your first real post is the first time it runs.*
 
 **After the event.** A tournament reads as **done** once the latest start time among its ticked
-events has passed (or when you press **Mark done**; **Mark live again** undoes that). Done blocks
+events has passed (or when you press **Archive**, the Mark done control; **Mark live again** undoes that). Done blocks
 nothing: Refresh, tier edits, ✓, export and push all still work (late registrations and a
 multi-day tournament's later tabs are normal). Done only moves the tournament down the home page and
 shows two more buttons:

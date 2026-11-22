@@ -240,7 +240,7 @@ jobs:
 
           From 0.2.0 on, when there's a new version the top bar (next to your start.gg name) says **Update available**. Click **Update** and the app does the rest.
 
-          <sub>Picked "Uninstall before installing" by mistake? Your start.gg connection and tournaments are still there, but the tiers table was removed. Import a tiers file from the home page's Tiers section to get them back.</sub>
+          <sub>Picked "Uninstall before installing" by mistake? Your start.gg connection and tournaments are still there, but the tiers table was removed. Import a tiers file in the Tiers view (left sidebar) to get them back.</sub>
           NOTES
           sed -i "s/@VERSION@/${VERSION}/g" dist/notes.md
           if ! gh release view "$TAG" >/dev/null 2>&1; then

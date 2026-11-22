@@ -204,7 +204,8 @@ when one exists, with no guarantee the lettered blocks match; noted by hand with
   Refresh, status, and the lifecycle controls. Stable URL; reload shows the latest data.
 - The seeding tab keeps everything increment 2 built: Seeded ✓ (now writing T1), Team | Player |
   Region | Tier frozen, majors, shared series, Other series (this game), Other games, Notes, in-place
-  edit, sort, compare up to 3, pin, freeze, jump-to, Needs tier only, Show team, Sheets export.
+  edit, sort, compare up to 3, pin, freeze, jump-to, Needs tier only (removed in Noah's review,
+  2026-11-21), Show team, Sheets export.
 - `GET /e/<t>/<e>` redirects to `/t/<t>` with that game's tab selected **when `out/<t>/` exists**;
   otherwise 404 with a link to add the tournament. Old `out/<t>__<e>__<stamp>/` run folders and
   `conflicts/out/` are left alone and not read; Noah deletes them when he likes.
@@ -675,7 +676,8 @@ Decisions:
   events need no change to the shell and behave the same in the webview and a browser. A line marks where the row lands; the table scrolls near its edges; Esc
   cancels. Keyboard (the WAI-ARIA reorderable-list practice): with the handle focused, ↑ / ↓ move one
   row, Page Up / Page Down ten, Home / End to the first / last seed, focus stays on the moved row, and an
-  assertive live region says "tag: seed n of N". Moves step over rows hidden by *Needs tier only*.
+  assertive live region says "tag: seed n of N". Moves stepped over rows hidden by *Needs tier only*
+  until that filter was removed (Noah's review, 2026-11-21); every seeded row now shows.
   Moving while the table is sorted by another column first returns it to seed order; *Sort by seed*
   and the Seed header (ascending) do the same. When a tab has several events, *Seeds for* picks which
   event the column numbers (remembered per browser).
@@ -762,10 +764,14 @@ questions are older item numbers, not this amendment.)
   tournament) stays. A legend sits on the tabs' row of a game tab, and "How to read this" carries the
   same line. One map (`lib/view/render.js` `TIER_MARKS`) feeds the marks, the words and the legend; a
   test pins that the legend lists every state a cell can take. The mark is not part of the value:
-  sorting and the CSV export are unchanged.
+  sorting and the CSV export are unchanged. **Noah's review, 2026-11-21: the marks and the legend are
+  removed** (the page's and the CLI view's). Tier recency is the colour and the hover title again; the
+  accessible name in words stays (`render.js` `TIER_WORDS`). This knowingly sets aside PRODUCT.md's
+  "colour never the only carrier of meaning" for the Tier cell: the owner's call.
 - **Above the maximum (beside A3's Tier range).** A stored tier above `MAX_TIER` keeps reading and
   showing (A3) and now carries a "!" mark and the words "above 10: start.gg supports 0-10; set it within
-  0-10 to save", on the Tiers sheet and in the seeding table. Flagged, never changed; the push is
+  0-10 to save", on the Tiers sheet and in the seeding table (the "!" removed with the other marks in
+  Noah's review, 2026-11-21; the words and a hover title stay). Flagged, never changed; the push is
   unaffected (`lib/push.js` sends seed numbers only). `MIN_TIER` / `MAX_TIER` are now defined once, in
   `lib/view/model.js` (the file the server and the page share): `data.checkTier`, the import, both
   browser editors' `min`/`max` and the flag all read them (standing rule A4-6).
@@ -784,9 +790,23 @@ questions are older item numbers, not this amendment.)
   `sortButton` / `ariaSort`). Notes does not sort, as before. A2.3 holds: moving a seed while sorted by
   another column returns the table to seed order (and clears the sorted header).
 - **Tournament page header.** Same controls, same groups, tighter: the event facts sit on the title's
-  line, the tier legend on the tabs' row, "How to read this" beside "Seeded events" (it opens onto its
-  own row). Every lifecycle control is still its own button on the header (A3 ruling). A "Skip to
+  line, the tier legend on the tabs' row. Every lifecycle control is still its own button on the header
+  (A3 ruling). **Noah's review, 2026-11-21:** *Delete tournament data* moves to the title's line,
+  pushed right; *Refresh data* and *Export to CSV* join the right side of the bar, before the other
+  lifecycle buttons, with *Seeded events* alone on the left; "How to read this" is removed (the README
+  carries the reading notes; the tier legend went too, with the marks, later in the same review). Then, same review: the
+  "W-L known for …" line is gone from a game tab's header; the toolbar is **one row** (Seeded events
+  and the table tools on the left; Refresh data, Export to CSV, Push to start.gg and the remaining
+  lifecycle buttons on the right), set 12 px below the tabs, with the Freeze list as wide as its chosen
+  option so the row fits, and its right edge level with *Delete tournament data* (a group whose
+  controls are all hidden takes no room); the *Needs tier only* checkbox is removed (Noah: unclear
+  and not helpful; *Show team* stays); and the **Upload summary** is removed from the page (the
+  server still records
+  each upload run in `state.json` `uploads`, including the header row skipped and the rows not read,
+  but nothing on screen shows them now). A "Skip to
   table" link is the first Tab stop on a tournament page and on `/tiers`.
+  Same review, every page: the top bar has no divider before the version (it sat a few px off the
+  sidebar's edge and read as a misaligned column); the top bar and the sidebar are two separate bars.
 - **Lifecycle note.** The Lifecycle section's **Mark done** control has been labelled **Archive** on
   screen since 2026-10-30 (Noah's word, commit `42771e5`), recorded here and not changed; the clash
   with "Archive standings" is Noah's to resolve (UX-12, deferred).

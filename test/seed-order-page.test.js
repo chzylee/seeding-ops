@@ -37,9 +37,6 @@ async function bootPage(w, { hold = () => null, confirm = () => true } = {}) {
   const pushPost = makeEl('button', { id: 'pushPost' });
   const pushStatus = makeEl('span', { id: 'pushStatus' });
   const exportCsv = makeEl('button', { id: 'exportCsv' });
-  // "Needs tier only" off, as on a fresh page (a stand-in would read as checked and hide tiered rows).
-  const needsOnly = makeEl('input', { id: 'needsOnly' });
-  needsOnly.checked = false;
   const parts = [];
   const g = { SEED_TAB: { t: T_SLUG, game: { id: w.gid, name: GAME.name }, events: [E_SLUG], eventInfo: { [E_SLUG]: { name: 'Singles' } } },
     localStorage: anything('localStorage'), performance: { now: () => 0 }, PerformanceObserver: anything('PerformanceObserver'),
@@ -53,7 +50,7 @@ async function bootPage(w, { hold = () => null, confirm = () => true } = {}) {
     return /\.csv$/.test(url) && r.status === 200 ? { status: 200, body: r.text, raw: true } : { status: r.status, body: r.text ? r.json() : {} };
   };
   const page = loadPage(SRC, {
-    stubMissing: true, globals: g, confirm, elements: { summary, push, pushBody, pushPost, pushStatus, exportCsv, needsOnly },
+    stubMissing: true, globals: g, confirm, elements: { summary, push, pushBody, pushPost, pushStatus, exportCsv },
     fetch: (url, init = {}) => { const h = hold(url, init); return h ? h.then(() => answer(url, init)) : answer(url, init); },
   });
   await page.flush(20);

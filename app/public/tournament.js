@@ -122,16 +122,9 @@
   function openTab(tab) {
     if (active === 'game') {
       $('seedBar').hidden = false;
+      $('pushGroup').hidden = false;   // Push to start.gg, like the table tools, belongs to a game tab
       $('exportCsv').hidden = false;   // the export lives beside Refresh data; it needs a game tab's table
       $('pane').hidden = false;
-      // The tier legend beside the table and the help's tier line (Amendment A4, UX-01 / UX-21): both
-      // drawn from lib/view/render.js's one map of tier marks.
-      if (window.SeedRender) {
-        $('tierLegend').innerHTML = window.SeedRender.tierLegend();
-        $('tierLegend').hidden = false;
-        $('legendText').textContent = window.SeedRender.tierHelpText();
-      }
-      $('readHelp').hidden = false;
       const eventInfo = Object.fromEntries(info.events.map((e) => [e.slug, { name: e.name }]));
       window.SEED_TAB = { t: T, game: tab.game, events: tab.events, eventInfo };
       loadScript('/static/app.js');
@@ -275,46 +268,6 @@
     if (await lifecycle('delete', { confirm: T })) location.href = '/';
   });
 
-  // ---- The upload's summary (A1.3, Acceptance 8) ----------------------------------------------------
-  // Each run that looked players up records a summary in state.json `uploads`. The newest is shown
-  // open once (then marked seen on the server); afterwards it stays here, folded.
-  function summaryHtml(x) {
-    const li = (items) => `<ul>${items.join('')}</ul>`;
-    const parts = [`<p>${esc(new Date(x.at).toLocaleString())}: ${x.rows} rows, ${x.found} found on start.gg (${x.asked} looked up this time).</p>`];
-    // E2-4: the row read as the column header is named with its two values, so a player taken for
-    // the header by mistake is visible here.
-    if (x.header) parts.push(`<p class="dim header-skipped">Line ${x.header.line} was read as the column header and skipped: <code>${esc(x.header.values[0])}</code>, <code>${esc(x.header.values[1])}</code>. If that is a player, add a header row above it and upload again.</p>`);
-    if (x.not_found.length) parts.push(`<h4>Not found on start.gg (kept on the page, flagged)</h4>${li(x.not_found.map((r) => `<li>line ${r.line}: ${esc(r.name || '(no name)')} · ${esc(r.discriminator)} — ${esc(r.reason)}</li>`))}`);
-    if (x.errors.length) parts.push(`<h4>Lookups that failed (Refresh asks again)</h4>${li(x.errors.map((r) => `<li>line ${r.line}: ${esc(r.name)} · ${esc(r.discriminator)} — ${esc(r.reason)}</li>`))}`);
-    if (x.duplicates.length) parts.push(`<h4>Repeated discriminators (kept once)</h4>${li(x.duplicates.map((d) => `<li>line ${d.line} repeats line ${d.kept_line} (${esc(d.discriminator)})</li>`))}`);
-    if (x.malformed.length) parts.push(`<h4>Rows not read</h4>${li(x.malformed.map((m) => `<li>line ${m.line}: <code>${esc(m.text)}</code> — ${esc(m.reason)}</li>`))}`);
-    if (x.ignored_columns.length) parts.push(`<p class="dim">Values after the second column were ignored on line(s) ${x.ignored_columns.join(', ')}.</p>`);
-    const t = x.tiers || {};
-    if (t.error) parts.push(`<p class="err">The tiers file was not updated: ${esc(t.error)}</p>`);
-    else {
-      parts.push(`<h4>Tiers file (registry/tiers.csv)</h4><p>${t.matched_by_id} matched by start.gg id; ${t.discriminators_written} discriminator(s) and ${t.player_ids_written} player id(s) written; ${t.unmatched} with no tiers row.</p>`);
-      if (t.linked_by_tag && t.linked_by_tag.length) {
-        parts.push(`<p><b>Linked by tag — please review.</b> These rows had no start.gg id; they matched by tag, and now carry this player's ids.</p>`
-          + li(t.linked_by_tag.map((r) => `<li>${esc(r.gamer_tag)}${r.alias && r.alias !== r.gamer_tag ? ` (listed as ${esc(r.alias)})` : ''} → tiers row "${esc(r.row_tag)}"${r.tier !== '' ? `, tier ${esc(r.tier)}` : ''}</li>`)));
-      }
-      if (t.ambiguous && t.ambiguous.length) {
-        parts.push(`<p><b>Not linked: one tag, several players.</b></p>`
-          + li(t.ambiguous.map((a) => `<li>tiers row "${esc(a.row_tag)}"${a.tier !== '' ? ` (tier ${esc(a.tier)})` : ''}: ${a.players.map((q) => esc(q.gamer_tag) + ' · ' + esc(q.discriminator)).join(', ')}</li>`)));
-      }
-    }
-    return parts.join('');
-  }
-  function renderUploadNote() {
-    const el = $('uploadNote');
-    const all = (info.upload && info.upload.summaries) || [];
-    if (!isUpload() || !all.length) { el.hidden = true; return; }
-    const last = all[all.length - 1];
-    const fresh = !last.shown_at;
-    el.innerHTML = `<details${fresh ? ' open' : ''}><summary>Upload summary${fresh ? ' (new)' : ''}</summary><div class="about-body">${summaryHtml(last)}</div></details>`;
-    el.hidden = false;
-    if (fresh) post(tapi('upload/seen'));
-  }
-
   // ---- Start ----------------------------------------------------------------------------------------
   (async function start() {
     let r;
@@ -325,7 +278,6 @@
     renderHeader();
     renderPicker();
     renderTabs();
-    renderUploadNote();
     openTab(tab);
     if (active !== 'game') {
       bindRefresh();

@@ -157,12 +157,13 @@ test('registry linking on upload: id matches get the discriminator, a tag-only m
   // On the page: the tag-linked row now reads by id; the Twin row is still tag-only for both.
   const vm = (await inject(w.app.handler, { url: `/api/t/mixfest-26-test/g/${GAME.id}/data` })).json();
   assert.deepStrictEqual([vm.notes['103'].tier, !!vm.notes['103'].tag_only, vm.notes['110'].tag_only, vm.notes['111'].tag_only], [5, false, true, true]);
-  // Shown once: the page marks it seen.
+  // The seen marker still works on the server.
   const seen = await post(w.app, '/api/t/mixfest-26-test/upload/seen');
   assert.strictEqual(seen.status, 200);
   assert.ok(pool.readState(path.join(w.outRoot, 'mixfest-26-test')).uploads[0].shown_at);
   const src = fs.readFileSync(path.join(__dirname, '..', 'app', 'public', 'tournament.js'), 'utf8');
-  assert.match(src, /const fresh = !last\.shown_at;[\s\S]*if \(fresh\) post\(tapi\('upload\/seen'\)\);/, 'the page opens the newest summary only while unseen, then marks it seen');
+  // Noah's review, 2026-11-21: the page no longer shows the Upload summary (the server still records it).
+  assert.doesNotMatch(src, /uploadNote|Upload summary/);
 });
 
 test('the home page: an upload badge for the uploaded list, a start.gg badge for a tournament with no source (read as startgg, its state.json not rewritten); both themes carry the badge colors', async () => {
@@ -319,17 +320,10 @@ test('home page layout (Noah, mid-pass 2026-10-30; A3 2026-11-12): "Add a tourna
   assert.match(css, /\.add-section \.add-t input \{ flex: 1 1 auto; min-width: 0; \}/);
 });
 
-// The page's summary renderer, taken from app/public/tournament.js as served (it runs in the browser).
-function summaryHtmlFromPage() {
-  const src = fs.readFileSync(path.join(__dirname, '..', 'app', 'public', 'tournament.js'), 'utf8');
-  const esc = /\n  const esc = [^\n]+\n/.exec(src)[0];
-  const fn = /\n  function summaryHtml\(x\) \{[\s\S]*?\n  \}\n/.exec(src)[0];
-  return new Function(`${esc}${fn}return summaryHtml;`)();
-}
-
-// E2-4 (build C pass 2): whenever a row is skipped as the header, the upload's summary says so with its
-// two values; a header-less list says nothing of the kind.
-test('E2-4: the upload summary names the row skipped as the header (line and both values) and the page shows it; a list with no header has no such note', async () => {
+// E2-4 (build C pass 2): whenever a row is skipped as the header, the upload's record names it with its two
+// values; a header-less list records none. (The page's Upload summary was removed in Noah's 2026-11-21
+// review; the server still records each run.)
+test('E2-4: the upload record names the row skipped as the header (line and both values); a list with no header records none', async () => {
   const w = setup();
   const r = await upload(w.app, { name: 'With Header', csv: 'Player,Code\nKid,aaaa0002\n' });
   assert.strictEqual(r.status, 202, r.text);
@@ -341,18 +335,13 @@ test('E2-4: the upload summary names the row skipped as the header (line and bot
   const b = pool.readState(path.join(w.outRoot, 'no-header')).uploads[0];
   assert.deepStrictEqual(a.header, { line: 1, values: ['Player', 'Code'] });
   assert.strictEqual(b.header, null);
-  const html = summaryHtmlFromPage();
-  assert.match(html(a), /Line 1 was read as the column header and skipped: <code>Player<\/code>, <code>Code<\/code>/);
-  assert.ok(!html(b).includes('column header'));
-  // A mistyped first code in a header-less list is a malformed row at line 1, listed in the summary.
+  // A mistyped first code in a header-less list is a malformed row at line 1, recorded with its text.
   const r3 = await upload(w.app, { name: 'Typo First', csv: 'Kid,aaaa002\nQuiet,aaaa0003\n' });
   assert.strictEqual(r3.status, 202, r3.text);
   assert.deepStrictEqual([r3.json().header_row, r3.json().malformed.map((m) => m.line)], [null, [1]]);
   await w.app.jobs.idle();
   const c = pool.readState(path.join(w.outRoot, 'typo-first')).uploads[0];
-  assert.match(html(c), /<h4>Rows not read<\/h4><ul><li>line 1: <code>Kid,aaaa002<\/code>/);
-  // A summary recorded before this field existed (the live Mixfest one) still renders.
-  assert.ok(!html({ ...b, header: undefined }).includes('column header'));
+  assert.deepStrictEqual(c.malformed.map((m) => [m.line, m.text]), [[1, 'Kid,aaaa002']]);
 });
 
 // E2-6 (build C pass 2): a failed lookup is not a code start.gg does not know.

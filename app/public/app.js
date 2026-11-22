@@ -107,12 +107,10 @@
     document.title = `${vm.meta.game.name} — ${ev.tournament_name || T} — seeding`;
     const w = vm.meta.window || {};
     const runAt = new Date(vm.run.run_at);
-    // Two units (event facts, then W-L progress) so the line wraps between them, not mid-phrase.
-    const facts = document.createElement('span'), wl = document.createElement('span');
+    const facts = document.createElement('span');
     facts.textContent = `${ev.name || vm.meta.game.name} · ${vm.meta.registrant_count} registrants · results ${String(w.start).slice(0, 10)} to ${String(w.end).slice(0, 10)}`
       + ` · pulled ${runAt.toLocaleString()}`;
-    wl.textContent = `W-L known for ${vm.wl.known.toLocaleString()} of ${vm.wl.total.toLocaleString()} ${vm.meta.game.name} results`;
-    $('sub').replaceChildren(facts, wl);
+    $('sub').replaceChildren(facts);
   }
 
   // ---- Summary + pins --------------------------------------------------------------------------
@@ -327,11 +325,6 @@
     const tr = b.closest('tr');
     if (tr) tr.scrollIntoView({ block: 'nearest' });
   }
-  // The rows a keyboard move steps over: seeded and shown (Needs tier only hides tiered rows).
-  function visibleSeedIds() {
-    const needsOnly = document.body.classList.contains('needs-only');
-    return seedState.order.filter((id) => !needsOnly || !Number.isFinite(tierOfId(id)));
-  }
   // Keyboard reordering on the ⠿ handle (WAI-ARIA practice for a reorderable list): Arrow Up / Down
   // one row, Page Up / Down ten, Home / End to the first / last seed; focus stays on the moved row.
   const MOVE_KEYS = { 'ArrowUp': -1, 'ArrowDown': 1, 'PageUp': -10, 'PageDown': 10, 'Home': -Infinity, 'End': Infinity };
@@ -341,7 +334,7 @@
     ev.preventDefault();
     const id = btn.closest('tr').dataset.pid;   // read before ensureSeedOrder redraws the Seed cells
     ensureSeedOrder();
-    const vis = visibleSeedIds();
+    const vis = seedState.order;   // every seeded row is shown, so a move steps over each
     const i = vis.indexOf(id);
     if (i < 0) return;
     const step = MOVE_KEYS[ev.key];
@@ -1180,7 +1173,6 @@
     if (!r || !r.id) return false;
     const tr = table.querySelector(`tbody tr[data-pid="${CSS.escape(r.id)}"]`);
     if (!tr) return false;
-    if (getComputedStyle(tr).display === 'none') { $('needsOnly').checked = false; $('needsOnly').dispatchEvent(new Event('change')); }
     tr.scrollIntoView({ block: 'center' });
     tr.classList.add('flash');
     setTimeout(() => tr.classList.remove('flash'), 1600);
@@ -1198,17 +1190,6 @@
   if (cmp.on) { compare.hidden = false; $('compareToggle').setAttribute('aria-pressed', 'true'); }
   load().then(() => { if (cmp.on) renderCompare(); });
 }());
-
-// "Needs tier only": hide summary rows that have a tier (rows without one carry class="untiered").
-(function () {
-  const box = document.getElementById('needsOnly');
-  if (!box) return;
-  const KEY = 'seeding:needsOnly:' + location.pathname;
-  try { box.checked = localStorage.getItem(KEY) === '1'; } catch { /* per-viewer convenience only */ }
-  const apply = () => { document.body.classList.toggle('needs-only', box.checked); try { localStorage.setItem(KEY, box.checked ? '1' : '0'); } catch { /* ignore */ } };
-  box.addEventListener('change', apply);
-  apply();
-})();
 
 // "Show team": hide or show the Team column (main table + compare panel). Per viewer, remembered.
 (function () {

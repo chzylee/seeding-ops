@@ -40,9 +40,10 @@ your own list), open *Import from CSV* under the link field in *Add a tournament
   (`2d17cccd`), as `user/2d17cccd`, or as the whole profile link. Column names don't matter and a
   header row is optional (the app sees there is none when the first row's second value is itself a
   code, or looks like a mistyped one: then that row is reported as unreadable, never skipped as a
-  header; when a row is skipped as the header, the upload summary names it). A list takes at most
+  header). A list takes at most
   1,000 players (each is a start.gg lookup); a longer one is refused with the count. A name like `CHAINED | illumin` is split into team and tag. A code listed twice is kept
-  once; a row it can't read (no code, or not a code) is reported with its line number. Blank lines
+  once; a row it can't read (no code, or not a code) is skipped and recorded with its line number in
+  the tournament's `state.json` (the page no longer shows an upload summary). Blank lines
   and values after the second column are ignored (the latter are listed).
 - **The form:** a page name (it becomes the page's address, `/t/<name>`), the game (the games in
   `config/majors.json`, or *Other* with a start.gg game id), the event's date, and the file.
@@ -200,11 +201,10 @@ never changes, and a **browser reload** shows the newest data. Old event links
   registry/tiers.csv` shows the old pair until you commit). On a review from an earlier day the
   click does nothing, and the status line says why. Clicking the Seeded header groups reviewed and
   unreviewed rows.
-- **Tier colors and marks** show how recently you reviewed each player: green and **✓** = reviewed
-  at this tournament, no color and no mark = within the last 6 months, amber and **◷** = longer ago,
-  grey and **?** = never reviewed (a light blue **≈** is the tag-only match below; a red **!** is a
-  stored tier above 10). The legend sits to the right of the game tabs and in *How to read this*; a
-  screen reader hears the state with the number ("6, never reviewed"). Hover a tier for
+- **Tier colors** show how recently you reviewed each player: green = reviewed at this tournament,
+  no color = within the last 6 months, amber = longer ago, grey = never reviewed (light blue is the
+  tag-only match below). A screen reader hears the state with the number ("6, never reviewed"); a
+  stored tier above 10 says so on hover and to a screen reader. Hover a tier for
   the date and the tournament of the last review; a grey tier that came from the sheet import says so.
   **Light blue** = the tier comes from a row matched **by tag only** (it has no start.gg id yet, so
   the app is inferring that it's this player). It takes the place of the recency color; the hover
@@ -267,7 +267,7 @@ shows two more buttons:
 - **Archive standings** (on request) fetches each ticked event's final standings once, into
   `out/<tournament>/standings.json`, so you can look back at how the seeding played out. The
   tournament then reads as **archived**; its data stays until you delete it.
-- **Delete tournament data** (asks you to confirm) removes `out/<tournament>/`: the pool, W-L,
+- **Delete tournament data** (top right, on the title's line; asks you to confirm) removes `out/<tournament>/`: the pool, W-L,
   schedule, standings and push records. **Your tiers, notes and reviews in `registry/tiers.csv` are
   never touched by it.**
 
@@ -520,7 +520,7 @@ before the installer replaces them.
 3. Click through to **Finish**.
 
 Why "Do not uninstall": that page selects *Uninstall before installing* by default (Tauri's installer
-template), and 0.1.0's uninstaller deletes `registry	iers.csv`; .env and out survive either way.
+template), and 0.1.0's uninstaller deletes `registry\tiers.csv`; .env and out survive either way.
 If the tiers table was removed by mistake, import a tiers file in the Tiers view.
 From 0.2.0 on, the account-bar **Update** button runs the installer in update mode (`/P /UPDATE /R`),
 which never uninstalls.

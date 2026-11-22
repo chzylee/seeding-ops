@@ -71,12 +71,11 @@ test('A4 tier range: one maximum (lib/view/model.js) for the server rule, the im
   const sw = await seedWorld();
   const summary = makeEl('table', { id: 'summary' });
   summary.tHead = anything('thead'); summary.tBodies = [anything('pinned'), anything('main')]; summary.rows = [];
-  const needsOnly = makeEl('input', { id: 'needsOnly' }); needsOnly.checked = false;
   const g = { SEED_TAB: { t: T_SLUG, game: { id: sw.gid, name: 'G' }, events: [E_SLUG], eventInfo: {} }, localStorage: anything('ls'), performance: { now: () => 0 },
     PerformanceObserver: anything('po'), IntersectionObserver: anything('io'), requestAnimationFrame: () => 0, setInterval: () => 0, clearInterval: () => {},
     Event: class { constructor(t) { this.type = t; } }, getComputedStyle: anything('gcs'), matchMedia: anything('mm'), CSS: { escape: (s) => String(s) } };
   const page = loadPage(['lib/view/model.js', 'lib/view/render.js', 'app/public/app.js'].map(src).join('\n;\n'), {
-    stubMissing: true, globals: g, elements: { summary, needsOnly }, fetch: async (url, init = {}) => { const r = await inject(sw.app.handler, { url, method: init.method || 'GET', headers: init.headers || {}, body: init.body || '' }); return { status: r.status, body: r.text ? r.json() : {} }; } });
+    stubMissing: true, globals: g, elements: { summary }, fetch: async (url, init = {}) => { const r = await inject(sw.app.handler, { url, method: init.method || 'GET', headers: init.headers || {}, body: init.body || '' }); return { status: r.status, body: r.text ? r.json() : {} }; } });
   await page.flush(10);
   page.document.documentElement = { clientWidth: 1200 };
   const cell = makeEl('td', { dataset: { edit: 'tier' } });
@@ -91,29 +90,28 @@ test('A4 tier range: one maximum (lib/view/model.js) for the server rule, the im
 
 // ---- Ruling A2: a stored tier above the maximum is flagged, never changed ---------------------------
 
-test('A4 ruling A2: a stored 11 shows a mark that is not colour and words a screen reader reads, on the Tiers sheet and in the seeding table; 10 does not; nothing is written', async () => {
+test('A4 ruling A2: a stored 11 is named in words a screen reader reads and has a hover title, on the Tiers sheet and in the seeding table; 10 is not; nothing is written', async () => {
   const w = world([row({ player_id: '1', startgg_tag: 'Skeleton', tier: '11', source: 'sheet import 2026-10-15' }), row({ player_id: '2', startgg_tag: 'Ten', tier: '10' }), row({ player_id: '3', startgg_tag: 'Zero', tier: '0' })]);
   const before = fs.readFileSync(w.tiersFile, 'utf8');
   const p = await tiersPage(w);
   const html = p.table.innerHTML;
-  const marks = [...html.matchAll(/<tr data-key="([^"]+)">(?:(?!<\/tr>).)*?class="tier-mark over"/g)].map((m) => m[1]);
-  assert.deepStrictEqual(marks, ['p:1'], 'only the 11 is flagged');
-  assert.match(html, /<td class="tier num over-max" tabindex="-1" data-edit="tier" aria-label="Tier for Skeleton, 11, above 10: start\.gg supports 0-10; set it within 0-10 to save"><b>11<\/b><span class="tier-mark over" aria-hidden="true" title="[^"]+">!<\/span><\/td>/);
-  // The seeding table: the same mark and words, the value itself unchanged (sort and export read 11).
+  const flagged = [...html.matchAll(/<tr data-key="([^"]+)">(?:(?!<\/tr>).)*?class="tier num over-max"/g)].map((m) => m[1]);
+  assert.deepStrictEqual(flagged, ['p:1'], 'only the 11 is flagged');
+  assert.match(html, /<td class="tier num over-max" tabindex="-1" data-edit="tier" aria-label="Tier for Skeleton, 11, above 10: start\.gg supports 0-10; set it within 0-10 to save"><b title="Above 10: [^"]+">11<\/b><\/td>/);
+  // The seeding table: the same words, the value itself unchanged (sort and export read 11).
   const ctx = { players: [], notes: {}, tournament: 't', today: '2026-11-21' };
   const n = { tier: 11, last_reviewed_on: '', source: 'sheet import' };
-  assert.match(R.tierMarks(n, ctx), /<span class="tier-mark over" aria-hidden="true">!<\/span>/);
   assert.strictEqual(R.tierCellLabel(n, ctx), '11, above 10: start.gg supports 0-10; set it within 0-10 to save, never reviewed');
   assert.match(R.tierCellTitle(n, ctx), /^Above 10: start\.gg supports tiers 0-10\./);
-  assert.doesNotMatch(R.tierMarks({ tier: 10, last_reviewed_on: '2026-11-01', last_reviewed_tournament: 'x' }, ctx), /over/);
+  assert.strictEqual(R.tierCellLabel({ tier: 10, last_reviewed_on: '2026-11-01', last_reviewed_tournament: 'x' }, ctx), '');
   assert.strictEqual(fs.readFileSync(w.tiersFile, 'utf8'), before, 'flag, never fix: the file is untouched');
   // The import still refuses an 11 (Amendment A3): the flag changes no rule.
   assert.throws(() => S.previewImport({ csv: 'game_id,game_name,player_id,discriminator,startgg_tag,sheet_tag,tier\n22407,MBAACC,9,,Nine,,11\n', gameId: A.id, tiersFile: w.tiersFile }), /tier "11" is not a whole number from 0 to 10/);
 });
 
-// ---- UX-01: tier marks and the legend, one map ----------------------------------------------------
+// ---- UX-01: the Tier cell's state in words (the visible marks and legend removed, Noah's review 2026-11-21)
 
-test('A4 UX-01: each recency state and the tag-only match carry their own mark and words; "recent" has none; sort value and export unchanged', () => {
+test('A4 UX-01: each recency state and the tag-only match are named in words; "recent" has none; no mark is drawn; sort value and export unchanged', () => {
   const ctx = { tournament: 'here-t', today: '2026-11-21' };
   const cases = {
     here: { tier: 6, last_reviewed_on: '2026-11-20', last_reviewed_tournament: 'here-t' },
@@ -124,35 +122,25 @@ test('A4 UX-01: each recency state and the tag-only match carry their own mark a
   };
   for (const [state, n] of Object.entries(cases)) {
     assert.strictEqual(R.tierState(n, ctx), state);
-    if (state === 'recent') { assert.strictEqual(R.tierMarks(n, ctx), ''); assert.strictEqual(R.tierCellLabel(n, ctx), ''); continue; }
-    assert.strictEqual(R.tierMarks(n, ctx), `<span class="tier-mark" aria-hidden="true">${R.TIER_MARKS[state].mark}</span>`);
-    assert.strictEqual(R.tierCellLabel(n, ctx), `6, ${R.TIER_MARKS[state].words}`);
+    assert.strictEqual(R.tierCellLabel(n, ctx), state === 'recent' ? '' : `6, ${R.TIER_WORDS[state]}`);
   }
   assert.strictEqual(R.tierCellLabel(cases.never, ctx), '6, never reviewed', 'the contract\'s example');
-  const marks = Object.values(R.TIER_MARKS).map((s) => s.mark).concat(R.OVER_MAX.mark);
-  assert.strictEqual(new Set(marks).size, marks.length, 'every mark is different');
-  // In the row: the mark after the number, the name in words, the hover title kept, data-v the number.
+  // Every state the cell can take (lib/view/model.js recency's bands and the tag-only match) has words.
+  assert.deepStrictEqual(Object.keys(R.TIER_WORDS).sort(), ['here', 'never', 'old', 'tag']);
+  // In the row: the number alone, the name in words, the hover title kept, data-v the number.
   const p = { player_id: '7', gamer_tag: 'Seven', prefix: '', country: '' };
   const c = R.summaryContext({ meta: { game: { name: 'G' } }, players: [p], rows: [], records: {}, notes: { 7: cases.never }, columns: { majors: [], shared: [] }, index: M.indexFromKeys({}, []), tournament: 'here-t', today: '2026-11-21' });
   c.app = true;
   const tr = R.summaryRow(p, c, { app: true });
-  assert.match(tr, /<td class="tier rec-never" data-v="6" tabindex="0" data-edit="tier" title="Never reviewed \(tier from the sheet import\)" aria-label="6, never reviewed"><b>6<\/b><span class="tier-mark" aria-hidden="true">\?<\/span><\/td>/);
+  assert.match(tr, /<td class="tier rec-never" data-v="6" tabindex="0" data-edit="tier" title="Never reviewed \(tier from the sheet import\)" aria-label="6, never reviewed"><b>6<\/b><\/td>/);
   const text = R.summaryTextTable(c, [p]);
-  assert.strictEqual(text[1][text[0].indexOf('Tier')], '6', 'the export is the number, no mark');
+  assert.strictEqual(text[1][text[0].indexOf('Tier')], '6', 'the export is the number');
 });
 
-test('A4 UX-01: the legend lists every state a Tier cell can take (one map), plus "no mark"', () => {
-  const html = R.tierLegend(), text = R.tierLegendText();
-  for (const s of [...Object.values(R.TIER_MARKS), R.OVER_MAX]) {
-    const words = s.words.replace(/:.*$/, '');
-    assert.ok(html.includes(`title="${words}">`) && html.includes(`${s.mark}</span> ${s.short}`), `legend html: ${s.mark} ${s.short} (title: ${words})`);
-    assert.ok(text.includes(`${s.mark} ${words}`), `legend text: ${s.mark} ${words}`);
-  }
-  assert.match(html, /title="no mark: reviewed within the last 6 months">no mark: within 6 months</);
-  // Every state the cell can take: recency's bands (lib/view/model.js recency) and the tag-only match.
-  const states = ['here', 'recent', 'old', 'never', 'tag'];
-  for (const st of states) assert.ok(st === 'recent' || R.TIER_MARKS[st], `${st} has a mark`);
-  assert.deepStrictEqual(Object.keys(R.TIER_MARKS).sort(), states.filter((s) => s !== 'recent').sort(), 'no mark for a state the cell never takes');
+test('Tier marks removed (Noah\'s review, 2026-11-21): no mark, no legend, on the page or in the CLI view', () => {
+  for (const k of ['TIER_MARKS', 'tierMarks', 'tierLegend', 'tierLegendText']) assert.strictEqual(R[k], undefined, `${k} is gone`);
+  assert.doesNotMatch(src('app/public/tournament.html') + src('app/public/tournament.js'), /tierLegend|tier-legend/);
+  assert.doesNotMatch(CSS + src('lib/view/render.js') + src('views/major-table.js'), /class="tier-mark|\.tier-mark|Tier marks:/);
 });
 
 // ---- UX-03: the Tiers sheet is one tab stop with arrow keys -------------------------------------
@@ -284,7 +272,7 @@ test('A4 contrast (UX-05, UX-22, UX-28, UX-01, UX-08): the pairs the contract na
     // UX-28: the account bar's prefix takes the bar's colour when off (red) or warn (amber).
     assert.ok(ratio(at(t, '--err'), at(t, '--err-bg')) >= 4.5, `${t}: off`);
     assert.ok(ratio(at(t, '--warn-fg'), at(t, '--warn-bg')) >= 4.5, `${t}: warn`);
-    // UX-01: the tier digit (and its mark, the same colour) on each recency fill.
+    // UX-01: the tier digit on each recency fill.
     for (const [fg, bg] of [['--rec-here-fg', '--rec-here-bg'], ['--warn-fg', '--warn-bg'], ['--ink-2', '--rec-never-bg'], ['--tag-only-fg', '--tag-only-bg']]) {
       assert.ok(ratio(at(t, fg), at(t, bg)) >= 4.5, `${t}: ${fg} on ${bg}`);
     }
@@ -294,8 +282,6 @@ test('A4 contrast (UX-05, UX-22, UX-28, UX-01, UX-08): the pairs the contract na
   }
   assert.strictEqual(LIGHT['--line-strong'], '#c6cbd3', '--line-strong stays for dividers');
   assert.match(CSS, /#accountBar\.off \.prefix, #accountBar\.warn \.prefix \{ color: inherit; \}/);
-  assert.match(CSS, /\.tier-mark \{[^}]*\}/);
-  assert.doesNotMatch(/\.tier-mark \{([^}]*)\}/.exec(CSS)[1], /color|opacity/, 'the mark takes the digit\'s colour');
 });
 
 // ---- UX-11: reduced motion; UX-24: shadows -----------------------------------------------------------
@@ -411,15 +397,18 @@ test('A4 UX-08 / UX-02: the Schedule tab, run: with Conflicts first a clash row 
   assert.match(head, /<th data-key="player" class="player" aria-sort="ascending">/);
 });
 
-test('A4 repair R1: "How to read this" says what each colour and mark means, once, from the same map', () => {
-  const help = R.tierHelpText();
-  assert.doesNotMatch(help, /Tier marks:/, 'no stutter after the bold label');
-  for (const s of Object.values(R.TIER_MARKS)) {
-    const line = `${s.colour[0].toUpperCase()}${s.colour.slice(1)} with ${s.mark}: ${s.words}.`;
-    assert.strictEqual(help.split(line).length, 2, `once: ${line}`);
-  }
-  assert.match(help, /A red ! beside the number: the stored tier is above 10 \(start\.gg supports 0-10; set it within 0-10 to save\)\./);
-  assert.match(help, /No colour and no mark: reviewed within the last 6 months\.$/);
-  assert.match(src('app/public/tournament.html'), /<p><b>Tier colours and marks:<\/b> <span id="legendText"><\/span><\/p>/);
-  assert.match(src('app/public/tournament.js'), /\$\('legendText'\)\.textContent = window\.SeedRender\.tierHelpText\(\);/);
+test('Header: Delete tournament data is on the title line; Refresh and Export sit right; no "How to read this"', () => {
+  const html = src('app/public/tournament.html');
+  const title = html.slice(html.indexOf('<div class="titlebar">'), html.indexOf('<div class="tabs-row">'));
+  assert.match(title, /<div class="title-actions">\s*<button id="delete"/, 'delete is on the title line');
+  const right = html.slice(html.indexOf('<div class="group right" role="group" aria-label="Data">'));
+  assert.ok(right.indexOf('id="refresh"') > 0 && right.indexOf('id="exportCsv"') > 0, 'Refresh and Export are in the right-hand group');
+  assert.ok(html.indexOf('id="eventsBox"') < html.indexOf('<div class="group right"'), 'Seeded events stays on the left');
+  assert.strictEqual((html.match(/id="delete"/g) || []).length, 1);
+  assert.doesNotMatch(html, /readHelp|How to read this|legendText/);
+  assert.doesNotMatch(src('app/public/tournament.js'), /readHelp|legendText/);
+});
+
+test('"Needs tier only" removed (Noah\'s review, 2026-11-21): no checkbox, no filter, no row hiding', () => {
+  assert.doesNotMatch(src('app/public/tournament.html') + src('app/public/app.js') + CSS, /needsOnly|needs-only|Needs tier only/);
 });

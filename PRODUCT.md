@@ -48,4 +48,6 @@ are shown as tables, not bullets (binding display rules in `docs/usage-log.md`).
 
 WCAG 2.2 AA: 4.5:1 text contrast in both light and dark themes, full keyboard operation of every
 view (the Tiers sheet editor especially), visible focus, and color never the only carrier of
-meaning (tier recency colors need a non-color cue). Respect `prefers-reduced-motion`.
+meaning. One owner-ruled exception: tier recency is color plus hover and screen-reader words, with no
+visible mark (the marks were tried in Amendment A4 and removed in Noah's review, 2026-11-21). Respect
+`prefers-reduced-motion`.

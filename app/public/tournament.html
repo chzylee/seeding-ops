@@ -14,28 +14,21 @@
 <body class="app">
 <header id="top">
   <!-- Amendment A4 (UX-04): the event facts sit on the title's line (they wrap under it when narrow),
-       and the tier legend shares the tabs' row, so the table keeps its height. -->
+       so the table keeps its height. -->
   <div class="titlebar">
     <h1 id="title">Loading…</h1>
     <span id="tstatus" class="pill"></span>
     <div id="sub" class="sub"></div>
+    <div class="title-actions">
+      <button id="delete" type="button" hidden class="danger" title="Delete out/&lt;tournament&gt;/: the pool, W-L, schedule and standings. Your tiers (registry/tiers.csv) are kept.">Delete tournament data</button>
+    </div>
   </div>
   <div class="tabs-row">
     <nav id="tabs" class="tabs" aria-label="Games and schedule"></nav>
-    <p id="tierLegend" class="tier-legend" hidden></p>
   </div>
-  <div class="bar">
-    <div class="group" role="group" aria-label="Data">
-      <button id="refresh" type="button" title="Pull every seeded event's registrants and every player's results again, then fetch W-L">Refresh data</button>
-      <button id="exportCsv" type="button" hidden title="This table as a CSV in seed order (a Seed column first, then the table's columns), for Google Sheets or anything else. You pick where to save it.">Export to CSV</button>
-      <span id="tline" class="status" role="status" aria-live="polite"></span>
-      <button id="stopJob" type="button" hidden class="danger" title="Stop the running job. What was saved stays; Refresh resumes it.">Stop</button>
-      <div id="exportModal" class="mini-modal" role="status" aria-live="polite" hidden>
-        <div class="mini-head"><span class="spinner" aria-hidden="true"></span><span id="exportTitle">Exporting…</span></div>
-        <div class="mini-bar"><div id="exportBar" class="mini-fill"></div></div>
-        <div id="exportDetail" class="dim"></div>
-      </div>
-    </div>
+  <!-- One toolbar row: Seeded events and the game tab's table tools on the left (#seedBar shows only
+       on a game tab), the data, push and lifecycle buttons on the right. It wraps when narrow. -->
+  <div class="bar toolbar">
     <details id="eventsBox" class="about"><summary>Seeded events</summary>
       <div class="about-body">
         <p class="dim">Tick the singles events to seed. Each ticked event's game gets a tab. Ticking a new event pulls only the players not yet in the pool; unticking hides its tab.</p>
@@ -43,55 +36,47 @@
         <button id="pickerSave" type="button">Save events</button>
       </div>
     </details>
-    <details id="readHelp" class="about" hidden><summary>How to read this</summary>
-      <div class="about-body">
-      <p>Placement is out of the event's entrants. W-L counts sets won and lost at that event, with DQs excluded.
-      Major columns count this game only, using the main bracket (largest field). Series columns are the series
-      the most registrants played: best placement (with its W-L), best W-L, and average W-L when there are 2+
-      events. Click a column header to sort; ❄ freezes that column; 📌 pins a row under the header.
-      Tick up to 3 rows to compare them. Double-click Tier or Notes to edit (<kbd>Enter</kbd> saves, <kbd>Esc</kbd> cancels).
-      Seed starts as tier order (top tier is seed 1). Drag a row by its ⠿ handle, or focus the handle and press
-      <kbd>↑</kbd> <kbd>↓</kbd> (<kbd>Page Up</kbd>/<kbd>Page Down</kbd>: 10, <kbd>Home</kbd>/<kbd>End</kbd>: first/last), to arrange the seeds;
-      the arranged order is saved for the event and is what Push to start.gg posts. Reset to tier order forgets it.
-      Click a player for their tables; click a column header in those tables to sort.</p>
-      <p><b>Tier colours and marks:</b> <span id="legendText"></span></p>
-      <p><b>Seeded ✓:</b> click it once you have looked a player over at this tournament. The row turns green and the date is saved with your tiers; click again the same day to undo.</p>
-      <p><b>Freeze:</b> the columns that stay in place while you scroll sideways. Pick how many in the Freeze list, or press ❄ in one column's header.</p>
+    <div id="seedBar" class="seed-tools" hidden>
+      <div class="group" role="group" aria-label="Compare">
+        <button id="compareToggle" type="button" aria-pressed="false" title="Compare up to 3 selected players in the lower half">⇅ Compare</button>
+        <span id="status" class="status" role="status" aria-live="polite"></span>
+        <button id="update" type="button" hidden>Show new data</button>
       </div>
-    </details>
-    <div class="group right" role="group" aria-label="Lifecycle">
+      <div class="group" role="group" aria-label="View">
+        <label class="freeze-ctl" title="Columns that stay put when you scroll sideways. ❄ in a column header freezes just that column.">Freeze
+          <select id="freezeN"></select></label>
+        <label class="jump-ctl" title="Type a tag and press Enter to scroll to that player">Jump to <input id="jump" list="playerList" placeholder="type a tag" autocomplete="off" spellcheck="false"></label>
+        <label class="check-ctl team-ctl" title="Show or hide the Team column"><input type="checkbox" id="showTeam" checked> Show team</label>
+      </div>
+      <div class="group seed-ctl" role="group" aria-label="Seeds">
+        <label id="seedEventWrap" hidden title="This tab has several events; the Seed column numbers one of them">Seeds for <select id="seedEvent"></select></label>
+        <span id="seedMode" class="seed-mode" hidden></span>
+        <button id="seedSort" type="button" hidden title="Put the table in seed order (the order you drag in)">Sort by seed</button>
+        <button id="seedReset" type="button" hidden title="Forget your arranged order for this event: seeds follow tiers again">Reset to tier order</button>
+        <span id="seedLive" class="seed-live" aria-live="assertive" aria-atomic="true"></span>
+      </div>
+    </div>
+    <div class="group right" role="group" aria-label="Data">
+      <span id="tline" class="status" role="status" aria-live="polite"></span>
+      <button id="stopJob" type="button" hidden class="danger" title="Stop the running job. What was saved stays; Refresh resumes it.">Stop</button>
+      <button id="refresh" type="button" title="Pull every seeded event's registrants and every player's results again, then fetch W-L">Refresh data</button>
+      <button id="exportCsv" type="button" hidden title="This table as a CSV in seed order (a Seed column first, then the table's columns), for Google Sheets or anything else. You pick where to save it.">Export to CSV</button>
+      <div id="exportModal" class="mini-modal" role="status" aria-live="polite" hidden>
+        <div class="mini-head"><span class="spinner" aria-hidden="true"></span><span id="exportTitle">Exporting…</span></div>
+        <div class="mini-bar"><div id="exportBar" class="mini-fill"></div></div>
+        <div id="exportDetail" class="dim"></div>
+      </div>
+    </div>
+    <div id="pushGroup" class="group" role="group" aria-label="Outputs" hidden>
+      <button id="pushToggle" type="button" aria-pressed="false" title="Dry run first: see start.gg's seeding against your tiers. Posting needs a second, confirmed click.">Push to start.gg…</button>
+    </div>
+    <div class="group" role="group" aria-label="Lifecycle">
       <button id="markDone" type="button" hidden title="Move this tournament to the done section now (it moves by itself once its last seeded event's date has passed). Asks first. Nothing is deleted.">Archive</button>
       <button id="unmarkDone" type="button" hidden title="Undo Archive: back to live">Mark live again</button>
       <button id="archive" type="button" hidden title="Fetch the final standings of every seeded event into standings.json (one request per event)">Archive standings</button>
-      <button id="delete" type="button" hidden class="danger" title="Delete out/&lt;tournament&gt;/: the pool, W-L, schedule and standings. Your tiers (registry/tiers.csv) are kept.">Delete tournament data</button>
-    </div>
-  </div>
-  <div id="seedBar" class="bar" hidden>
-    <div class="group" role="group" aria-label="Compare">
-      <button id="compareToggle" type="button" aria-pressed="false" title="Compare up to 3 selected players in the lower half">⇅ Compare</button>
-      <span id="status" class="status" role="status" aria-live="polite"></span>
-      <button id="update" type="button" hidden>Show new data</button>
-    </div>
-    <div class="group" role="group" aria-label="View">
-      <label class="freeze-ctl" title="Columns that stay put when you scroll sideways. ❄ in a column header freezes just that column.">Freeze
-        <select id="freezeN"></select></label>
-      <label class="jump-ctl" title="Type a tag and press Enter to scroll to that player">Jump to <input id="jump" list="playerList" placeholder="type a tag" autocomplete="off" spellcheck="false"></label>
-      <label class="needs-ctl" title="Show only registrants with no tier in registry/tiers.csv"><input type="checkbox" id="needsOnly"> Needs tier only</label>
-      <label class="needs-ctl team-ctl" title="Show or hide the Team column"><input type="checkbox" id="showTeam" checked> Show team</label>
-    </div>
-    <div class="group seed-ctl" role="group" aria-label="Seeds">
-      <label id="seedEventWrap" hidden title="This tab has several events; the Seed column numbers one of them">Seeds for <select id="seedEvent"></select></label>
-      <span id="seedMode" class="seed-mode" hidden></span>
-      <button id="seedSort" type="button" hidden title="Put the table in seed order (the order you drag in)">Sort by seed</button>
-      <button id="seedReset" type="button" hidden title="Forget your arranged order for this event: seeds follow tiers again">Reset to tier order</button>
-      <span id="seedLive" class="seed-live" aria-live="assertive" aria-atomic="true"></span>
-    </div>
-    <div class="group right" role="group" aria-label="Outputs">
-      <button id="pushToggle" type="button" aria-pressed="false" title="Dry run first: see start.gg's seeding against your tiers. Posting needs a second, confirmed click.">Push to start.gg…</button>
     </div>
   </div>
 </header>
-<section id="uploadNote" class="upload-note" hidden aria-label="Upload summary"></section>
 <section id="setup" class="setup" hidden aria-label="Before the first pull">
   <p id="setupMsg"></p>
   <button id="pullFirst" type="button" class="primary">Pull</button>
